@@ -10,7 +10,7 @@ import type { SessionPrincipal } from '../auth/auth.service.js';
 import { assertSppgAccess } from '../auth/permissions.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { CreateGeofenceDto, GeofenceLocationType, ListGeofencesDto } from './geofence.dto.js';
-import { hasConfirmedGeofenceArrival } from './geofence-policy.js';
+import { canAccessDeliveryGeofence, hasConfirmedGeofenceArrival } from './geofence-policy.js';
 
 @Injectable()
 export class GeofenceService {
@@ -27,10 +27,12 @@ export class GeofenceService {
       select: {
         id: true,
         type: true,
+        shapeType: true,
         name: true,
         centerLatitude: true,
         centerLongitude: true,
         radiusMeters: true,
+        polygonCoordinates: true,
         minGpsAccuracyMeters: true,
         confirmationFixes: true,
         confirmationDurationSeconds: true,
@@ -49,6 +51,30 @@ export class GeofenceService {
   ) {
     this.assertIdempotencyKey(idempotencyKey);
     const type = this.toPrismaType(input.locationType);
+
+    const isPolygon = input.shapeType === 'POLYGON';
+    let centerLatitude: number;
+    let centerLongitude: number;
+    let radiusMeters: number | null = input.radiusMeters ?? null;
+    let polygonCoordinates: { longitude: number; latitude: number }[] | null = null;
+
+    if (isPolygon) {
+      if (!input.polygonCoordinates || input.polygonCoordinates.length < 3) {
+        throw new BadRequestException({ code: 'INVALID_POLYGON' });
+      }
+      polygonCoordinates = input.polygonCoordinates;
+      const lats = polygonCoordinates.map((p) => p.latitude);
+      const lngs = polygonCoordinates.map((p) => p.longitude);
+      centerLatitude = lats.reduce((a, b) => a + b, 0) / lats.length;
+      centerLongitude = lngs.reduce((a, b) => a + b, 0) / lngs.length;
+      radiusMeters = null;
+    } else {
+      if (input.centerLatitude === undefined || input.centerLongitude === undefined || input.radiusMeters === undefined) {
+        throw new BadRequestException({ code: 'INVALID_CIRCLE' });
+      }
+      centerLatitude = input.centerLatitude;
+      centerLongitude = input.centerLongitude;
+    }
 
     return this.prisma.db.$transaction(async (tx) => {
       const replay = await tx.geofence.findUnique({ where: { idempotencyKey } });
@@ -90,10 +116,12 @@ export class GeofenceService {
         data: {
           ...locationWhere,
           type,
+          shapeType: isPolygon ? 'POLYGON' : 'CIRCLE',
           name: input.name,
-          centerLatitude: input.centerLatitude,
-          centerLongitude: input.centerLongitude,
-          radiusMeters: input.radiusMeters,
+          centerLatitude,
+          centerLongitude,
+          radiusMeters,
+          polygonCoordinates: polygonCoordinates ?? Prisma.JsonNull,
           minGpsAccuracyMeters: input.minGpsAccuracyMeters,
           confirmationFixes: input.confirmationFixes,
           confirmationDurationSeconds: input.confirmationDurationSeconds,
@@ -103,11 +131,13 @@ export class GeofenceService {
         },
       });
 
-      await tx.$executeRaw`
-        UPDATE geofences
-        SET center = ST_SetSRID(ST_MakePoint(${input.centerLongitude}, ${input.centerLatitude}), 4326)::geography
-        WHERE id = ${geofence.id}::uuid
-      `;
+      if (centerLatitude !== undefined && centerLongitude !== undefined) {
+        await tx.$executeRaw`
+          UPDATE geofences
+          SET center = ST_SetSRID(ST_MakePoint(${centerLongitude}, ${centerLatitude}), 4326)::geography
+          WHERE id = ${geofence.id}::uuid
+        `;
+      }
 
       await tx.auditLog.create({
         data: {
@@ -145,7 +175,7 @@ export class GeofenceService {
         deliveryLocation: {
           include: {
             geofences: {
-              where: { active: true, type: GeofenceType.DELIVERY },
+              where: { active: true, type: GeofenceType.DELIVERY, shapeType: 'CIRCLE' },
               orderBy: { version: 'desc' },
               take: 1,
             },
@@ -266,12 +296,15 @@ export class GeofenceService {
       select: { id: true, organizationId: true, regionId: true, active: true },
     });
     if (!location || !location.active) throw new NotFoundException({ code: 'LOCATION_NOT_FOUND' });
-    const authorized = principal.roles.some(
-      (role) =>
-        role.isGlobal ||
-        role.organizationId === location.organizationId ||
-        role.regionId === location.regionId,
-    );
+    const sppgIds = [...new Set(principal.roles.flatMap((role) => role.sppgId ? [role.sppgId] : []))];
+    const scopedSppgs = sppgIds.length
+      ? await tx.sppg.findMany({
+          where: { id: { in: sppgIds } },
+          select: { regionId: true },
+        })
+      : [];
+    const sppgRegionIds = new Set(scopedSppgs.map(({ regionId }) => regionId));
+    const authorized = canAccessDeliveryGeofence(principal.roles, location, sppgRegionIds);
     if (!authorized) throw new NotFoundException({ code: 'LOCATION_NOT_FOUND' });
     return location;
   }
@@ -298,13 +331,15 @@ export class GeofenceService {
       sppgId: string | null;
       deliveryLocationId: string | null;
       type: GeofenceType;
+      shapeType: string;
       name: string;
-      centerLatitude: Prisma.Decimal;
-      centerLongitude: Prisma.Decimal;
-      radiusMeters: Prisma.Decimal;
+      centerLatitude: Prisma.Decimal | null;
+      centerLongitude: Prisma.Decimal | null;
+      radiusMeters: Prisma.Decimal | null;
       minGpsAccuracyMeters: Prisma.Decimal;
       confirmationFixes: number;
       confirmationDurationSeconds: number;
+      polygonCoordinates?: unknown;
     },
     input: CreateGeofenceDto,
     type: GeofenceType,
@@ -313,9 +348,10 @@ export class GeofenceService {
       geofence.type === type &&
       (geofence.sppgId ?? geofence.deliveryLocationId) === input.locationId &&
       geofence.name === input.name &&
-      Number(geofence.centerLatitude) === input.centerLatitude &&
-      Number(geofence.centerLongitude) === input.centerLongitude &&
-      Number(geofence.radiusMeters) === input.radiusMeters &&
+      geofence.shapeType === (input.shapeType ?? 'CIRCLE') &&
+      (geofence.centerLatitude === null || Number(geofence.centerLatitude) === (input.centerLatitude ?? Number(geofence.centerLatitude))) &&
+      (geofence.centerLongitude === null || Number(geofence.centerLongitude) === (input.centerLongitude ?? Number(geofence.centerLongitude))) &&
+      (geofence.radiusMeters === null || Number(geofence.radiusMeters) === (input.radiusMeters ?? Number(geofence.radiusMeters))) &&
       Number(geofence.minGpsAccuracyMeters) === input.minGpsAccuracyMeters &&
       geofence.confirmationFixes === input.confirmationFixes &&
       geofence.confirmationDurationSeconds === input.confirmationDurationSeconds

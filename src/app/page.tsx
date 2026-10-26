@@ -14,13 +14,12 @@ import {
   Command,
   ClipboardCheck,
   Download,
-  Ellipsis,
   Filter,
+  Map as MapIcon,
+  MapPinned,
   LayoutDashboard,
   ListFilter,
   LogOut,
-  Map,
-  MapPin,
   MoreHorizontal,
   Navigation,
   PackageCheck,
@@ -31,6 +30,7 @@ import {
   Truck,
   Users,
   Utensils,
+  X,
 } from "lucide-react";
 import { FleetMap } from "@/components/fleet-map";
 import {
@@ -46,10 +46,11 @@ import {
 } from "@/lib/api";
 
 type NavItem = { label: string; icon: typeof LayoutDashboard; count?: string; alert?: boolean; permissions?: string[] };
+type MapFilter = "all" | "active" | "attention" | "stale" | "verified";
 
 const navigation: NavItem[] = [
   { label: "Ringkasan", icon: LayoutDashboard },
-  { label: "Peta langsung", icon: Map, permissions: ["trip:track:read"] },
+  { label: "Peta langsung", icon: MapIcon, permissions: ["trip:track:read"] },
   { label: "Perjalanan", icon: Navigation, permissions: ["trip:read"] },
   { label: "Pusat risiko", icon: AlertTriangle, alert: true, permissions: ["exception:read"] },
 ];
@@ -133,6 +134,35 @@ function exceptionLevel(exception: ExceptionSummary): { label: string; tone: str
   return { label: "Perhatian", tone: "violet" };
 }
 
+function tripNeedsAttention(trip: TripSummary, now: number) {
+  const gpsNeedsAttention = ["STALE", "OFFLINE", "GPS_UNAVAILABLE"].includes(trip.trackingStatus);
+  const isLate = activeTripStatuses.has(trip.status) && new Date(trip.plannedArrivalAt).getTime() < now;
+  return trip.status === "EXCEPTION" || gpsNeedsAttention || isLate;
+}
+
+function matchesMapFilter(trip: TripSummary, filter: MapFilter, now: number) {
+  if (filter === "active") return activeTripStatuses.has(trip.status);
+  if (filter === "attention") return tripNeedsAttention(trip, now);
+  if (filter === "stale") return ["STALE", "OFFLINE", "GPS_UNAVAILABLE"].includes(trip.trackingStatus);
+  if (filter === "verified") return ["VERIFIED", "OVERRIDDEN"].includes(trip.verificationStatus);
+  return true;
+}
+
+function trackingLabel(status: string) {
+  switch (status) {
+    case "LIVE": return "Diperbarui";
+    case "STALE": return "Usang";
+    case "OFFLINE": return "Offline";
+    case "GPS_UNAVAILABLE": return "GPS tidak tersedia";
+    case "ENDED": return "Pelacakan berakhir";
+    default: return "Belum tersedia";
+  }
+}
+
+function formatCoordinate(value: string | number) {
+  return Number(value).toFixed(5);
+}
+
 function StatusPill({ tone, children }: { tone: string; children: ReactNode }) {
   return <span className={`status-pill status-${tone}`}><span className="status-dot" />{children}</span>;
 }
@@ -141,6 +171,9 @@ export default function Home() {
   const router = useRouter();
   const [activeNav, setActiveNav] = useState("Ringkasan");
   const [showAlerts, setShowAlerts] = useState(true);
+  const [mapFilter, setMapFilter] = useState<MapFilter>("all");
+  const [selectedMapTripId, setSelectedMapTripId] = useState<string | null>(null);
+  const [mapExpanded, setMapExpanded] = useState(false);
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [sessionState, setSessionState] = useState<"checking" | "ready" | "unavailable" | "data-error" | "forbidden">("checking");
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
@@ -245,6 +278,7 @@ export default function Home() {
   }
 
   const trips = dashboard.trips;
+  const dashboardNow = new Date(dashboard.refreshedAt).getTime();
   const exceptions = dashboard.exceptions;
   const activeExceptions = exceptions.filter((exception) => !closedExceptionStatuses.has(exception.status));
   const criticalExceptions = activeExceptions.filter((exception) => exception.severity === "CRITICAL");
@@ -257,6 +291,11 @@ export default function Home() {
     ? Math.round((verifiedTrips.length / dashboard.tripTotal) * 1000) / 10
     : 0;
   const locatedTrips = trips.filter((trip) => trip.positions.length > 0);
+  const mapTrips = locatedTrips.filter((trip) => matchesMapFilter(trip, mapFilter, dashboardNow));
+  const selectedMapTrip = mapTrips.find((trip) => trip.id === selectedMapTripId) ?? null;
+  const selectedPosition = selectedMapTrip?.positions[0] ?? null;
+  const arrivalTrips = locatedTrips.filter((trip) => ["ARRIVAL_DETECTED", "ARRIVAL_VERIFIED", "DELIVERY_IN_PROGRESS"].includes(trip.status));
+  const staleGpsTrips = locatedTrips.filter((trip) => ["STALE", "OFFLINE", "GPS_UNAVAILABLE"].includes(trip.trackingStatus));
   const latestPositionAt = locatedTrips.reduce<string | null>((latest, trip) => {
     const received = trip.positions[0]?.serverReceivedAt ?? null;
     if (!received) return latest;
@@ -271,6 +310,7 @@ export default function Home() {
   const canDrive = hasPermission(sessionUser, "trip:start") && hasPermission(sessionUser, "trip:location:update");
   const canAccessApprovals = hasPermission(sessionUser, "sppg:manage") || hasPermission(sessionUser, "approval:review");
   const canReadAudit = hasPermission(sessionUser, "audit:read");
+  const canAccessGeofences = hasPermission(sessionUser, "geofence:read") || hasPermission(sessionUser, "geofence:manage");
   const canManageUsers = hasPermission(sessionUser, "admin:manage_users");
   const canAccessNav = (item: NavItem) => !item.permissions || item.permissions.some((permission) => hasPermission(sessionUser, permission));
   const navItems = navigation.filter(canAccessNav).map((item) => {
@@ -309,6 +349,7 @@ export default function Home() {
             </button>
           ))}
           {canReadAudit && <Link className="nav-item nav-link" href="/audit"><Activity size={17} strokeWidth={1.8} /><span>Audit explorer</span></Link>}
+          {canAccessGeofences && <Link className="nav-item nav-link" href="/geofences"><MapPinned size={17} strokeWidth={1.8} /><span>Geofence</span></Link>}
           {canManageUsers && <Link className="nav-item nav-link" href="/users"><Users size={17} strokeWidth={1.8} /><span>Administrasi akun</span></Link>}
           {sessionUser.mfaEnabled === false && <Link className="nav-item nav-link" href="/security/mfa"><ShieldCheck size={17} strokeWidth={1.8} /><span>Daftarkan MFA</span></Link>}
           {canAccessApprovals && <Link className="nav-item nav-link" href="/approvals"><ClipboardCheck size={17} strokeWidth={1.8} /><span>Persetujuan</span></Link>}
@@ -347,15 +388,20 @@ export default function Home() {
             {canReadExceptions && <article className="kpi-card"><div className="kpi-top"><span className="kpi-icon icon-amber"><AlertTriangle size={17} /></span><span className="kpi-trend trend-down">{highExceptions.length + criticalExceptions.length} tinggi</span></div><p className="kpi-label">Perlu perhatian</p><div className="kpi-value">{String(activeExceptions.length).padStart(2, "0")} <span>exception aktif</span></div><div className="kpi-foot"><span className="severity"><i />{criticalExceptions.length} kritis</span><span className="kpi-separator">·</span><span>{attentionExceptions.length} perlu ditinjau</span></div></article>}
           </section>
 
-          <section className="map-section" id="live-map">
-            <div className="section-heading"><div><div className="section-title-row"><h2>Situasi armada</h2><span className="sample-tag"><span />GPS</span></div><p>Posisi GPS terakhir · {locatedTrips.length} dari {trips.length} perjalanan</p></div><div className="map-actions"><button className="subtle-button"><MapPin size={14} />Seluruh wilayah<ChevronDown size={13} /></button><button className="square-button" aria-label="Filter peta"><ListFilter size={16} /></button><button className="square-button" aria-label="Opsi peta"><Ellipsis size={18} /></button></div></div>
+          <section className={`map-section ${mapExpanded ? "map-section-expanded" : ""}`} id="live-map">
+            <div className="section-heading"><div><div className="section-title-row"><h2>Situasi armada</h2><span className="sample-tag"><span />GPS</span></div><p>Lokasi terakhir yang diterima server · {locatedTrips.length} dari {trips.length} perjalanan memiliki koordinat</p></div><div className="map-actions"><label className="map-filter-control"><ListFilter size={14} /><span className="sr-only">Filter perjalanan pada peta</span><select value={mapFilter} aria-label="Filter perjalanan pada peta" onChange={(event) => { setMapFilter(event.target.value as MapFilter); setSelectedMapTripId(null); }}><option value="all">Semua status</option><option value="active">Dalam perjalanan</option><option value="attention">Perlu perhatian</option><option value="stale">GPS usang / offline</option><option value="verified">Terverifikasi</option></select></label><button className="square-button map-expand-control" aria-label={mapExpanded ? "Tutup tampilan peta" : "Perluas peta"} aria-pressed={mapExpanded} onClick={() => setMapExpanded((expanded) => !expanded)}>{mapExpanded ? <X size={16} /> : <MapIcon size={16} />}</button></div></div>
             <div className="map-frame">
               <div className="map-visual" aria-label="Peta posisi armada berdasarkan GPS terakhir">
-                <FleetMap trips={trips} />
-                <div className="map-top-label"><span className="map-live-icon"><Radio size={14} /></span><span><strong>Posisi GPS terakhir</strong><small>Klik marker untuk detail · waktu server</small></span></div>
+                <FleetMap trips={mapTrips} selectedTripId={selectedMapTripId} onSelectTrip={(trip) => setSelectedMapTripId(trip.id)} emptyMessage={locatedTrips.length && mapFilter !== "all" ? "Tidak ada perjalanan sesuai filter peta." : undefined} expanded={mapExpanded} />
+                <div className="map-top-label"><span className="map-live-icon"><Radio size={14} /></span><span><strong>Lokasi terakhir diterima</strong><small>Marker bukan jaminan posisi saat ini · pilih marker untuk detail</small></span></div>
               </div>
-              <div className="map-legend"><div className="legend-item"><i className="legend-ring legend-blue" /><span>Dalam perjalanan</span><b>{inTransitTrips.length}</b></div>{canReadExceptions && <div className="legend-item"><i className="legend-ring legend-amber" /><span>Perlu perhatian</span><b>{activeExceptions.length}</b></div>}<div className="legend-item"><i className="legend-ring legend-green" /><span>Terverifikasi</span><b>{verifiedTrips.length}</b></div><span className="legend-divider" /><div className="legend-freshness"><span className="freshness-dot" />Posisi terakhir {latestPositionAt ? relativeTime(latestPositionAt) : "belum tersedia"}</div><button className="map-expand"><span>Lihat peta</span><ArrowRight size={14} /></button></div>
+              <div className="map-legend" aria-label="Legenda status peta"><div className="legend-item"><i className="legend-ring legend-blue" /><span>Berjalan</span><b>{locatedTrips.filter((trip) => activeTripStatuses.has(trip.status)).length}</b></div><div className="legend-item"><i className="legend-ring legend-violet" /><span>Tiba / serah-terima</span><b>{arrivalTrips.length}</b></div>{canReadExceptions && <div className="legend-item"><i className="legend-ring legend-amber" /><span>Perhatian</span><b>{locatedTrips.filter((trip) => tripNeedsAttention(trip, dashboardNow)).length}</b></div>}<div className="legend-item"><i className="legend-ring legend-green" /><span>Terverifikasi</span><b>{locatedTrips.filter((trip) => ["VERIFIED", "OVERRIDDEN"].includes(trip.verificationStatus)).length}</b></div>{staleGpsTrips.length > 0 && <div className="legend-item legend-stale"><i className="legend-ring legend-stale-ring" /><span>GPS usang/offline</span><b>{staleGpsTrips.length}</b></div>}<span className="legend-divider" /><div className="legend-freshness"><span className="freshness-dot" />Terakhir diterima {latestPositionAt ? relativeTime(latestPositionAt) : "belum tersedia"}</div></div>
             </div>
+            {selectedMapTrip && selectedPosition && <article className="map-selection-panel" aria-live="polite">
+              <div className="map-selection-heading"><div><span className="map-selection-eyebrow">DETAIL MARKER TERPILIH</span><strong>{selectedMapTrip.vehicle.plateNumber} · {selectedMapTrip.driver.name}</strong><small>{selectedMapTrip.sppg.name} → {selectedMapTrip.deliveryLocation.name}</small></div><StatusPill tone={tripState(selectedMapTrip).tone}>{tripState(selectedMapTrip).label}</StatusPill></div>
+              <div className="map-selection-meta"><span><strong>GPS {trackingLabel(selectedMapTrip.trackingStatus)}</strong><small>{relativeTime(selectedPosition.serverReceivedAt)} · {formatClock(selectedPosition.serverReceivedAt)} WIB</small></span><span><strong>Koordinat WGS84</strong><small>{formatCoordinate(selectedPosition.latitude)}, {formatCoordinate(selectedPosition.longitude)}</small></span><span><strong>Akurasi</strong><small>{selectedPosition.accuracyMeters === null ? "Tidak tersedia" : `${Number(selectedPosition.accuracyMeters).toFixed(0)} m`}</small></span></div>
+              {canReadTrips && <Link className="map-selection-link" href={`/trips/${selectedMapTrip.id}`}>Buka detail perjalanan<ArrowRight size={14} /></Link>}
+            </article>}
           </section>
 
           <section className={`bottom-grid ${canReadExceptions && showAlerts ? "" : "bottom-grid-wide"}`}>

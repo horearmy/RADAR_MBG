@@ -144,12 +144,13 @@ export class ProofService {
     }
   }
 
-  async listProofs(tripId: string, principal: SessionPrincipal) {
+  async listProofs(tripId: string, principal: SessionPrincipal, requestId: string) {
     await this.findScopedTrip(tripId, principal);
     const proofs = await this.prisma.db.proofOfDelivery.findMany({
       where: { deliveryRecord: { tripId } },
       orderBy: { uploadedAt: 'desc' },
     });
+    await this.writeAccessAudit(principal, tripId, 'delivery.proof.list', proofs.length, requestId);
     return Promise.all(
       proofs.map((proof) => this.present(proof, false, this.storage.configured)),
     );
@@ -159,18 +160,46 @@ export class ProofService {
     tripId: string,
     proofId: string,
     principal: SessionPrincipal,
+    requestId: string,
   ) {
     await this.findScopedTrip(tripId, principal);
     const proof = await this.prisma.db.proofOfDelivery.findFirst({
       where: { id: proofId, deliveryRecord: { tripId } },
     });
     if (!proof) throw new NotFoundException({ code: 'PROOF_NOT_FOUND' });
+    const url = await this.storage.signedDownloadUrl(proof.objectKey, 300);
+    await this.writeAccessAudit(principal, tripId, 'delivery.proof.download_url', 1, requestId, proof.id);
 
     return {
       proofId: proof.id,
-      url: await this.storage.signedDownloadUrl(proof.objectKey, 300),
+      url,
       expiresInSeconds: 300,
     };
+  }
+
+  private async writeAccessAudit(
+    principal: SessionPrincipal,
+    tripId: string,
+    action: string,
+    proofCount: number,
+    requestId: string,
+    proofId?: string,
+  ) {
+    await this.prisma.db.auditLog.create({
+      data: {
+        actorUserId: principal.id,
+        action,
+        entityType: 'trip',
+        entityId: tripId,
+        result: 'success',
+        reason: 'Authorized POD evidence access',
+        after: {
+          proofCount,
+          ...(proofId ? { proofId } : {}),
+        },
+        requestId,
+      },
+    });
   }
 
   private async findScopedTrip(tripId: string, principal: SessionPrincipal) {

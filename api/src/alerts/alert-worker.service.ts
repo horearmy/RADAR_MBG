@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import {
   ArrivalVerificationResult,
   DeliveryReviewStatus,
@@ -35,11 +36,14 @@ const EMPTY_COUNTS: ScanCounts = {
   quantityVariance: 0,
   podIncomplete: 0,
 };
+const WORKER_LEASE_TTL_MS = 2 * 60 * 1000;
+const WORKER_LEASE_RENEW_MS = 30 * 1000;
 
 @Injectable()
 export class AlertWorkerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AlertWorkerService.name);
   private timer: NodeJS.Timeout | null = null;
+  private leaseTimer: NodeJS.Timeout | null = null;
   private running = false;
 
   constructor(
@@ -78,6 +82,25 @@ export class AlertWorkerService implements OnModuleInit, OnModuleDestroy {
     this.running = true;
     const settings = readAlertSettings();
     const counts = { ...EMPTY_COUNTS };
+    const ownerToken = randomUUID();
+    let acquired: boolean;
+    try {
+      acquired = await this.acquireLease(ownerToken);
+    } catch (error) {
+      this.running = false;
+      throw error;
+    }
+    if (!acquired) {
+      this.logger.debug('Skipped alert scan because another instance owns the worker lease.');
+      this.running = false;
+      return counts;
+    }
+    this.leaseTimer = setInterval(() => {
+      void this.renewLease(ownerToken).catch((error: unknown) => {
+        this.logger.error('Alert worker lease renewal failed.', error);
+      });
+    }, WORKER_LEASE_RENEW_MS);
+    this.leaseTimer.unref();
     const scans: Array<[keyof ScanCounts, () => Promise<number>]> = [
       ['lateArrival', () => this.scanLateArrivals(now, settings, counts)],
       ['gpsStale', () => this.scanGpsHealth(now, settings, counts)],
@@ -102,8 +125,43 @@ export class AlertWorkerService implements OnModuleInit, OnModuleDestroy {
       }
       return counts;
     } finally {
+      if (this.leaseTimer) clearInterval(this.leaseTimer);
+      this.leaseTimer = null;
+      await this.releaseLease(ownerToken).catch((error: unknown) => {
+        this.logger.error('Alert worker lease release failed.', error);
+      });
       this.running = false;
     }
+  }
+
+  private async acquireLease(ownerToken: string) {
+    const expiresAt = new Date(Date.now() + WORKER_LEASE_TTL_MS);
+    const rows = await this.prisma.db.$queryRaw<Array<{ owner_token: string }>>`
+      INSERT INTO worker_leases (worker_name, owner_token, expires_at)
+      VALUES ('alert-worker', ${ownerToken}::uuid, ${expiresAt})
+      ON CONFLICT (worker_name) DO UPDATE
+      SET owner_token = EXCLUDED.owner_token, expires_at = EXCLUDED.expires_at
+      WHERE worker_leases.expires_at <= CURRENT_TIMESTAMP
+      RETURNING owner_token
+    `;
+    return rows[0]?.owner_token === ownerToken;
+  }
+
+  private async renewLease(ownerToken: string) {
+    const expiresAt = new Date(Date.now() + WORKER_LEASE_TTL_MS);
+    const updated = await this.prisma.db.$executeRaw`
+      UPDATE worker_leases
+      SET expires_at = ${expiresAt}
+      WHERE worker_name = 'alert-worker' AND owner_token = ${ownerToken}::uuid
+    `;
+    if (updated !== 1) this.logger.error('Alert worker no longer owns its database lease.');
+  }
+
+  private async releaseLease(ownerToken: string) {
+    await this.prisma.db.$executeRaw`
+      DELETE FROM worker_leases
+      WHERE worker_name = 'alert-worker' AND owner_token = ${ownerToken}::uuid
+    `;
   }
 
   private async scanLateArrivals(

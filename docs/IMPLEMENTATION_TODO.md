@@ -3,9 +3,9 @@
 
 ## Status saat ini
 
-- Dashboard Control Tower memuat KPI, trip hari ini, exception, dan posisi GPS terakhir dari API; peta MapLibre memakai fallback raster OSM development.
+- Dashboard Control Tower memuat KPI, trip hari ini, exception, dan posisi GPS terakhir dari API; peta MapLibre hanya memakai tile raster OpenStreetMap.
 - NestJS API, Prisma schema/migrasi, autentikasi sesi, helper permission/scope, state machine trip, trip API dasar, dan GPS ingestion sudah ada.
-- PostgreSQL/PostGIS belum dijalankan di lingkungan ini. Migrasi, transaksi, indeks spasial, bootstrap akun, dan query aktual belum diuji terhadap database hidup.
+- API melaporkan database `ok`; seluruh 16 migrasi up-to-date dan extension PostGIS aktif. Database lokal menjalankan PostgreSQL 18.6/PostGIS 3.6.2, dengan 51 foreign key, 283 check constraints, dan 3 indeks GiST terdeteksi. Trigger append-only audit, rate limit lintas instance, serta lease PostgreSQL alert worker terpasang. Docker Desktop service berhenti dan MinIO tidak tersedia; semantik constraint/index, transaksi bisnis, dan query operasional belum diuji penuh.
 - Geofence circle, deteksi kedatangan multi-fix, token QR dinamis, dan endpoint verifikasi sudah ada di source; alur bisnisnya belum diuji pada database hidup.
 - Master data API (organisasi, wilayah, SPPG, lokasi tujuan, kendaraan, pengemudi) sudah ada di source; belum diuji terhadap database hidup.
 - Exception case API (create/list/detail/triage/assign/investigate/resolve/escalate/close) dan worker alert otomatis sudah ada di source; exception terkait trip tampil di detail, halaman `/exceptions` menyediakan daftar terpadu dengan filter/pagination, dan tindak lanjut dari UI memakai pemilihan assignee ter-scope.
@@ -18,19 +18,19 @@
 ## 0. Jalankan fondasi lokal — prasyarat implementasi
 
 - [ ] Pasang dan jalankan Docker Desktop/Engine.
-- [ ] Jalankan `npm run db:up` dan pastikan container PostGIS sehat.
+- [ ] Jalankan Docker Desktop/Engine dan `npm run db:up`; PostgreSQL yang dipakai saat ini berjalan di luar Docker.
 - [ ] Jalankan `npm run storage:up` dan pastikan bucket `radar-mbg-pod` privat serta sehat.
 - [ ] Salin `api/.env.example` menjadi `api/.env`; isi `DATABASE_URL`, `MFA_ENCRYPTION_KEY`, konfigurasi `S3_*`, dan `ALERT_WORKER_*` development.
-- [ ] Jalankan `npm run db:generate` dan `npm run db:migrate`.
-- [ ] Verifikasi `/api/v1/health` menunjukkan `database: ok`.
-- [ ] Uji ulang seluruh migrasi dari database kosong; cek PostGIS extension, constraint, indeks GIST, foreign key, dan hasil restore.
-- [ ] Simpan bukti hasil migrasi serta versi PostgreSQL/PostGIS yang dipakai.
+- [x] Generate Prisma Client dan deploy seluruh 16 migrasi; `prisma migrate status` mengonfirmasi tidak ada migrasi tertunda.
+- [x] Verifikasi `/api/v1/health` menunjukkan `database: ok`.
+- [ ] Uji seluruh migrasi dari database kosong dan lakukan restore test.
+- [x] Catat hasil pemeriksaan database lokal: PostgreSQL 18.6, PostGIS 3.6.2, 51 foreign key, 283 check constraints, dan 3 indeks GiST terdeteksi.
 
 ## 1. Identity, RBAC, dan isolasi SPPG — P0
 
 **Sudah tersedia:** login Argon2id, cookie session, logout/revocation sesi sendiri, CSRF, TOTP verifikasi, bootstrap Superadmin, permission guard, scope helper, serta sesi memuat role dan scope.
 
-- [ ] Jalankan bootstrap Superadmin pada database lokal dengan password kuat dan MFA aktif.
+- [x] Verifikasi ada satu akun Superadmin aktif dengan MFA pada database lokal; bootstrap tidak dijalankan ulang agar akun yang ada tidak tertimpa.
 - [x] Buat administrasi akun: undang/buat, suspend, nonaktifkan, reset password, assignment role/scope, dan pencabutan semua sesi. Token undangan/reset sekali pakai diberikan ke admin untuk dikirim manual; kanal email belum tersedia.
 - [ ] Tetapkan katalog role/permission resmi untuk Superadmin, approver, Admin SPPG, dispatcher, driver, auditor, dan pimpinan.
 - [x] Buat assignment dan pencabutan role sebagai aksi yang diaudit; role global dan role wajib MFA fail-closed.
@@ -38,8 +38,11 @@
 - [x] Sediakan enrollment TOTP dengan 10 kode pemulihan satu kali (hash di database), login recovery code dengan password, rotasi secret berbatas waktu, serta pemulihan MFA admin-terbit 30 menit; seluruh alur diaudit.
 - [x] Catat login sukses/gagal/ditolak karena rate limit, logout, dan kegagalan MFA; kredensial, username, OTP, serta token sesi tidak disimpan pada event.
 - [x] Audit explicit scope denial dan resource lookup ter-scope dengan response generik 404; perubahan akun/role dan sesi dicabut juga dicatat.
+- [x] Cegah replay dedupe exception mengembalikan exception lain di luar scope pemohon; tambahkan policy regression test.
 - [ ] Uji IDOR/BOLA untuk list, detail, mutasi, file, ekspor, dan channel realtime; Admin SPPG A tidak dapat mengakses SPPG B.
-- [ ] Uji semua mutasi API melewati CSRF dan pemeriksaan origin; verifikasi rate limit login pada pola password spraying.
+- [x] Verifikasi middleware CSRF/origin global pada route mutasi representatif, termasuk semua endpoint enrollment, rotasi, dan pemulihan MFA.
+- [x] Uji rate limit proses tunggal terhadap pengulangan identitas dan password spraying dari IP yang sama.
+- [x] Ganti rate limit login dengan counter PostgreSQL atomik untuk IP dan pasangan IP/identitas; counter hashed, masa hidup terbatas, dan fail-closed bila database tidak tersedia.
 
 **Penerimaan:** akun nonaktif/ditangguhkan ditolak; Superadmin/approver tidak dapat masuk tanpa MFA; driver hanya mendapat tugas sendiri; setiap objek dibatasi ulang di backend.
 
@@ -50,8 +53,8 @@
 - [x] API create/list lokasi tujuan dengan koordinat WGS84 dan status aktif.
 - [x] API create/list kendaraan dan pengemudi; `Driver` terpisah dari akun `User`.
 - [x] API update/nonaktifkan master data dengan audit before/after; SPPG memakai optimistic version.
-- [ ] Riwayat perubahan master data yang dapat ditelusuri dari audit explorer.
-- [ ] Riwayat geofence dan perubahan koordinat lokasi tujuan.
+- [x] Riwayat perubahan master data (organisasi, wilayah, SPPG, tujuan, kendaraan, pengemudi, assignment) dapat ditelusuri dari audit explorer dengan filter scope.
+- [x] Audit explorer mencakup riwayat geofence dan perubahan koordinat lokasi tujuan dalam scope.
 - [x] Tambahkan riwayat assignment driver/kendaraan dengan tanggal efektif; trip historis tetap menyimpan `driverId`/`vehicleId` saat dibuat.
 - [x] Tolak assignment driver/kendaraan yang bertabrakan pada rentang efektif; create memakai transaksi Serializabel.
 - [ ] Uji concurrency assignment dan validasi bentrok terhadap trip terjadwal pada database hidup.
@@ -84,8 +87,8 @@
 
 - [ ] Uji ingestion di PostGIS hidup untuk titik valid, duplikat, offline/backfill, timestamp masa depan, akurasi buruk, urutan salah, dan lompatan.
 - [ ] Tambahkan strategi partisi, indeks spasial GPS bila query memerlukan, retensi, kompresi/agregasi, dan purging terkontrol.
-- [ ] Buat aggregator/job freshness yang mengubah `LIVE` menjadi `STALE`/`OFFLINE` berdasarkan waktu penerimaan; ketiadaan data bukan bukti kendaraan berhenti.
-- [ ] Pastikan titik lama yang tersinkron tidak menggantikan posisi live terbaru.
+- [x] Alert worker mengubah `LIVE` menjadi `STALE`/`OFFLINE` berdasarkan umur penerimaan; status kualitas/freshness tidak menyimpulkan kendaraan berhenti.
+- [x] Titik lama/backfill tetap disimpan untuk riwayat, tetapi tidak menggantikan posisi live atau mengubah status tracking menjadi `LIVE`.
 - [ ] Tambahkan device registration/revocation dan provenance perangkat; minimalkan data perangkat yang disimpan.
 - [ ] Tambahkan offline queue/outbox PWA dengan retry, idempotency key stabil, conflict state, dan status belum tersinkron.
 - [ ] Tambahkan metrik jumlah titik diterima/ditolak, umur lokasi, queue depth, dan integritas data.
@@ -129,7 +132,7 @@
 - [x] Buat halaman `/exceptions` terpadu dengan filter status/severity/source, pencarian, tugas saya, pagination server, serta pemilihan assignee ter-scope melalui `GET /exceptions/assignees` dan enforcement scope di endpoint assign.
 - [x] Tambahkan worker terjadwal untuk keterlambatan, GPS stale/offline, QR failure, selisih porsi, dan POD incomplete; worker memperbarui `trackingStatus`.
 - [ ] Uji alert worker pada database hidup: cooldown, deduplikasi, multi-instance, timezone, dan eskalasi severity.
-- [ ] Tambahkan leader election/lock jika API dijalankan lebih dari satu instance dengan worker aktif.
+- [x] Cegah scan alert bersamaan lintas instance dengan lease PostgreSQL; owner memperbarui lease berkala dan lease berakhir otomatis setelah crash.
 - [ ] Pisahkan gangguan data/perangkat/jaringan dari indikator risiko perjalanan; risiko bukan keputusan sanksi otomatis.
 - [ ] Bangun ETA hanya saat input cukup; sertakan waktu dan kualitas data, selain status `ETA_UNAVAILABLE`.
 - [ ] Tambahkan route plan/version, corridor deviation, serta pencatatan pengalihan rute yang disetujui.
@@ -141,8 +144,8 @@
 - [x] Tambahkan navigasi berbasis permission pada dashboard, state unauthorized untuk dashboard/trip/exception, pengambilan data dashboard yang menyesuaikan permission, serta pemberitahuan sesi berakhir di halaman login.
 - [x] Ganti fixture KPI, daftar trip, dan exception dashboard dengan API; sediakan loading, empty, error, dan retry state.
 - [x] Tambahkan posisi GPS terakhir dan waktu penerimaan server ke endpoint list/detail trip serta ringkasan dashboard.
-- [x] Ganti ilustrasi peta dengan MapLibre, attribution, marker posisi GPS, legend, dan detail marker.
-- [ ] Tetapkan provider peta produksi, CSP hosts, layer rute/geofence, dan filter wilayah.
+- [x] Ganti ilustrasi peta dengan MapLibre, tile raster OpenStreetMap saja, atribusi, marker posisi GPS, legend, dan detail marker.
+- [ ] Konfigurasikan CSP untuk tile OpenStreetMap; tambahkan overlay rute/geofence atau filter wilayah hanya setelah data dan scope operasional mendukungnya.
 - [ ] Hubungkan dashboard ke delivery dan filter scope; trip, exception, serta freshness GPS sudah terhubung.
 - [x] Buat halaman detail trip dengan peta, timeline event, rekonsiliasi POD, bukti privat, dan exception terkait.
 - [x] Buat halaman trip list terpisah dengan pagination server dan filter status.
@@ -152,14 +155,16 @@
 - [x] Tambahkan indikator online/offline, pesan tanpa antrean otomatis, dan penonaktifan aksi server saat offline.
 - [x] Tambahkan service worker production, ikon manifest, dan halaman fallback `/offline.html` saat navigasi tanpa koneksi.
 - [ ] Tambahkan antrean GPS/POD/bukti dengan idempotency stabil serta status pending/conflict; service worker belum menyimpan aksi lapangan.
-- [ ] Jangan mengklaim tracking berjalan saat tab/layar terkunci; tambahkan batas PWA/background tracking yang eksplisit pada UI.
+- [x] UI Driver menjelaskan bahwa pelacakan bergantung pada halaman/browser aktif dan dapat berhenti saat tab tertutup atau layar terkunci.
 - [ ] Uji keyboard, aksesibilitas, layar mobile, browser Android sasaran, serta fallback ketika kamera/geolocation/map gagal.
 
 ## 9. Laporan, audit, observability, dan operasi — P0 sebelum produksi
 
 - [ ] Laporan trip/KPI dengan definisi eksplisit, filter yang sama, pagination, dan ekspor sesuai permission.
 - [ ] Audit explorer append-only untuk aksi sensitif; ekspor dan akses bukti juga diaudit.
-- [x] Sediakan audit explorer read-only dengan filter/pagination dan pembatasan scope untuk SPPG, trip, exception, dan approval SPPG; kontrol append-only tingkat database serta audit ekspor/akses bukti tetap diperlukan.
+- [x] Sediakan audit explorer read-only dengan filter/pagination dan pembatasan scope untuk master data, trip, exception, approval SPPG, geofence, serta akses daftar/signed URL bukti POD.
+- [x] Terapkan trigger database append-only untuk UPDATE, DELETE, dan TRUNCATE audit log.
+- [ ] Audit ekspor setelah fitur ekspor tersedia.
 - [ ] Health center: API/database, error/latency, queue, freshness GPS, notifikasi, backup, storage, dan integrasi peta.
 - [ ] Logging terstruktur dengan request/correlation ID; redaksi password, OTP, session token, QR secret, dan data pribadi.
 - [ ] Atur secret manager, rotasi secret, MFA admin, session revoke, HTTPS, CORS allowlist, CSP, rate limits, payload/file limits.
@@ -174,5 +179,5 @@
 - [ ] Uji isolasi organisasi/wilayah/SPPG lulus untuk API, data GPS, laporan, file POD, dan realtime.
 - [ ] MFA, sesi, CSRF, rate limit, idempotency, state machine, audit, backup/restore, dan observability terbukti lewat test.
 - [ ] Tidak ada kerentanan kritis/tinggi yang belum ditangani tanpa persetujuan risiko formal.
-- [ ] Kebijakan retensi, provider peta, ambang operasional, approver, RPO/RTO, dan SOP lapangan disetujui.
+- [ ] Kebijakan retensi dan penggunaan tile OpenStreetMap sesuai skala trafik, ambang operasional, approver, RPO/RTO, dan SOP lapangan disetujui.
 - [ ] UAT/pilot dan persetujuan Product Owner/operasional terdokumentasi.

@@ -13,6 +13,7 @@ import {
 } from '@prisma/client';
 import type { SessionPrincipal } from '../auth/auth.service.js';
 import { PrismaService } from '../database/prisma.service.js';
+import { canAccessExceptionScope } from './exception-access-policy.js';
 import {
   AssignExceptionDto,
   CloseExceptionDto,
@@ -210,6 +211,13 @@ export class ExceptionService {
         },
       });
       if (!trip) throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+      if (!this.canAccess(principal, {
+        organizationId: trip.sppg.organizationId,
+        regionId: trip.sppg.regionId,
+        sppgId: trip.sppgId,
+      })) {
+        throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+      }
       if (sppgId && sppgId !== trip.sppgId) {
         throw new BadRequestException({ code: 'TRIP_SPPG_MISMATCH' });
       }
@@ -248,7 +256,12 @@ export class ExceptionService {
           },
         },
       });
-      if (existing) return { ...existing, deduped: true };
+      if (existing) {
+        if (!this.canAccess(principal, existing)) {
+          throw new NotFoundException({ code: 'SPPG_NOT_FOUND' });
+        }
+        return { ...existing, deduped: true };
+      }
     }
 
     return this.prisma.db.$transaction(async (tx) => {
@@ -673,13 +686,7 @@ export class ExceptionService {
     principal: SessionPrincipal,
     entity: { organizationId: string; regionId: string; sppgId: string },
   ) {
-    return principal.roles.some(
-      (role) =>
-        role.isGlobal ||
-        role.organizationId === entity.organizationId ||
-        role.regionId === entity.regionId ||
-        role.sppgId === entity.sppgId,
-    );
+    return canAccessExceptionScope(principal, entity);
   }
 
   private scopeWhere(principal: SessionPrincipal): Prisma.ExceptionCaseWhereInput {

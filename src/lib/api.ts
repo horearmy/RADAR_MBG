@@ -149,6 +149,9 @@ export type SppgSummary = {
   code: string;
   name: string;
   status: string;
+  address?: string | null;
+  latitude?: string | number | null;
+  longitude?: string | number | null;
   version?: number;
 };
 
@@ -412,7 +415,43 @@ export type DeliveryLocationOption = {
   code: string;
   name: string;
   address: string | null;
+  latitude?: string | number | null;
+  longitude?: string | number | null;
   active: boolean;
+};
+
+export type GeofenceLocationType = "SPPG" | "DELIVERY";
+
+export type GeofenceSummary = {
+  id: string;
+  type: GeofenceLocationType;
+  shapeType?: "CIRCLE" | "POLYGON";
+  name: string;
+  centerLatitude: string | number | null;
+  centerLongitude: string | number | null;
+  radiusMeters: string | number | null;
+  polygonCoordinates?: Array<{ latitude: number; longitude: number }> | null;
+  minGpsAccuracyMeters: string | number;
+  confirmationFixes: number;
+  confirmationDurationSeconds: number;
+  active: boolean;
+  version: number;
+  createdAt: string;
+};
+
+export type CreateGeofenceInput = {
+  locationType: GeofenceLocationType;
+  locationId: string;
+  shapeType?: "CIRCLE" | "POLYGON";
+  name: string;
+  centerLatitude?: number;
+  centerLongitude?: number;
+  radiusMeters?: number;
+  polygonCoordinates?: Array<{ latitude: number; longitude: number }>;
+  minGpsAccuracyMeters: number;
+  confirmationFixes: number;
+  confirmationDurationSeconds: number;
+  reason: string;
 };
 
 export type VehicleOption = {
@@ -452,6 +491,28 @@ export type CreateTripInput = {
 export async function getSppgOptions(): Promise<SppgSummary[]> {
   const result = await apiGet<Paginated<SppgSummary>>('/admin/sppg?page=1&pageSize=100');
   return result.data;
+}
+
+export async function getDeliveryLocationOptions(): Promise<DeliveryLocationOption[]> {
+  const result = await apiGet<Paginated<DeliveryLocationOption>>('/admin/delivery-locations?page=1&pageSize=100');
+  return result.data;
+}
+
+export async function getGeofences(
+  locationType: GeofenceLocationType,
+  locationId: string,
+): Promise<GeofenceSummary[]> {
+  const query = new URLSearchParams({ locationType, locationId });
+  return apiGet<GeofenceSummary[]>(`/geofences?${query.toString()}`);
+}
+
+export function createGeofence(input: CreateGeofenceInput, idempotencyKey = crypto.randomUUID()) {
+  return apiMutate<{ geofence: GeofenceSummary; replayed: boolean }>(
+    '/geofences',
+    'POST',
+    input,
+    idempotencyKey,
+  );
 }
 
 export async function getTripResourceOptions(sppgId: string): Promise<TripResourceOptions> {

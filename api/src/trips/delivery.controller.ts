@@ -106,7 +106,7 @@ export class DeliveryController {
     @Req() request: AuthenticatedRequest,
     @Param('tripId', ParseUUIDPipe) tripId: string,
   ) {
-    return this.proofs.listProofs(tripId, request.principal!);
+    return this.proofs.listProofs(tripId, request.principal!, this.requestId(request));
   }
 
   @Get('delivery/proofs/:proofId/url')
@@ -117,7 +117,7 @@ export class DeliveryController {
     @Param('tripId', ParseUUIDPipe) tripId: string,
     @Param('proofId', ParseUUIDPipe) proofId: string,
   ) {
-    return this.proofs.getDownloadUrl(tripId, proofId, request.principal!);
+    return this.proofs.getDownloadUrl(tripId, proofId, request.principal!, this.requestId(request));
   }
 
   @Post('complete')

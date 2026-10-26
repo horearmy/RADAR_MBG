@@ -9,6 +9,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { PrismaService } from '../database/prisma.service.js';
 import { isAccountTokenUsable } from './account-token-policy.js';
+import { DistributedLoginRateLimiter } from './login-rate-limiter.js';
 import {
   createTotpProvisioningUri,
   decryptMfaSecret,
@@ -23,7 +24,6 @@ import {
 const SESSION_COOKIE = 'radar_session';
 const CSRF_COOKIE = 'radar_csrf';
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
-const MAX_LOGIN_ATTEMPTS = 10;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const MAX_MFA_ENROLLMENT_ATTEMPTS = 10;
 const DUMMY_PASSWORD_HASH = '$argon2id$v=19$m=65536,p=4,t=3$AXprwskT4HWNnTBr3+GTpA$Bv/eqMS+1V+9gnFHW/dIXm/8ZR+C9HpBJPZ2IM4ax2M';
@@ -48,11 +48,12 @@ export type SessionPrincipal = {
 
 @Injectable()
 export class AuthService {
-  private readonly loginBuckets = new Map<string, LoginBucket>();
+  private readonly loginRateLimiter: DistributedLoginRateLimiter;
   private readonly mfaEnrollmentBuckets = new Map<string, LoginBucket>();
-  private loginChecks = 0;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {
+    this.loginRateLimiter = new DistributedLoginRateLimiter(prisma, 10, LOGIN_WINDOW_MS);
+  }
 
   issueCsrfCookie(response: Response): { csrfToken: string } {
     const csrfToken = randomBytes(32).toString('hex');
@@ -74,7 +75,7 @@ export class AuthService {
     this.assertCsrf(request);
     const clientIp = this.getClientIp(request) ?? 'unknown';
     try {
-      this.assertLoginRateLimit(input.username, clientIp);
+      await this.assertLoginRateLimit(input.username, clientIp);
     } catch (error) {
       if (error instanceof ForbiddenException) {
         await this.writeAuthenticationAudit(request, 'auth.login.denied', null, {
@@ -163,7 +164,7 @@ export class AuthService {
       throw new UnauthorizedException({ code: 'MFA_REQUIRED' });
     }
 
-    this.clearLoginRateLimit(username, clientIp);
+    await this.clearLoginRateLimit(username, clientIp);
 
     const rawToken = randomBytes(32).toString('base64url');
     const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
@@ -337,7 +338,7 @@ export class AuthService {
     input: { token: string; password: string },
     requestId: string,
   ) {
-    this.assertLoginRateLimit('account-access', this.getClientIp(request) ?? 'unknown');
+    await this.assertLoginRateLimit('account-access', this.getClientIp(request) ?? 'unknown');
     const tokenHash = this.hashToken(input.token);
     const accountToken = await this.prisma.db.accountAccessToken.findUnique({
       where: { tokenHash },
@@ -597,7 +598,7 @@ export class AuthService {
   }
 
   async beginMfaRecovery(input: { token: string; password: string }, request: Request) {
-    this.assertLoginRateLimit(`mfa-recovery:${input.token}`, this.getClientIp(request) ?? 'unknown');
+    await this.assertLoginRateLimit(`mfa-recovery:${input.token}`, this.getClientIp(request) ?? 'unknown');
     const now = new Date();
     const resetToken = await this.prisma.db.accountAccessToken.findUnique({
       where: { tokenHash: this.hashToken(input.token) },
@@ -626,7 +627,7 @@ export class AuthService {
   }
 
   async confirmMfaRecovery(input: { token: string; password: string; otpCode: string }, requestId: string, request: Request) {
-    this.assertLoginRateLimit(`mfa-recovery:${input.token}`, this.getClientIp(request) ?? 'unknown');
+    await this.assertLoginRateLimit(`mfa-recovery:${input.token}`, this.getClientIp(request) ?? 'unknown');
     const now = new Date();
     const resetToken = await this.prisma.db.accountAccessToken.findUnique({
       where: { tokenHash: this.hashToken(input.token) },
@@ -719,39 +720,12 @@ export class AuthService {
     }
   }
 
-  private assertLoginRateLimit(username: string, ip: string) {
-    const keys = [
-      `ip:${ip}`,
-      `identity:${ip}:${username.toLowerCase()}`,
-    ].map((value) => createHash('sha256').update(value).digest('hex'));
-    const now = Date.now();
-    this.loginChecks += 1;
-    if (this.loginChecks % 128 === 0) {
-      for (const [bucketKey, entry] of this.loginBuckets) {
-        if (entry.resetAt <= now) this.loginBuckets.delete(bucketKey);
-      }
-    }
-    for (const key of keys) {
-      const bucket = this.loginBuckets.get(key);
-
-      if (!bucket || bucket.resetAt <= now) {
-        if (this.loginBuckets.size >= 10_000) {
-          throw new ForbiddenException({
-            code: 'LOGIN_RATE_LIMITED',
-            message: 'Terlalu banyak percobaan. Silakan coba kembali nanti.',
-          });
-        }
-        this.loginBuckets.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
-        continue;
-      }
-
-      bucket.count += 1;
-      if (bucket.count > MAX_LOGIN_ATTEMPTS) {
-        throw new ForbiddenException({
-          code: 'LOGIN_RATE_LIMITED',
-          message: 'Terlalu banyak percobaan. Silakan coba kembali nanti.',
-        });
-      }
+  private async assertLoginRateLimit(username: string, ip: string) {
+    if (!await this.loginRateLimiter.allows(username, ip)) {
+      throw new ForbiddenException({
+        code: 'LOGIN_RATE_LIMITED',
+        message: 'Terlalu banyak percobaan. Silakan coba kembali nanti.',
+      });
     }
   }
 
@@ -783,12 +757,8 @@ export class AuthService {
     }
   }
 
-  private clearLoginRateLimit(username: string, ip: string) {
-    for (const value of [`ip:${ip}`, `identity:${ip}:${username}`]) {
-      this.loginBuckets.delete(
-        createHash('sha256').update(value).digest('hex'),
-      );
-    }
+  private async clearLoginRateLimit(username: string, ip: string) {
+    await this.loginRateLimiter.clear(username, ip);
   }
 
   private assertTotp(encryptedSecret: string | null, code?: string) {

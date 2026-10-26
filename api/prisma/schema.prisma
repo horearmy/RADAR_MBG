@@ -587,11 +587,13 @@ model Geofence {
   sppgId                      String?                                @map("sppg_id") @db.Uuid
   deliveryLocationId          String?                                @map("delivery_location_id") @db.Uuid
   type                        GeofenceType
+  shapeType                   String                                 @default("CIRCLE") @map("shape_type") @db.VarChar(20)
   name                        String                                 @db.VarChar(160)
-  centerLatitude              Decimal                                @map("center_latitude") @db.Decimal(9, 6)
-  centerLongitude             Decimal                                @map("center_longitude") @db.Decimal(9, 6)
+  centerLatitude              Decimal?                               @map("center_latitude") @db.Decimal(9, 6)
+  centerLongitude             Decimal?                               @map("center_longitude") @db.Decimal(9, 6)
   center                      Unsupported("geography(Point, 4326)")?
-  radiusMeters                Decimal                                @map("radius_meters") @db.Decimal(8, 2)
+  radiusMeters                Decimal?                               @map("radius_meters") @db.Decimal(8, 2)
+  polygonCoordinates          Json?                                  @map("polygon_coordinates") @db.JsonB
   minGpsAccuracyMeters        Decimal                                @default(50) @map("min_gps_accuracy_m") @db.Decimal(8, 2)
   confirmationFixes           Int                                    @default(2) @map("confirmation_fixes")
   confirmationDurationSeconds Int                                    @default(10) @map("confirmation_duration_seconds")

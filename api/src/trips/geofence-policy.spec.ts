@@ -1,4 +1,4 @@
-import { hasConfirmedGeofenceArrival } from './geofence-policy.js';
+import { canAccessDeliveryGeofence, hasConfirmedGeofenceArrival } from './geofence-policy.js';
 
 const center = {
   centerLatitude: -6.2,
@@ -21,6 +21,24 @@ function fix(deviceTimestamp: string, accuracyMeters = 10, latitude = -6.2) {
 }
 
 describe('geofence arrival policy', () => {
+  it('allows only explicitly scoped and parent-region delivery geofence access', () => {
+    const location = { organizationId: 'org-2', regionId: 'region-2' };
+    const sppgRole = [{
+      isGlobal: false,
+      organizationId: null,
+      regionId: null,
+      sppgId: 'sppg-1',
+    }];
+
+    expect(canAccessDeliveryGeofence(sppgRole, location, new Set(['region-2']))).toBe(true);
+    expect(canAccessDeliveryGeofence(sppgRole, location, new Set(['region-1']))).toBe(false);
+    expect(canAccessDeliveryGeofence([{
+      ...sppgRole[0],
+      sppgId: null,
+      organizationId: 'org-1',
+    }], location, new Set())).toBe(false);
+  });
+
   it('requires multiple accurate fixes inside the radius for the configured duration', () => {
     expect(hasConfirmedGeofenceArrival([
       fix('2026-10-26T02:00:20.000Z'),

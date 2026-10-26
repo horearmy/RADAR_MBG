@@ -238,7 +238,7 @@ export class ArrivalService {
       }
 
       const geofence = trip.deliveryLocation.geofences[0];
-      if (!geofence) {
+      if (!geofence || geofence.centerLatitude === null || geofence.centerLongitude === null || geofence.radiusMeters === null) {
         return this.recordAttempt(tx, {
           tripId,
           actorUserId: principal.id,

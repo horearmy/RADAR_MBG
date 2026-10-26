@@ -59,6 +59,44 @@ describe('AppController (e2e)', () => {
       });
   });
 
+  it.each([
+    '/api/v1/auth/mfa/recovery',
+    '/api/v1/auth/mfa/recovery/confirm',
+    '/api/v1/auth/mfa/rotation',
+    '/api/v1/auth/mfa/rotation/confirm',
+    '/api/v1/auth/mfa/enrollment',
+    '/api/v1/auth/mfa/enrollment/confirm',
+  ])('%s rejects a disallowed Origin even with matching CSRF tokens', async (path) => {
+    await request(app.getHttpServer())
+      .post(path)
+      .set('Origin', 'https://untrusted.example')
+      .set('Cookie', 'radar_csrf=test-token')
+      .set('x-csrf-token', 'test-token')
+      .send({})
+      .expect(403)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({ code: 'CSRF_INVALID' });
+      });
+  });
+
+  it.each([
+    '/api/v1/auth/mfa/recovery',
+    '/api/v1/auth/mfa/recovery/confirm',
+    '/api/v1/auth/mfa/rotation',
+    '/api/v1/auth/mfa/rotation/confirm',
+    '/api/v1/auth/mfa/enrollment',
+    '/api/v1/auth/mfa/enrollment/confirm',
+  ])('%s rejects a mutating request without CSRF proof', async (path) => {
+    await request(app.getHttpServer())
+      .post(path)
+      .set('Origin', 'http://localhost:3000')
+      .send({})
+      .expect(403)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({ code: 'CSRF_INVALID' });
+      });
+  });
+
   it('/api/v1/auth/me (GET) requires a valid session', async () => {
     await request(app.getHttpServer())
       .get('/api/v1/auth/me')

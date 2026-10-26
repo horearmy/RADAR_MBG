@@ -1,5 +1,24 @@
 import { distanceMeters } from './trip-geo.js';
 
+export function canAccessDeliveryGeofence(
+  roles: Array<{
+    isGlobal: boolean;
+    organizationId: string | null;
+    regionId: string | null;
+    sppgId: string | null;
+  }>,
+  location: { organizationId: string; regionId: string },
+  sppgRegionIds: ReadonlySet<string>,
+) {
+  return roles.some(
+    (role) =>
+      role.isGlobal ||
+      role.organizationId === location.organizationId ||
+      role.regionId === location.regionId ||
+      (role.sppgId !== null && sppgRegionIds.has(location.regionId)),
+  );
+}
+
 export type GeofenceFix = {
   latitude: number;
   longitude: number;

@@ -241,7 +241,7 @@ export class TripService {
           }),
         ]);
 
-        if (!destination) throw new BadRequestException({ code: 'INVALID_DESTINATION' });
+        if (!destination) throw new NotFoundException({ code: 'INVALID_DESTINATION' });
         if (!principal.roles.some((role) =>
           role.isGlobal ||
           role.organizationId === destination.organizationId ||
@@ -575,7 +575,7 @@ export class TripService {
         },
         select: { id: true, organizationId: true, regionId: true },
       });
-      if (!destination) throw new BadRequestException({ code: 'INVALID_DESTINATION' });
+      if (!destination) throw new NotFoundException({ code: 'INVALID_DESTINATION' });
       if (!principal.roles.some((role) =>
         role.isGlobal ||
         role.organizationId === destination.organizationId ||
@@ -714,7 +714,7 @@ export class TripService {
         throw new ForbiddenException({ code: 'DRIVER_ASSIGNMENT_REQUIRED' });
       }
       const originGeofence = trip.sppg.geofences[0];
-      if (!originGeofence) {
+      if (!originGeofence || originGeofence.centerLatitude === null || originGeofence.centerLongitude === null || originGeofence.radiusMeters === null) {
         throw new ConflictException({ code: 'ORIGIN_GEOFENCE_NOT_CONFIGURED' });
       }
       this.assertGpsQuality(input.accuracyMeters, Number(originGeofence.minGpsAccuracyMeters));

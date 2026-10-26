@@ -950,6 +950,9 @@ export default function DriverPage() {
                       <small>
                         {lastSentAt ? `Terkirim ${formatTime(lastSentAt)} WIB` : "Belum ada posisi terkirim"}
                       </small>
+                      <small>
+                        Pelacakan hanya berjalan selama halaman dan browser aktif; tab tertutup atau layar terkunci dapat menghentikan GPS.
+                      </small>
                     </div>
                     <button onClick={stopTracking}>Hentikan</button>
                   </div>
