@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="RADAR MBG">
+  <rect width="512" height="512" rx="112" fill="#061b41"/>
+  <rect x="128" y="276" width="52" height="108" rx="16" fill="#3d8bcf"/>
+  <rect x="230" y="208" width="52" height="176" rx="16" fill="#6fb25a"/>
+  <rect x="332" y="128" width="52" height="256" rx="16" fill="#f0c27a"/>
+  <circle cx="358" cy="154" r="44" fill="none" stroke="#ffffff" stroke-opacity=".2" stroke-width="10"/>
+  <circle cx="358" cy="154" r="78" fill="none" stroke="#ffffff" stroke-opacity=".1" stroke-width="10"/>
+</svg>

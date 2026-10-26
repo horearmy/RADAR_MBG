@@ -1,0 +1,330 @@
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { GeofenceType, Prisma, TripStatus } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import type { SessionPrincipal } from '../auth/auth.service.js';
+import { assertSppgAccess } from '../auth/permissions.js';
+import { PrismaService } from '../database/prisma.service.js';
+import { CreateGeofenceDto, GeofenceLocationType, ListGeofencesDto } from './geofence.dto.js';
+import { hasConfirmedGeofenceArrival } from './geofence-policy.js';
+
+@Injectable()
+export class GeofenceService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async listForLocation(query: ListGeofencesDto, principal: SessionPrincipal) {
+    await this.getScopedLocationWhere(query.locationType, query.locationId, principal);
+    const where = query.locationType === GeofenceLocationType.SPPG
+      ? { sppgId: query.locationId }
+      : { deliveryLocationId: query.locationId };
+    return this.prisma.db.geofence.findMany({
+      where,
+      orderBy: [{ version: 'desc' }, { createdAt: 'desc' }],
+      select: {
+        id: true,
+        type: true,
+        name: true,
+        centerLatitude: true,
+        centerLongitude: true,
+        radiusMeters: true,
+        minGpsAccuracyMeters: true,
+        confirmationFixes: true,
+        confirmationDurationSeconds: true,
+        active: true,
+        version: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  async create(
+    input: CreateGeofenceDto,
+    principal: SessionPrincipal,
+    idempotencyKey: string,
+    requestId: string,
+  ) {
+    this.assertIdempotencyKey(idempotencyKey);
+    const type = this.toPrismaType(input.locationType);
+
+    return this.prisma.db.$transaction(async (tx) => {
+      const replay = await tx.geofence.findUnique({ where: { idempotencyKey } });
+      if (replay) {
+        await this.assertGeofenceScope(replay, principal);
+        if (!this.matchesInput(replay, input, type)) {
+          throw new ConflictException({ code: 'IDEMPOTENCY_KEY_REUSED' });
+        }
+        return { geofence: replay, replayed: true };
+      }
+
+      const location = await this.getScopedLocationWhere(
+        input.locationType,
+        input.locationId,
+        principal,
+        tx,
+      );
+      if (
+        input.locationType === GeofenceLocationType.SPPG &&
+        (location as { status: string }).status !== 'ACTIVE'
+      ) {
+        throw new ConflictException({ code: 'SPPG_NOT_ACTIVE' });
+      }
+      const locationWhere = input.locationType === GeofenceLocationType.SPPG
+        ? { sppgId: input.locationId }
+        : { deliveryLocationId: input.locationId };
+      const current = await tx.geofence.findFirst({
+        where: { ...locationWhere, active: true },
+        orderBy: { version: 'desc' },
+        select: { id: true, version: true },
+      });
+
+      await tx.geofence.updateMany({
+        where: { ...locationWhere, active: true },
+        data: { active: false },
+      });
+
+      const geofence = await tx.geofence.create({
+        data: {
+          ...locationWhere,
+          type,
+          name: input.name,
+          centerLatitude: input.centerLatitude,
+          centerLongitude: input.centerLongitude,
+          radiusMeters: input.radiusMeters,
+          minGpsAccuracyMeters: input.minGpsAccuracyMeters,
+          confirmationFixes: input.confirmationFixes,
+          confirmationDurationSeconds: input.confirmationDurationSeconds,
+          idempotencyKey,
+          createdBy: principal.id,
+          version: (current?.version ?? 0) + 1,
+        },
+      });
+
+      await tx.$executeRaw`
+        UPDATE geofences
+        SET center = ST_SetSRID(ST_MakePoint(${input.centerLongitude}, ${input.centerLatitude}), 4326)::geography
+        WHERE id = ${geofence.id}::uuid
+      `;
+
+      await tx.auditLog.create({
+        data: {
+          actorUserId: principal.id,
+          action: 'geofence.create',
+          entityType: 'geofence',
+          entityId: geofence.id,
+          result: 'success',
+          reason: input.reason,
+          before: current ? { id: current.id, version: current.version, active: true } : Prisma.JsonNull,
+          after: {
+            type,
+            name: input.name,
+            centerLatitude: input.centerLatitude,
+            centerLongitude: input.centerLongitude,
+            radiusMeters: input.radiusMeters,
+            version: geofence.version,
+          },
+          requestId,
+        },
+      });
+
+      return { geofence, replayed: false };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+
+  async evaluateArrival(
+    tx: Prisma.TransactionClient,
+    tripId: string,
+    now: Date,
+  ): Promise<boolean> {
+    const trip = await tx.trip.findUnique({
+      where: { id: tripId },
+      include: {
+        deliveryLocation: {
+          include: {
+            geofences: {
+              where: { active: true, type: GeofenceType.DELIVERY },
+              orderBy: { version: 'desc' },
+              take: 1,
+            },
+          },
+        },
+      },
+    });
+    const geofence = trip?.deliveryLocation.geofences[0];
+    if (!trip || trip.status !== TripStatus.IN_TRANSIT || !geofence) return false;
+
+    const maxFixAgeSeconds = Number(process.env.GPS_LIVE_MAX_AGE_SECONDS ?? 90);
+    if (!Number.isFinite(maxFixAgeSeconds) || maxFixAgeSeconds <= 0) return false;
+
+    const fixes = await tx.gpsPosition.findMany({
+      where: {
+        tripId,
+        deviceTimestamp: { gte: new Date(now.getTime() - maxFixAgeSeconds * 1000), lte: now },
+      },
+      orderBy: [{ deviceTimestamp: 'desc' }, { serverReceivedAt: 'desc' }],
+      take: geofence.confirmationFixes,
+      select: {
+        id: true,
+        latitude: true,
+        longitude: true,
+        accuracyMeters: true,
+        deviceTimestamp: true,
+        integrityFlags: true,
+      },
+    });
+
+    const confirmed = hasConfirmedGeofenceArrival(
+      fixes.map((fix) => ({
+        latitude: Number(fix.latitude),
+        longitude: Number(fix.longitude),
+        accuracyMeters: fix.accuracyMeters === null ? null : Number(fix.accuracyMeters),
+        deviceTimestamp: fix.deviceTimestamp,
+        integrityFlags: fix.integrityFlags,
+      })),
+      {
+        centerLatitude: Number(geofence.centerLatitude),
+        centerLongitude: Number(geofence.centerLongitude),
+        radiusMeters: Number(geofence.radiusMeters),
+        minGpsAccuracyMeters: Number(geofence.minGpsAccuracyMeters),
+        confirmationFixes: geofence.confirmationFixes,
+        confirmationDurationSeconds: geofence.confirmationDurationSeconds,
+      },
+      now,
+      maxFixAgeSeconds,
+    );
+    if (!confirmed) return false;
+    const observedDurationSeconds =
+      (fixes[0].deviceTimestamp.getTime() - fixes[geofence.confirmationFixes - 1].deviceTimestamp.getTime()) / 1000;
+
+    const updated = await tx.trip.updateMany({
+      where: { id: trip.id, status: TripStatus.IN_TRANSIT, version: trip.version },
+      data: {
+        status: TripStatus.ARRIVAL_DETECTED,
+        arrivalDetectedAt: now,
+        version: { increment: 1 },
+      },
+    });
+    if (updated.count !== 1) return false;
+
+    const idempotencyKey = `arrival:${trip.id}:${geofence.id}`;
+    await tx.tripEvent.create({
+      data: {
+        tripId: trip.id,
+        eventType: 'TRIP.ARRIVAL_DETECTED',
+        fromStatus: TripStatus.IN_TRANSIT,
+        toStatus: TripStatus.ARRIVAL_DETECTED,
+        occurredAt: now,
+        idempotencyKey,
+        metadata: {
+          geofenceId: geofence.id,
+          fixIds: fixes.map((fix) => fix.id),
+          confirmationFixes: geofence.confirmationFixes,
+          confirmationDurationSeconds: observedDurationSeconds,
+        },
+      },
+    });
+    await tx.auditLog.create({
+      data: {
+        actorUserId: null,
+        action: 'trip.arrival_detected',
+        entityType: 'trip',
+        entityId: trip.id,
+        result: 'success',
+        before: { status: TripStatus.IN_TRANSIT, version: trip.version },
+        after: { status: TripStatus.ARRIVAL_DETECTED, version: trip.version + 1 },
+        requestId: randomUUID(),
+      },
+    });
+    return true;
+  }
+
+  private async getScopedLocationWhere(
+    locationType: GeofenceLocationType,
+    locationId: string,
+    principal: SessionPrincipal,
+    tx: Prisma.TransactionClient = this.prisma.db,
+  ) {
+    if (locationType === GeofenceLocationType.SPPG) {
+      const location = await tx.sppg.findUnique({
+        where: { id: locationId },
+        select: { id: true, organizationId: true, regionId: true, status: true },
+      });
+      if (!location) throw new NotFoundException({ code: 'LOCATION_NOT_FOUND' });
+      assertSppgAccess(principal, {
+        organizationId: location.organizationId,
+        regionId: location.regionId,
+        sppgId: location.id,
+      });
+      return location;
+    }
+
+    const location = await tx.deliveryLocation.findUnique({
+      where: { id: locationId },
+      select: { id: true, organizationId: true, regionId: true, active: true },
+    });
+    if (!location || !location.active) throw new NotFoundException({ code: 'LOCATION_NOT_FOUND' });
+    const authorized = principal.roles.some(
+      (role) =>
+        role.isGlobal ||
+        role.organizationId === location.organizationId ||
+        role.regionId === location.regionId,
+    );
+    if (!authorized) throw new NotFoundException({ code: 'LOCATION_NOT_FOUND' });
+    return location;
+  }
+
+  private async assertGeofenceScope(
+    geofence: { sppgId: string | null; deliveryLocationId: string | null },
+    principal: SessionPrincipal,
+  ) {
+    if (geofence.sppgId) {
+      return this.getScopedLocationWhere(GeofenceLocationType.SPPG, geofence.sppgId, principal);
+    }
+    if (geofence.deliveryLocationId) {
+      return this.getScopedLocationWhere(GeofenceLocationType.DELIVERY, geofence.deliveryLocationId, principal);
+    }
+    throw new NotFoundException({ code: 'GEOFENCE_NOT_FOUND' });
+  }
+
+  private toPrismaType(type: GeofenceLocationType) {
+    return type === GeofenceLocationType.SPPG ? GeofenceType.SPPG : GeofenceType.DELIVERY;
+  }
+
+  private matchesInput(
+    geofence: {
+      sppgId: string | null;
+      deliveryLocationId: string | null;
+      type: GeofenceType;
+      name: string;
+      centerLatitude: Prisma.Decimal;
+      centerLongitude: Prisma.Decimal;
+      radiusMeters: Prisma.Decimal;
+      minGpsAccuracyMeters: Prisma.Decimal;
+      confirmationFixes: number;
+      confirmationDurationSeconds: number;
+    },
+    input: CreateGeofenceDto,
+    type: GeofenceType,
+  ) {
+    return (
+      geofence.type === type &&
+      (geofence.sppgId ?? geofence.deliveryLocationId) === input.locationId &&
+      geofence.name === input.name &&
+      Number(geofence.centerLatitude) === input.centerLatitude &&
+      Number(geofence.centerLongitude) === input.centerLongitude &&
+      Number(geofence.radiusMeters) === input.radiusMeters &&
+      Number(geofence.minGpsAccuracyMeters) === input.minGpsAccuracyMeters &&
+      geofence.confirmationFixes === input.confirmationFixes &&
+      geofence.confirmationDurationSeconds === input.confirmationDurationSeconds
+    );
+  }
+
+  private assertIdempotencyKey(key: string) {
+    if (!/^[A-Za-z0-9._:-]{8,128}$/.test(key)) {
+      throw new BadRequestException({ code: 'IDEMPOTENCY_KEY_REQUIRED' });
+    }
+  }
+}

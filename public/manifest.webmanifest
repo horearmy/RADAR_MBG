@@ -1,0 +1,18 @@
+{
+  "name": "RADAR MBG",
+  "short_name": "RADAR MBG",
+  "description": "Aplikasi lapangan untuk pengemudi RADAR MBG",
+  "lang": "id-ID",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f7fa",
+  "theme_color": "#061b41",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
