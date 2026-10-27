@@ -18,10 +18,14 @@ export class RouteService {
   async list(principal: SessionPrincipal, query: ListRoutesDto) {
     const scope = await this.resolveScope(principal);
     const where: Prisma.RouteWhereInput = {
-      ...(scope.global ? {} : { sppg: { regionId: { in: scope.regionIds } } }),
+      ...(scope.global ? {} : {
+        OR: [
+          ...(scope.sppgIds.length ? [{ sppgId: { in: scope.sppgIds } }] : []),
+          ...(scope.regionIds.length ? [{ sppg: { regionId: { in: scope.regionIds } } }] : []),
+        ],
+      }),
       ...(query.sppgId ? { sppgId: query.sppgId } : {}),
       ...(query.deliveryLocationId ? { deliveryLocationId: query.deliveryLocationId } : {}),
-      active: true,
     };
     const [data, total] = await Promise.all([
       this.prisma.db.route.findMany({

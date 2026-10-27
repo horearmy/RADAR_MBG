@@ -123,6 +123,9 @@ export function FleetMap({
   onRoutePointPick,
   originMarker = null,
   destinationMarker = null,
+  routes = [],
+  selectedRouteId = null,
+  onSelectRoute,
 }: {
   trips: TripSummary[];
   selectedTripId?: string | null;
@@ -145,6 +148,9 @@ export function FleetMap({
   onRoutePointPick?: (longitude: number, latitude: number) => void;
   originMarker?: { longitude: number; latitude: number } | null;
   destinationMarker?: { longitude: number; latitude: number } | null;
+  routes?: Array<{ id: string; name: string; coordinates: Array<{ latitude: number; longitude: number }>; active: boolean }>;
+  selectedRouteId?: string | null;
+  onSelectRoute?: (id: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -299,6 +305,52 @@ export function FleetMap({
       (map as unknown as { __odMarkers?: unknown[] }).__odMarkers = markers;
     });
   }, [originMarker, destinationMarker, ready]);
+
+  useEffect(() => {
+    if (!ready || !mapRef.current) return;
+    const map = mapRef.current;
+    const features = routes.map((r) => ({
+      type: "Feature" as const,
+      properties: { id: r.id, name: r.name, active: r.active, selected: r.id === selectedRouteId },
+      geometry: { type: "LineString" as const, coordinates: r.coordinates.map((c) => [Number(c.longitude), Number(c.latitude)]) },
+    }));
+    const source = map.getSource("saved-routes") as GeoJSONSource | undefined;
+    if (!source) {
+      map.addSource("saved-routes", { type: "geojson", data: { type: "FeatureCollection", features } });
+      map.addLayer({
+        id: "saved-routes-line",
+        type: "line",
+        source: "saved-routes",
+        paint: {
+          "line-color": ["case", ["==", ["get", "selected"], true], "#f59e0b", ["==", ["get", "active"], true], "#1677ff", "#94a3b8"],
+          "line-width": ["case", ["==", ["get", "selected"], true], 5, 3],
+          "line-opacity": 0.85,
+        },
+      });
+      map.on("click", "saved-routes-line", (e) => {
+        const id = e.features?.[0]?.properties?.id;
+        if (id) onSelectRoute?.(String(id));
+      });
+      map.on("mouseenter", "saved-routes-line", () => { map.getCanvas().style.cursor = "pointer"; });
+      map.on("mouseleave", "saved-routes-line", () => { map.getCanvas().style.cursor = ""; });
+    } else {
+      source.setData({ type: "FeatureCollection", features });
+    }
+    if (features.length > 0) {
+      let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+      for (const r of routes) {
+        for (const c of r.coordinates) {
+          const lng = Number(c.longitude); const lat = Number(c.latitude);
+          if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
+          minLng = Math.min(minLng, lng); minLat = Math.min(minLat, lat);
+          maxLng = Math.max(maxLng, lng); maxLat = Math.max(maxLat, lat);
+        }
+      }
+      if (Number.isFinite(minLng)) {
+        map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 40, maxZoom: 13, duration: 0 });
+      }
+    }
+  }, [routes, selectedRouteId, ready]);
 
   useEffect(() => {
     if (!ready || !mapRef.current) return;

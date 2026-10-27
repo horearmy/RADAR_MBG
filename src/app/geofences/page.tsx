@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronRight, CircleDot, Clock3, Crosshair, MapPinned, Plus, RefreshCw, Save, ShieldCheck, Utensils } from "lucide-react";
+import { ChevronRight, CircleDot, Clock3, Crosshair, MapPinned, Save, ShieldCheck, Utensils } from "lucide-react";
 import { FleetMap } from "@/components/fleet-map";
 import { RouteSearchPanel } from "@/components/route-search-panel";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -89,6 +89,8 @@ export default function GeofencesPage() {
   const [polygonPoints, setPolygonPoints] = useState<Array<{ longitude: number; latitude: number }>>([]);
   const [drawPolygon, setDrawPolygon] = useState(false);
   const [searchRouteCoords, setSearchRouteCoords] = useState<Array<{ longitude: number; latitude: number }> | null>(null);
+  const [routes, setRoutes] = useState<Array<{ id: string; name: string; coordinates: Array<{ latitude: number; longitude: number }>; active: boolean }>>([]);
+  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [routePickMode, setRoutePickMode] = useState<"origin" | "destination" | null>(null);
   const [routeOriginMarker, setRouteOriginMarker] = useState<{ longitude: number; latitude: number } | null>(null);
   const [routeDestMarker, setRouteDestMarker] = useState<{ longitude: number; latitude: number } | null>(null);
@@ -203,6 +205,22 @@ export default function GeofencesPage() {
     return () => window.clearTimeout(timer);
   }, [canRead, locationId, locationType, refreshGeofences]);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const { getRoutes } = await import("@/lib/api");
+          const r = await getRoutes({ page: 1, pageSize: 50 });
+          setRoutes(r.data);
+          console.log("Routes loaded:", r.data.length);
+        } catch (e) {
+          console.error("Routes fetch failed:", e);
+        }
+      })();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [user]);
+
   function updateLocation(type: GeofenceLocationType, id: string) {
     const source = type === "SPPG" ? sppgs.map(mapSppg) : deliveryLocations.map(mapDeliveryLocation);
     const location = source.find((item) => item.id === id);
@@ -288,15 +306,11 @@ export default function GeofencesPage() {
           <div className="approval-heading geofence-heading">
             <div className="approval-heading-icon"><MapPinned size={19} /></div>
             <div><div className="eyebrow"><span className="eyebrow-line" />BATAS OPERASIONAL · WGS84</div><h1>Geofence</h1><p>Buat, edit, dan kelola batas lingkaran untuk validasi GPS SPPG atau lokasi penyaluran.</p></div>
-            <div className="geofence-header-actions">
-              <button className="geofence-reset-button" onClick={() => setReloadKey((value) => value + 1)} type="button"><RefreshCw size={14} /> Muat ulang</button>
-              <button className="geofence-reset-button" onClick={() => window.alert("Panduan Geofence:\n1. Pilih jenis lokasi (SPPG/Penyaluran) dan bentuk (Lingkaran/Multi titik).\n2. Isi koordinat atau klik peta untuk menentukan pusat/titik.\n3. Atur radius, akurasi GPS, fix konfirmasi, dan durasi.\n4. Isi nama dan alasan perubahan.\n5. Simpan. Perubahan akan membuat versi baru dan mencatat audit.")} type="button">Panduan</button>
-              <button className="approval-button approve" onClick={() => document.getElementById("geofence-form")?.scrollIntoView({ behavior: "smooth", block: "start" })} type="button"><Plus size={15} /> Buat Geofence</button>
-            </div>
           </div>
 
           {error && <div className="approval-error" role="alert">{error}</div>}
           {notice && <div className="approval-notice" role="status">{notice}</div>}
+          <div style={{ fontSize: 10, color: "#8592a2", marginBottom: 8 }}>Rute dimuat: {routes.length}</div>
 
           <div className="geofence-workspace">
             <form className="panel geofence-form" id="geofence-form" onSubmit={submitGeofence}>
@@ -390,6 +404,9 @@ export default function GeofencesPage() {
                 }}
                 focusPoint={focusPoint}
                 routeCoordinates={searchRouteCoords}
+                routes={routes}
+                selectedRouteId={selectedRouteId}
+                onSelectRoute={setSelectedRouteId}
                 originMarker={routeOriginMarker}
                 destinationMarker={routeDestMarker}
                 pickRoutePoint={!!routePickMode}
