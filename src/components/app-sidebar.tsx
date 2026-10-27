@@ -103,7 +103,8 @@ export function AppSidebar() {
           </Link>
         ))}
         <p className="nav-caption nav-caption-spaced">OPERASIONAL</p>
-        {management.filter(canAccessNav).map(({ label, icon: Icon }) => (
+        <Link className="nav-item nav-link" href="/sppg"><Utensils size={17} strokeWidth={1.8} /><span>SPPG</span></Link>
+        {management.filter((item) => item.label !== "SPPG").filter(canAccessNav).map(({ label, icon: Icon }) => (
           <button key={label} className="nav-item nav-item-soon" disabled title={`${label} segera hadir`}>
             <Icon size={17} strokeWidth={1.8} /><span>{label}</span><small className="nav-soon-tag">Segera</small>
           </button>
