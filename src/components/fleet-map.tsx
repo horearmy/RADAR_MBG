@@ -116,6 +116,13 @@ export function FleetMap({
   polygonPoints = null,
   onPolygonPointClick,
   drawPolygonMode = false,
+  routeCoordinates = null,
+  drawRouteMode = false,
+  onRoutePointClick,
+  pickRoutePoint = false,
+  onRoutePointPick,
+  originMarker = null,
+  destinationMarker = null,
 }: {
   trips: TripSummary[];
   selectedTripId?: string | null;
@@ -131,6 +138,13 @@ export function FleetMap({
   onPolygonPointClick?: (longitude: number, latitude: number) => void;
   drawPolygonMode?: boolean;
   draftPolygon?: Array<{ longitude: number; latitude: number }> | null;
+  routeCoordinates?: Array<{ longitude: number; latitude: number }> | null;
+  drawRouteMode?: boolean;
+  onRoutePointClick?: (longitude: number, latitude: number) => void;
+  pickRoutePoint?: boolean;
+  onRoutePointPick?: (longitude: number, latitude: number) => void;
+  originMarker?: { longitude: number; latitude: number } | null;
+  destinationMarker?: { longitude: number; latitude: number } | null;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -140,8 +154,39 @@ export function FleetMap({
   const onPickGeofenceCenterRef = useRef(onPickGeofenceCenter);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Array<{ display_name: string; lat: string; lon: string }>>([]);
+  const [searching, setSearching] = useState(false);
+  const [showTrips, setShowTrips] = useState(true);
+  const [showGeofences, setShowGeofences] = useState(true);
 
   const positioned = trips.filter((trip) => trip.positions.length > 0);
+
+  async function runSearch() {
+    const q = searchQuery.trim();
+    if (q.length < 3) { setSearchResults([]); return; }
+    setSearching(true);
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5`, {
+        headers: { "Accept-Language": "id" },
+      });
+      const data = await response.json();
+      setSearchResults(Array.isArray(data) ? data : []);
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function flyToResult(result: { lat: string; lon: string }) {
+    const lat = Number(result.lat);
+    const lon = Number(result.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    mapRef.current?.flyTo({ center: [lon, lat], zoom: 14, duration: 800 });
+    setSearchResults([]);
+    setSearchQuery("");
+  }
 
   useEffect(() => {
     onSelectTripRef.current = onSelectTrip;
@@ -155,6 +200,42 @@ export function FleetMap({
   useEffect(() => {
     onPolygonPointClickRef.current = onPolygonPointClick;
   }, [onPolygonPointClick]);
+  const onRoutePointPickRef = useRef(onRoutePointPick);
+  useEffect(() => {
+    onRoutePointPickRef.current = onRoutePointPick;
+  }, [onRoutePointPick]);
+  useEffect(() => {
+    if (!ready || !mapRef.current || !pickRoutePoint) return;
+    const map = mapRef.current;
+    const canvasContainer = map.getCanvasContainer();
+    const handlePick = (event: { lngLat: { lng: number; lat: number } }) => {
+      onRoutePointPickRef.current?.(event.lngLat.lng, event.lngLat.lat);
+    };
+    canvasContainer.style.cursor = "crosshair";
+    map.on("click", handlePick);
+    return () => {
+      map.off("click", handlePick);
+      canvasContainer.style.cursor = "";
+    };
+  }, [pickRoutePoint, ready]);
+  const onRoutePointClickRef = useRef(onRoutePointClick);
+  useEffect(() => {
+    onRoutePointClickRef.current = onRoutePointClick;
+  }, [onRoutePointClick]);
+  useEffect(() => {
+    if (!ready || !mapRef.current || !drawRouteMode) return;
+    const map = mapRef.current;
+    const canvasContainer = map.getCanvasContainer();
+    const handlePick = (event: { lngLat: { lng: number; lat: number } }) => {
+      onRoutePointClickRef.current?.(event.lngLat.lng, event.lngLat.lat);
+    };
+    canvasContainer.style.cursor = "crosshair";
+    map.on("click", handlePick);
+    return () => {
+      map.off("click", handlePick);
+      canvasContainer.style.cursor = "";
+    };
+  }, [drawRouteMode, ready]);
 
   useEffect(() => {
     if (!ready || !mapRef.current || !drawPolygonMode) return;
@@ -170,6 +251,77 @@ export function FleetMap({
       canvasContainer.style.cursor = "";
     };
   }, [drawPolygonMode, ready]);
+
+  useEffect(() => {
+    if (!ready || !mapRef.current) return;
+    const map = mapRef.current;
+    const existing = (map as unknown as { __odMarkers?: unknown[] }).__odMarkers || [];
+    existing.forEach((m: unknown) => { try { (m as { remove: () => void }).remove(); } catch {} });
+    (map as unknown as { __odMarkers?: unknown[] }).__odMarkers = [];
+    const markers: unknown[] = [];
+    void import("maplibre-gl").then((ml) => {
+      if (originMarker) {
+        const el = document.createElement("div");
+        el.style.background = "#1677ff";
+        el.style.border = "3px solid #fff";
+        el.style.width = "20px";
+        el.style.height = "20px";
+        el.style.borderRadius = "50%";
+        el.style.boxShadow = "0 0 0 4px rgba(22,119,255,0.3), 0 2px 6px rgba(0,0,0,0.3)";
+        el.style.display = "flex";
+        el.style.alignItems = "center";
+        el.style.justifyContent = "center";
+        el.style.color = "#fff";
+        el.style.fontSize = "11px";
+        el.style.fontWeight = "700";
+        el.textContent = "A";
+        const marker = new ml.Marker({ element: el, anchor: "center" }).setLngLat([originMarker.longitude, originMarker.latitude]).addTo(map);
+        markers.push(marker);
+      }
+      if (destinationMarker) {
+        const el = document.createElement("div");
+        el.style.background = "#ef4444";
+        el.style.border = "3px solid #fff";
+        el.style.width = "20px";
+        el.style.height = "20px";
+        el.style.borderRadius = "50%";
+        el.style.boxShadow = "0 0 0 4px rgba(239,68,68,0.3), 0 2px 6px rgba(0,0,0,0.3)";
+        el.style.display = "flex";
+        el.style.alignItems = "center";
+        el.style.justifyContent = "center";
+        el.style.color = "#fff";
+        el.style.fontSize = "11px";
+        el.style.fontWeight = "700";
+        el.textContent = "B";
+        const marker = new ml.Marker({ element: el, anchor: "center" }).setLngLat([destinationMarker.longitude, destinationMarker.latitude]).addTo(map);
+        markers.push(marker);
+      }
+      (map as unknown as { __odMarkers?: unknown[] }).__odMarkers = markers;
+    });
+  }, [originMarker, destinationMarker, ready]);
+
+  useEffect(() => {
+    if (!ready || !mapRef.current) return;
+    const map = mapRef.current;
+    const coords = routeCoordinates && routeCoordinates.length >= 2
+      ? routeCoordinates.map((p) => [p.longitude, p.latitude])
+      : [];
+    const source = map.getSource("operational-routes") as GeoJSONSource | undefined;
+    if (!source) {
+      map.addSource("operational-routes", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: coords.length ? [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: coords } }] : [] },
+      });
+      map.addLayer({
+        id: "operational-routes-line",
+        type: "line",
+        source: "operational-routes",
+        paint: { "line-color": "#1677ff", "line-width": 4, "line-opacity": 0.85 },
+      });
+    } else {
+      source.setData({ type: "FeatureCollection", features: coords.length ? [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: coords } }] : [] });
+    }
+  }, [ready, routeCoordinates]);
 
   useEffect(() => {
     if (!expanded || !mapRef.current) return;
@@ -204,7 +356,12 @@ export function FleetMap({
   useEffect(() => {
     if (!ready || !mapRef.current) return;
     const map = mapRef.current;
-    const features: GeoJSON.Feature[] = [];
+      const features: GeoJSON.Feature[] = [];
+      if (!showGeofences) {
+        const source = map.getSource("operational-geofences") as GeoJSONSource | undefined;
+        if (source) source.setData({ type: "FeatureCollection", features: [] });
+        return;
+      }
     for (const geofence of geofenceCircles) {
       const shapeType = geofence.shapeType ?? "CIRCLE";
       if (shapeType === "POLYGON" && geofence.polygonCoordinates && geofence.polygonCoordinates.length >= 3) {
@@ -284,7 +441,7 @@ export function FleetMap({
         filter: ["==", ["geometry-type"], "Polygon"],
         paint: {
           "fill-color": color,
-          "fill-opacity": 0.14,
+          "fill-opacity": 0.12,
         },
       } as Parameters<MapLibreMap["addLayer"]>[0]);
       map.addLayer({
@@ -313,7 +470,7 @@ export function FleetMap({
     } else {
       source.setData({ type: "FeatureCollection", features });
     }
-  }, [draftGeofence, geofenceCircles, polygonPoints, ready]);
+  }, [draftGeofence, geofenceCircles, polygonPoints, ready, showGeofences]);
 
   useEffect(() => {
     let cancelled = false;
@@ -377,6 +534,7 @@ export function FleetMap({
       const bounds = new maplibregl.LngLatBounds();
 
       for (const trip of trips) {
+        if (!showTrips) continue;
         const position = trip.positions[0];
         if (!position) continue;
         const latitude = Number(position.latitude);
@@ -416,11 +574,39 @@ export function FleetMap({
     });
 
     return () => { active = false; };
-  }, [trips, ready, selectedTripId]);
+  }, [trips, ready, selectedTripId, showTrips]);
 
   return (
     <div className="fleet-map">
       <div ref={containerRef} className="fleet-map-canvas" />
+      <div className="fleet-map-search" role="search">
+        <div>
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void runSearch(); } }}
+            placeholder="Cari tempat (OpenStreetMap)…"
+            aria-label="Cari tempat di peta"
+          />
+          <button type="button" onClick={() => void runSearch()} disabled={searching} aria-label="Cari">
+            {searching ? "…" : "Cari"}
+          </button>
+        </div>
+        {searchResults.length > 0 && (
+          <ul className="fleet-map-search-results">
+            {searchResults.map((result, index) => (
+              <li key={`${result.lat}-${result.lon}-${index}`}>
+                <button type="button" onClick={() => flyToResult(result)}>{result.display_name}</button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className="fleet-map-layers" aria-label="Layer peta">
+        <button type="button" className={showTrips ? "active" : ""} onClick={() => setShowTrips((v) => !v)}>Trip</button>
+        <button type="button" className={showGeofences ? "active" : ""} onClick={() => setShowGeofences((v) => !v)}>Geofence</button>
+      </div>
       {error && <div className="fleet-map-empty fleet-map-status" role="alert">Peta OpenStreetMap belum merespons. Periksa koneksi internet lalu muat ulang halaman.</div>}
       {!error && ready && !positioned.length && emptyMessage?.trim() && (
         <div className="fleet-map-empty fleet-map-status" role="status">{emptyMessage}</div>

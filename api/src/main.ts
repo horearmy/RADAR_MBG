@@ -3,17 +3,20 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
+import { json, urlencoded } from 'express';
 import { AppModule } from './app.module.js';
 import { createCsrfMiddleware } from './auth/csrf.middleware.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
   const allowedOrigins = (process.env.WEB_ORIGINS ?? 'http://localhost:3000')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
 
   app.setGlobalPrefix('api/v1');
+  app.use(json({ limit: '5mb' }));
+  app.use(urlencoded({ limit: '5mb', extended: true }));
   app.use(helmet());
   app.use(cookieParser());
   app.use(createCsrfMiddleware());

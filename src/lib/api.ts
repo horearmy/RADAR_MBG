@@ -488,6 +488,38 @@ export type CreateTripInput = {
   plannedQuantity: number;
 };
 
+export type RouteSummary = {
+  id: string;
+  name: string;
+  sppgId: string;
+  deliveryLocationId: string;
+  coordinates: Array<{ latitude: number; longitude: number }>;
+  distanceMeters: string | number | null;
+  estimatedDurationSeconds: number | null;
+  active: boolean;
+  version: number;
+  createdAt: string;
+  sppg?: { id: string; code: string; name: string };
+  deliveryLocation?: { id: string; code: string; name: string };
+};
+
+export async function getRoutes(query: { sppgId?: string; deliveryLocationId?: string; page?: number; pageSize?: number } = {}): Promise<{ data: RouteSummary[]; total: number; page: number; pageSize: number; totalPages: number }> {
+  const params = new URLSearchParams();
+  if (query.sppgId) params.set("sppgId", query.sppgId);
+  if (query.deliveryLocationId) params.set("deliveryLocationId", query.deliveryLocationId);
+  params.set("page", String(query.page ?? 1));
+  params.set("pageSize", String(query.pageSize ?? 25));
+  return apiGet(`/routes?${params.toString()}`);
+}
+
+export function archiveRoute(id: string, reason: string, idempotencyKey = crypto.randomUUID()) {
+  return apiMutate<{ route: RouteSummary; replayed: boolean }>(`/routes/${encodeURIComponent(id)}/archive`, "PATCH", { reason }, idempotencyKey);
+}
+
+export function createRoute(input: { name: string; sppgId: string; deliveryLocationId: string; coordinates: Array<{ latitude: number; longitude: number }>; reason?: string }) {
+  return apiMutate<{ route: RouteSummary; replayed: boolean }>("/routes", "POST", input);
+}
+
 export async function getSppgOptions(): Promise<SppgSummary[]> {
   const result = await apiGet<Paginated<SppgSummary>>('/admin/sppg?page=1&pageSize=100');
   return result.data;

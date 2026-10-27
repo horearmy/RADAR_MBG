@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronRight, CircleDot, Clock3, Crosshair, MapPinned, Plus, RefreshCw, Save, ShieldCheck, Utensils } from "lucide-react";
 import { FleetMap } from "@/components/fleet-map";
+import { RouteSearchPanel } from "@/components/route-search-panel";
 import { AppSidebar } from "@/components/app-sidebar";
 import {
   createGeofence,
@@ -87,6 +88,10 @@ export default function GeofencesPage() {
   const [pickCenter, setPickCenter] = useState(false);
   const [polygonPoints, setPolygonPoints] = useState<Array<{ longitude: number; latitude: number }>>([]);
   const [drawPolygon, setDrawPolygon] = useState(false);
+  const [searchRouteCoords, setSearchRouteCoords] = useState<Array<{ longitude: number; latitude: number }> | null>(null);
+  const [routePickMode, setRoutePickMode] = useState<"origin" | "destination" | null>(null);
+  const [routeOriginMarker, setRouteOriginMarker] = useState<{ longitude: number; latitude: number } | null>(null);
+  const [routeDestMarker, setRouteDestMarker] = useState<{ longitude: number; latitude: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [geofencesLoading, setGeofencesLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -367,6 +372,8 @@ export default function GeofencesPage() {
             </>}
           </form>
 
+
+          <div className="geofence-map-column">
           <section className="panel geofence-map-panel" aria-label="Peta dan preview geofence">
             <div className="geofence-panel-heading"><div><h2>Peta OpenStreetMap</h2><p>{pickCenter ? "Pilih titik pusat di peta." : "Lingkaran preview mengikuti koordinat dan radius pada formulir."}</p></div><span className={`geofence-map-mode ${pickCenter ? "active" : ""}`}>{pickCenter ? "PILIH PUSAT" : "WGS84"}</span></div>
             <div className="geofence-map-viewport">
@@ -382,6 +389,14 @@ export default function GeofencesPage() {
                   setPickCenter(false);
                 }}
                 focusPoint={focusPoint}
+                routeCoordinates={searchRouteCoords}
+                originMarker={routeOriginMarker}
+                destinationMarker={routeDestMarker}
+                pickRoutePoint={!!routePickMode}
+                onRoutePointPick={(longitude, latitude) => {
+                  const handler = (window as unknown as { __routePickHandler?: (lng: number, lat: number) => void }).__routePickHandler;
+                  if (typeof handler === "function") handler(longitude, latitude);
+                }}
                 polygonPoints={shapeType === "POLYGON" ? polygonPoints : null}
                 drawPolygonMode={drawPolygon && canManage && shapeType === "POLYGON"}
                 onPolygonPointClick={(longitude, latitude) => {
@@ -390,7 +405,22 @@ export default function GeofencesPage() {
               />
             </div>
             <div className="geofence-map-legend"><span><i className="geofence-legend-draft" />Preview baru</span><span><i className="geofence-legend-active" />Aktif</span><span><i className="geofence-legend-history" />Versi lama</span><small>{geofencesLoading ? "Memuat riwayat…" : `${geofences.length} versi tersimpan`}</small></div>
+          <RouteSearchPanel
+            onRouteChange={(coords) => {
+              setSearchRouteCoords(coords ? coords.map((c) => ({ longitude: c.longitude, latitude: c.latitude })) : null);
+            }}
+            onOriginChange={(p) => setRouteOriginMarker(p ? { longitude: p.longitude, latitude: p.latitude } : null)}
+            onDestinationChange={(p) => setRouteDestMarker(p ? { longitude: p.longitude, latitude: p.latitude } : null)}
+            drawMode={false}
+            onDrawModeChange={() => {}}
+            drawPoints={[]}
+            onDrawPoint={() => {}}
+            onClearDraw={() => {}}
+            pickMode={routePickMode}
+            onPickModeChange={setRoutePickMode}
+          />
           </section>
+          </div>
         </div>
 
         <section className="panel geofence-history">

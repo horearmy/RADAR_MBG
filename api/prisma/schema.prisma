@@ -179,6 +179,7 @@ model Sppg {
   exceptionCases ExceptionCase[]
   tripsFrom      Trip[]       @relation("TripOrigin")
   geofences      Geofence[]
+  routesFrom     Route[]      @relation("RouteOrigin")
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
@@ -478,6 +479,7 @@ model DeliveryLocation {
   region       Region       @relation(fields: [regionId], references: [id], onDelete: Restrict)
   trips        Trip[]
   geofences    Geofence[]
+  routes       Route[] @relation("RouteDestination")
   qrTokens     QrToken[]
 
   @@unique([organizationId, code])
@@ -611,6 +613,28 @@ model Geofence {
   @@index([deliveryLocationId, active, version])
   @@index([center], type: Gist)
   @@map("geofences")
+}
+
+model Route {
+  id                  String                                 @id @default(uuid()) @db.Uuid
+  sppgId              String                                 @map("sppg_id") @db.Uuid
+  deliveryLocationId  String                                 @map("delivery_location_id") @db.Uuid
+  name                String                                 @db.VarChar(160)
+  coordinates         Json                                   @db.JsonB
+  distanceMeters      Decimal?                               @map("distance_meters") @db.Decimal(12, 2)
+  estimatedDurationSeconds Int?                              @map("estimated_duration_seconds")
+  active              Boolean                                @default(true)
+  version             Int                                    @default(1)
+  idempotencyKey      String?                                @unique @map("idempotency_key") @db.VarChar(128)
+  createdBy           String                                 @map("created_by") @db.Uuid
+  createdAt           DateTime                               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime                               @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  sppg             Sppg             @relation("RouteOrigin", fields: [sppgId], references: [id], onDelete: Restrict)
+  deliveryLocation DeliveryLocation @relation("RouteDestination", fields: [deliveryLocationId], references: [id], onDelete: Restrict)
+
+  @@index([sppgId, deliveryLocationId, active, version])
+  @@map("routes")
 }
 
 model QrToken {
