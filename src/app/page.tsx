@@ -19,7 +19,7 @@ import {
   MapPinned,
   LayoutDashboard,
   ListFilter,
-  LogOut,
+
   MoreHorizontal,
   Navigation,
   PackageCheck,
@@ -32,6 +32,7 @@ import {
   Utensils,
   X,
 } from "lucide-react";
+import { HeaderAccount } from "@/components/account-menu";
 import { FleetMap } from "@/components/fleet-map";
 import {
   apiBaseUrl,
@@ -45,7 +46,7 @@ import {
   type TripSummary,
 } from "@/lib/api";
 
-type NavItem = { label: string; icon: typeof LayoutDashboard; count?: string; alert?: boolean; permissions?: string[] };
+type NavItem = { label: string; icon: typeof LayoutDashboard; href?: string; count?: string; alert?: boolean; permissions?: string[] };
 type MapFilter = "all" | "active" | "attention" | "stale" | "verified";
 
 const navigation: NavItem[] = [
@@ -56,8 +57,9 @@ const navigation: NavItem[] = [
 ];
 
 const management: NavItem[] = [
-  { label: "SPPG", icon: Utensils, permissions: ["master:read", "sppg:read", "organization:read"] },
-  { label: "Kendaraan", icon: Truck, permissions: ["master:read"] },
+  { label: "SPPG", icon: Utensils, href: "/sppg", permissions: ["master:read", "sppg:read", "organization:read"] },
+  { label: "Driver", icon: Users, href: "/drivers", permissions: ["master:read"] },
+  { label: "Kendaraan", icon: Truck, href: "/vehicles", permissions: ["master:read"] },
 ];
 
 const activeTripStatuses = new Set([
@@ -343,10 +345,10 @@ export default function Home() {
             </button>
           ))}
           <p className="nav-caption nav-caption-spaced">OPERASIONAL</p>
-          {managementItems.map(({ label, icon: Icon }) => (
-            <button key={label} className="nav-item nav-item-soon" disabled title={`${label} segera hadir`}>
-              <Icon size={17} strokeWidth={1.8} /><span>{label}</span><small className="nav-soon-tag">Segera</small>
-            </button>
+          {managementItems.map(({ label, icon: Icon, href }) => (
+            <Link key={label} className="nav-item nav-link" href={href ?? "/"}>
+              <Icon size={17} strokeWidth={1.8} /><span>{label}</span>
+            </Link>
           ))}
           {canReadAudit && <Link className="nav-item nav-link" href="/audit"><Activity size={17} strokeWidth={1.8} /><span>Audit explorer</span></Link>}
           {canAccessGeofences && <Link className="nav-item nav-link" href="/geofences"><MapPinned size={17} strokeWidth={1.8} /><span>Geofence</span></Link>}
@@ -366,14 +368,14 @@ export default function Home() {
         <div className="sidebar-bottom">
           <div className="sidebar-help"><div className="help-icon"><Activity size={17} /></div><div><strong>Data operasional</strong><span>Terhubung ke API RADAR MBG</span></div></div>
           {canManageAdmin && <button className="nav-item settings-item nav-item-soon" disabled title="Pengaturan segera hadir"><Settings2 size={17} /><span>Pengaturan</span><small className="nav-soon-tag">Segera</small></button>}
-          <div className="profile-row"><div className="profile-avatar">{sessionUser.displayName.slice(0, 2).toUpperCase()}</div><div className="profile-copy"><strong>{sessionUser.displayName}</strong><span>{getSessionRole(sessionUser)}</span></div><button className="profile-logout" onClick={logout} aria-label="Keluar"><LogOut size={16} /></button></div>
+
         </div>
       </aside>
 
       <section className="main-column" id="overview">
         <header className="topbar">
           <div className="breadcrumb"><span>Workspace</span><ChevronRight size={14} /><strong>{activeNav}</strong></div>
-          <div className="topbar-actions"><span className="environment"><span className="live-dot" />DATA OPERASIONAL</span><button className="icon-button" aria-label="Cari"><Search size={17} /></button>{canReadExceptions && <button className="icon-button notification-button" aria-label="Notifikasi" onClick={() => setShowAlerts(!showAlerts)}><Bell size={17} /><i /></button>}<span className="topbar-divider" /><span className="date-button"><Clock3 size={15} />Hari ini</span></div>
+          <div className="topbar-actions"><span className="environment"><span className="live-dot" />DATA OPERASIONAL</span><button className="icon-button" aria-label="Cari"><Search size={17} /></button>{canReadExceptions && <button className="icon-button notification-button" aria-label="Notifikasi" onClick={() => setShowAlerts(!showAlerts)}><Bell size={17} /><i /></button>}<span className="topbar-divider" /><HeaderAccount user={sessionUser} /></div>
         </header>
 
         <div className="content-area">

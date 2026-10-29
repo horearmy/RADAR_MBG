@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { HeaderAccount } from "@/components/account-menu";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -1191,13 +1192,7 @@ export default function TripDetailPage() {
           <span className="brand-mark"><span /><span /><span /></span>
           <strong>RADAR<span>MBG</span></strong>
         </Link>
-        <div className="trip-user">
-          <span className="trip-user-avatar">{sessionUser.displayName.slice(0, 2).toUpperCase()}</span>
-          <span>
-            <strong>{sessionUser.displayName}</strong>
-            <small>{getSessionRole(sessionUser)}</small>
-          </span>
-        </div>
+        <HeaderAccount user={sessionUser} />
       </header>
 
       <div className="trip-content">

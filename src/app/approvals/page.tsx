@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Check, ClipboardCheck, Clock3, RefreshCw, X } from "lucide-react";
+import { HeaderAccount } from "@/components/account-menu";
 import {
   decideApprovalRequest,
   getApprovalInbox,
@@ -228,7 +229,7 @@ export default function ApprovalsPage() {
       <header className="approval-topbar">
         <Link href="/" className="approval-back"><ArrowLeft size={15} /> Dashboard</Link>
         <div className="approval-brand"><span className="brand-mark"><span /><span /><span /></span><strong>RADAR<span>MBG</span></strong></div>
-        <span className="approval-user">{user.displayName}</span>
+        <HeaderAccount user={user} />
       </header>
       <div className="approval-content">
         <div className="approval-heading">

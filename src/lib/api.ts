@@ -153,6 +153,53 @@ export type SppgSummary = {
   latitude?: string | number | null;
   longitude?: string | number | null;
   version?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  organization?: { id: string; code: string; name: string };
+  region?: { id: string; code: string; name: string };
+};
+
+export type DriverSummary = {
+  id: string;
+  sppgId: string;
+  userId: string | null;
+  code: string;
+  name: string;
+  phone?: string | null;
+  status: string;
+  createdAt?: string;
+  updatedAt?: string;
+  sppg?: { id: string; code: string; name: string };
+  user?: { id: string; username: string; displayName: string; status: string } | null;
+};
+
+export type VehicleSummary = {
+  id: string;
+  organizationId: string;
+  sppgId: string;
+  plateNumber: string;
+  label?: string | null;
+  capacity?: number | null;
+  status: string;
+  createdAt?: string;
+  updatedAt?: string;
+  sppg?: { id: string; code: string; name: string };
+};
+
+export type AssignmentSummary = {
+  id: string;
+  organizationId: string;
+  sppgId: string;
+  driverId: string;
+  vehicleId: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  reason: string;
+  createdAt?: string;
+  createdBy?: string;
+  driver?: { id: string; code: string; name: string };
+  vehicle?: { id: string; plateNumber: string; label?: string | null };
+  sppg?: { id: string; code: string; name: string };
 };
 
 export type ApprovalSppgOption = {
@@ -618,8 +665,17 @@ export function changeTripDestination(
   );
 }
 
-export function hasPermission(user: SessionUser, permission: string) {
-  return user.roles.some((role) => role.permissions.includes(permission));
+export function hasPermission(user: SessionUser | null | undefined, permission: string): boolean {
+  if (!user) return false;
+  const roles = (user as any)?.roles;
+  if (!Array.isArray(roles)) return false;
+  for (let i = 0; i < roles.length; i++) {
+    const role = roles[i];
+    if (!role) continue;
+    const perms = role?.permissions;
+    if (Array.isArray(perms) && perms.includes(permission)) return true;
+  }
+  return false;
 }
 
 export async function getCurrentSession(): Promise<SessionUser> {

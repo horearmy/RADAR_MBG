@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ChevronRight, CircleDot, Clock3, Crosshair, MapPinned, Save, ShieldCheck, Utensils } from "lucide-react";
 import { FleetMap } from "@/components/fleet-map";
 import { RouteSearchPanel } from "@/components/route-search-panel";
+import { HeaderAccount } from "@/components/account-menu";
 import { AppSidebar } from "@/components/app-sidebar";
 import {
   createGeofence,
@@ -300,7 +301,7 @@ export default function GeofencesPage() {
       <section className="main-column" id="geofences">
         <header className="topbar">
           <div className="breadcrumb"><span>Workspace</span><ChevronRight size={14} /><span>Operasional</span><ChevronRight size={14} /><strong>Geofence</strong></div>
-          <div className="topbar-actions"><span className="environment"><span className="live-dot" />DATA OPERASIONAL</span><span className="date-button"><Clock3 size={15} />Hari ini</span></div>
+          <div className="topbar-actions"><span className="environment"><span className="live-dot" />DATA OPERASIONAL</span><span className="date-button"><Clock3 size={15} />Hari ini</span><HeaderAccount /></div>
         </header>
         <div className="content-area geofence-content-area">
           <div className="approval-heading geofence-heading">

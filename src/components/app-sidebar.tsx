@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Activity,
   AlertTriangle,
@@ -10,7 +10,6 @@ import {
   ClipboardCheck,
   Command,
   LayoutDashboard,
-  LogOut,
   MapPinned,
   Navigation,
   Settings2,
@@ -31,12 +30,20 @@ const navigation: NavItem[] = [
 ];
 
 const management: NavItem[] = [
-  { label: "SPPG", icon: Utensils, permissions: ["master:read", "sppg:read", "organization:read"] },
-  { label: "Kendaraan", icon: Truck, permissions: ["master:read"] },
+  { label: "SPPG", icon: Utensils, href: "/sppg", permissions: ["master:read", "sppg:read", "organization:read"] },
+  { label: "Driver", icon: Users, href: "/drivers", permissions: ["master:read"] },
+  { label: "Kendaraan", icon: Truck, href: "/vehicles", permissions: ["master:read"] },
 ];
+
+function isNavActive(href: string | undefined, pathname: string) {
+  if (!href || href.startsWith("/#")) return false;
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 export function AppSidebar() {
   const router = useRouter();
+  const pathname = usePathname();
   const [user, setUser] = useState<SessionUser | null>(null);
 
   useEffect(() => {
@@ -63,25 +70,6 @@ export function AppSidebar() {
 
   const canAccessNav = (item: NavItem) => !item.permissions || item.permissions.some((permission) => hasPermission(user, permission));
 
-  async function logout() {
-    try {
-      const csrfResponse = await fetch(`${process.env.NEXT_PUBLIC_RADAR_API_URL ?? "http://localhost:4000/api/v1"}/auth/csrf`, {
-        credentials: "include",
-        cache: "no-store",
-      });
-      const { csrfToken } = await csrfResponse.json() as { csrfToken?: string };
-      if (csrfToken) {
-        await fetch(`${process.env.NEXT_PUBLIC_RADAR_API_URL ?? "http://localhost:4000/api/v1"}/auth/logout`, {
-          method: "POST",
-          credentials: "include",
-          headers: { "x-csrf-token": csrfToken },
-        });
-      }
-    } finally {
-      router.replace("/login");
-    }
-  }
-
   return (
     <aside className="sidebar">
       <Link className="brand" href="/" aria-label="RADAR MBG beranda">
@@ -98,17 +86,22 @@ export function AppSidebar() {
       <nav className="side-nav" aria-label="Navigasi utama">
         <p className="nav-caption">MONITORING</p>
         {navigation.filter(canAccessNav).map(({ label, icon: Icon, href }) => (
-          <Link key={label} className="nav-item nav-link" href={href ?? "/"}>
+          <Link key={label} className={`nav-item nav-link${isNavActive(href, pathname) ? " nav-active" : ""}`} href={href ?? "/"}>
             <Icon size={17} strokeWidth={1.8} /><span>{label}</span>
           </Link>
         ))}
         <p className="nav-caption nav-caption-spaced">OPERASIONAL</p>
-        <Link className="nav-item nav-link" href="/sppg"><Utensils size={17} strokeWidth={1.8} /><span>SPPG</span></Link>
-        {management.filter((item) => item.label !== "SPPG").filter(canAccessNav).map(({ label, icon: Icon }) => (
-          <button key={label} className="nav-item nav-item-soon" disabled title={`${label} segera hadir`}>
-            <Icon size={17} strokeWidth={1.8} /><span>{label}</span><small className="nav-soon-tag">Segera</small>
-          </button>
-        ))}
+        {management.filter(canAccessNav).map(({ label, icon: Icon, href }) =>
+          href ? (
+            <Link key={label} className={`nav-item nav-link${isNavActive(href, pathname) ? " nav-active" : ""}`} href={href}>
+              <Icon size={17} strokeWidth={1.8} /><span>{label}</span>
+            </Link>
+          ) : (
+            <button key={label} className="nav-item nav-item-soon" disabled title={`${label} segera hadir`}>
+              <Icon size={17} strokeWidth={1.8} /><span>{label}</span><small className="nav-soon-tag">Segera</small>
+            </button>
+          ),
+        )}
         {canReadAudit && <Link className="nav-item nav-link" href="/audit"><Activity size={17} strokeWidth={1.8} /><span>Audit explorer</span></Link>}
         {canManageUsers && <Link className="nav-item nav-link" href="/users"><Users size={17} strokeWidth={1.8} /><span>Administrasi akun</span></Link>}
         {canAccessGeofences && <Link className="nav-item nav-link" href="/geofences"><MapPinned size={17} strokeWidth={1.8} /><span>Geofence</span></Link>}
@@ -127,7 +120,7 @@ export function AppSidebar() {
       <div className="sidebar-bottom">
         <div className="sidebar-help"><div className="help-icon"><Activity size={17} /></div><div><strong>Data operasional</strong><span>Terhubung ke API RADAR MBG</span></div></div>
         {canManageAdmin && <button className="nav-item settings-item nav-item-soon" disabled title="Pengaturan segera hadir"><Settings2 size={17} /><span>Pengaturan</span><small className="nav-soon-tag">Segera</small></button>}
-        <div className="profile-row"><div className="profile-avatar">{user.displayName.slice(0, 2).toUpperCase()}</div><div className="profile-copy"><strong>{user.displayName}</strong><span>{user.roles[0]?.code ?? "Pengguna"}</span></div><button className="profile-logout" onClick={logout} aria-label="Keluar"><LogOut size={16} /></button></div>
+
       </div>
     </aside>
   );

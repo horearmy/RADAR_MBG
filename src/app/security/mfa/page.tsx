@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, CheckCircle2, Copy, ShieldCheck } from "lucide-react";
+import { HeaderAccount } from "@/components/account-menu";
 import {
   beginMfaEnrollment,
   beginMfaRotation,
@@ -119,7 +120,7 @@ export default function MfaEnrollmentPage() {
       <header className="approval-topbar">
         <Link href="/" className="approval-back"><ArrowLeft size={15} /> Dashboard</Link>
         <div className="approval-brand"><span className="brand-mark"><span /><span /><span /></span><strong>RADAR<span>MBG</span></strong></div>
-        <span className="approval-user">{user.displayName}</span>
+        <HeaderAccount user={user} />
       </header>
       <div className="mfa-content">
         <div className="approval-heading"><div className="approval-heading-icon"><ShieldCheck size={19} /></div><div><div className="eyebrow"><span className="eyebrow-line" />KEAMANAN AKUN</div><h1>Autentikasi multifaktor</h1><p>Gunakan aplikasi authenticator yang mendukung TOTP 6 digit.</p></div></div>

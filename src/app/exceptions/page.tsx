@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { HeaderAccount } from "@/components/account-menu";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -519,13 +520,7 @@ export default function ExceptionsPage() {
           <span className="brand-mark"><span /><span /><span /></span>
           <strong>RADAR<span>MBG</span></strong>
         </Link>
-        <div className="trip-user">
-          <span className="trip-user-avatar">{initials(sessionUser.displayName)}</span>
-          <span>
-            <strong>{sessionUser.displayName}</strong>
-            <small>{getSessionRole(sessionUser)}</small>
-          </span>
-        </div>
+        <HeaderAccount user={sessionUser} />
       </header>
 
       <div className="trip-content">

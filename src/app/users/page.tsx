@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, KeyRound, RefreshCw, Shield, UserRound, Users } from "lucide-react";
+import { HeaderAccount } from "@/components/account-menu";
 import {
   createAdminInvitation,
   createAdminPasswordReset,
@@ -262,7 +263,7 @@ export default function UsersPage() {
   const selectedRole = roles.find((role) => role.code === roleCode);
   return (
     <main className="approval-page">
-      <header className="approval-topbar"><Link href="/" className="approval-back"><ArrowLeft size={15} /> Dashboard</Link><div className="approval-brand"><span className="brand-mark"><span /><span /><span /></span><strong>RADAR<span>MBG</span></strong></div><span className="approval-user">{user.displayName}</span></header>
+      <header className="approval-topbar"><Link href="/" className="approval-back"><ArrowLeft size={15} /> Dashboard</Link><div className="approval-brand"><span className="brand-mark"><span /><span /><span /></span><strong>RADAR<span>MBG</span></strong></div><HeaderAccount user={user} /></header>
       <div className="users-content">
         <div className="approval-heading"><div className="approval-heading-icon"><Users size={19} /></div><div><div className="eyebrow"><span className="eyebrow-line" />IDENTITY · RBAC</div><h1>Administrasi akun</h1><p>Kelola status, assignment role/scope, dan pencabutan sesi dengan audit.</p></div><button className="approval-refresh" onClick={() => setReloadKey((value) => value + 1)} type="button"><RefreshCw size={14} /> Muat ulang</button></div>
         {notice && <div className="approval-notice" role="status">{notice}</div>}

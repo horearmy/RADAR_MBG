@@ -1,0 +1,48 @@
+export declare enum TripStatus {
+    DRAFT = "DRAFT",
+    SCHEDULED = "SCHEDULED",
+    READY_TO_DEPART = "READY_TO_DEPART",
+    IN_TRANSIT = "IN_TRANSIT",
+    ARRIVAL_DETECTED = "ARRIVAL_DETECTED",
+    ARRIVAL_VERIFIED = "ARRIVAL_VERIFIED",
+    DELIVERY_IN_PROGRESS = "DELIVERY_IN_PROGRESS",
+    DELIVERED = "DELIVERED",
+    COMPLETED = "COMPLETED",
+    CANCELLED = "CANCELLED",
+    EXCEPTION = "EXCEPTION"
+}
+export declare enum TrackingStatus {
+    LIVE = "LIVE",
+    STALE = "STALE",
+    OFFLINE = "OFFLINE",
+    GPS_UNAVAILABLE = "GPS_UNAVAILABLE",
+    ENDED = "ENDED"
+}
+export declare enum VerificationStatus {
+    NOT_STARTED = "NOT_STARTED",
+    PENDING = "PENDING",
+    VERIFIED = "VERIFIED",
+    FAILED = "FAILED",
+    MANUAL_REVIEW = "MANUAL_REVIEW",
+    OVERRIDDEN = "OVERRIDDEN"
+}
+export declare enum DeliveryStatus {
+    NOT_STARTED = "NOT_STARTED",
+    IN_PROGRESS = "IN_PROGRESS",
+    DELIVERED = "DELIVERED",
+    PARTIAL = "PARTIAL",
+    FAILED = "FAILED",
+    UNDER_REVIEW = "UNDER_REVIEW"
+}
+export declare enum Role {
+    SUPER_ADMIN = "SUPER_ADMIN",
+    ADMIN_OPS = "ADMIN_OPS",
+    COORDINATOR = "COORDINATOR",
+    ADMIN_SPPG = "ADMIN_SPPG",
+    DISPATCHER = "DISPATCHER",
+    DRIVER = "DRIVER",
+    RECEIVER = "RECEIVER",
+    AUDITOR = "AUDITOR",
+    LEADER = "LEADER"
+}
+export declare const ALLOWED_TRANSITIONS: Record<TripStatus, TripStatus[]>;
