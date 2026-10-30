@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Navigation, Truck, UserRound, Users, Building2 } from 'lucide-react';
+import { Activity, LayoutDashboard, Navigation, Truck, UserRound, Users, Building2, FilePlus, ClipboardCheck, KeyRound, BarChart3 } from 'lucide-react';
 
 const items = [
   { href: '/tenant', label: 'Ringkasan', icon: LayoutDashboard },
@@ -9,7 +9,15 @@ const items = [
   { href: '/tenant/drivers', label: 'Driver', icon: UserRound },
   { href: '/tenant/vehicles', label: 'Kendaraan', icon: Truck },
   { href: '/tenant/users', label: 'Pengguna', icon: Users },
+  { href: '/tenant/audit', label: 'Audit Aktivitas', icon: Activity },
   { href: '/tenant/profile', label: 'Profil SPPG', icon: Building2 },
+];
+
+const links = [
+  { href: '/register', label: 'Pendaftaran SPPG', icon: FilePlus },
+  { href: '/register/status', label: 'Status Pendaftaran', icon: ClipboardCheck },
+  { href: '/acceptinvitation', label: 'Aktivasi Akun', icon: KeyRound },
+  { href: '/reporting', label: 'Laporan', icon: BarChart3 },
 ];
 
 export function TenantSidebar() {
@@ -31,6 +39,15 @@ export function TenantSidebar() {
             <Icon size={17} strokeWidth={1.8} /><span>{label}</span>
           </Link>
         ))}
+        <p className="nav-caption nav-caption-spaced">TAUTAN</p>
+        <div className="app-link-grid">
+          {links.map(({ href, label, icon: Icon }) => (
+            <Link key={href} href={href} className={`app-link-card${pathname === href ? ' app-link-card-active' : ''}`}>
+              <Icon size={24} strokeWidth={1.6} />
+              <span>{label}</span>
+            </Link>
+          ))}
+        </div>
       </nav>
     </aside>
   );

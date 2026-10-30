@@ -50,6 +50,11 @@ export class TenantController {
     return this.service.listTrips(req.tenantContext!.tenantId);
   }
 
+  @Get('audit')
+  audit(@Req() req: AuthenticatedRequest) {
+    return this.service.listAudit(req.tenantContext!.tenantId);
+  }
+
   @Get('users')
   listUsers(@Req() req: AuthenticatedRequest) {
     return this.service.listUsers(req.tenantContext!.tenantId);

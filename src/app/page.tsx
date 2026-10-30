@@ -11,9 +11,13 @@ import {
   ChevronDown,
   ChevronRight,
   Clock3,
+  BarChart3,
+  Building2,
   Command,
   ClipboardCheck,
   Download,
+  FilePlus,
+  KeyRound,
   Filter,
   Map as MapIcon,
   MapPinned,
@@ -439,6 +443,16 @@ export default function Home() {
             })}
             {!activeExceptions.length && <p style={{ padding: "18px 2px", color: "#8a97a7", fontSize: 9 }}>Tidak ada exception aktif.</p>}
             </div><Link className="alert-footer" href="/exceptions">Buka pusat risiko<ArrowRight size={14} /></Link></aside>}
+          </section>
+          <section className="panel" style={{ marginBottom: 16 }}>
+            <div className="panel-heading"><h2>Tautan Cepat</h2><p>Akses halaman yang tidak ada di menu platform utama.</p></div>
+            <div className="app-link-row" style={{ padding: '0 16px 16px' }}>
+              <Link href="/register" className="app-link-card"><FilePlus size={20} /><span>Pendaftaran SPPG</span></Link>
+              <Link href="/register/status" className="app-link-card"><ClipboardCheck size={20} /><span>Status Pendaftaran</span></Link>
+              <Link href="/acceptinvitation" className="app-link-card"><KeyRound size={20} /><span>Aktivasi Akun</span></Link>
+              <Link href="/reporting" className="app-link-card"><BarChart3 size={20} /><span>Laporan</span></Link>
+              <Link href="/tenant" className="app-link-card"><Building2 size={20} /><span>Workspace Tenant</span></Link>
+            </div>
           </section>
           <footer className="page-footer"><span><span className="footer-dot" /> RADAR MBG <i>·</i> Data operasional</span><span>Zona waktu Asia/Jakarta <i>·</i> Dimuat {formatClock(dashboard.refreshedAt)} WIB</span></footer>
         </div>

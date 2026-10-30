@@ -6,10 +6,15 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   Activity,
   AlertTriangle,
+  BarChart3,
+  Building2,
   ChevronDown,
   ClipboardCheck,
   Command,
+  FilePlus,
+  KeyRound,
   LayoutDashboard,
+  Link2,
   MapPinned,
   Navigation,
   Settings2,
@@ -33,6 +38,14 @@ const management: NavItem[] = [
   { label: "SPPG", icon: Utensils, href: "/sppg", permissions: ["master:read", "sppg:read", "organization:read"] },
   { label: "Driver", icon: Users, href: "/drivers", permissions: ["master:read"] },
   { label: "Kendaraan", icon: Truck, href: "/vehicles", permissions: ["master:read"] },
+];
+
+const links: NavItem[] = [
+  { label: "Pendaftaran SPPG", icon: FilePlus, href: "/register" },
+  { label: "Status Pendaftaran", icon: ClipboardCheck, href: "/register/status" },
+  { label: "Aktivasi Akun", icon: KeyRound, href: "/acceptinvitation" },
+  { label: "Laporan", icon: BarChart3, href: "/reporting", permissions: ["report:read"] },
+  { label: "Workspace Tenant", icon: Building2, href: "/tenant" },
 ];
 
 function isNavActive(href: string | undefined, pathname: string) {
@@ -102,6 +115,15 @@ export function AppSidebar() {
             </button>
           ),
         )}
+        <p className="nav-caption nav-caption-spaced">TAUTAN</p>
+        <div className="app-link-grid">
+          {links.filter(canAccessNav).map(({ label, icon: Icon, href }) => (
+            <Link key={label} href={href ?? "/"} className={`app-link-card${isNavActive(href, pathname) ? " app-link-card-active" : ""}`}>
+              <Icon size={28} strokeWidth={1.6} />
+              <span>{label}</span>
+            </Link>
+          ))}
+        </div>
         {canReadAudit && <Link className="nav-item nav-link" href="/audit"><Activity size={17} strokeWidth={1.8} /><span>Audit explorer</span></Link>}
         {canManageUsers && <Link className="nav-item nav-link" href="/users"><Users size={17} strokeWidth={1.8} /><span>Administrasi akun</span></Link>}
         {canAccessGeofences && <Link className="nav-item nav-link" href="/geofences"><MapPinned size={17} strokeWidth={1.8} /><span>Geofence</span></Link>}

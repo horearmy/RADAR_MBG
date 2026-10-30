@@ -122,6 +122,15 @@ export class TenantService {
     });
   }
 
+  async listAudit(tenantId: string) {
+    return this.prisma.db.auditLog.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: { id: true, action: true, entityType: true, entityId: true, result: true, createdAt: true },
+    });
+  }
+
   async listTrips(tenantId: string) {
     return this.prisma.db.trip.findMany({
       where: { tenantId },

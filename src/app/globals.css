@@ -38,7 +38,7 @@ button, a { font: inherit; }
 button { color: inherit; }
 button:focus-visible, a:focus-visible { outline: 3px solid #87b5ff; outline-offset: 2px; }
 .app-shell { min-height: 100vh; }
-.sidebar { position: fixed; inset: 0 auto 0 0; z-index: 5; display: flex; width: 246px; flex-direction: column; padding: 25px 15px 13px; border-right: 1px solid var(--color-border); background: #fff; }
+.sidebar { position: fixed; inset: 0 auto 0 0; z-index: 5; display: flex; width: 246px; flex-direction: column; padding: 25px 15px 13px; border-right: 1px solid var(--color-border); background: #fff; overflow-y: auto; }
 .brand { display: flex; align-items: center; gap: 11px; padding: 0 11px; color: inherit; text-decoration: none; }
 .brand-mark { position: relative; display: grid; width: 36px; height: 36px; align-content: center; justify-content: center; gap: 3px; overflow: hidden; border-radius: 11px; background: #102955; }
 .brand-mark span { display: block; height: 2px; border-radius: 2px; background: #9ac3ff; }
@@ -212,6 +212,13 @@ button:focus-visible, a:focus-visible { outline: 3px solid #87b5ff; outline-offs
 
 /* Enterprise polish for SPPG & Driver */
 .page { width: 100%; margin: 0; padding: 20px 20px 40px; box-sizing: border-box; }
+.app-link-row { display: flex; gap: 12px; overflow-x: auto; padding: 4px 0; scrollbar-width: thin; }
+.app-link-row::-webkit-scrollbar { height: 6px; }
+.app-link-row::-webkit-scrollbar-thumb { background: var(--color-border-strong); border-radius: 3px; }
+.app-link-card { display: flex; align-items: center; gap: 10px; min-width: 150px; padding: 12px 14px; border: 1px solid var(--color-border); border-radius: 12px; background: #fff; text-decoration: none; color: #34445a; font-size: 12px; font-weight: 600; transition: border-color .15s, box-shadow .15s, transform .15s; white-space: nowrap; }
+.app-link-card:hover { border-color: var(--color-primary); box-shadow: 0 6px 16px rgba(22,119,255,.15); transform: translateY(-1px); }
+.app-link-card-active { border-color: var(--color-primary); background: var(--color-primary-soft); }
+.app-link-card svg { color: var(--color-primary); flex: 0 0 auto; }
 .btn-danger { background: #ef4444 !important; color: #fff !important; border: 0 !important; }
 .btn-warning { background: #f59e0b !important; color: #fff !important; border: 0 !important; }
 .btn-success { background: #16a765 !important; color: #fff !important; border: 0 !important; }
