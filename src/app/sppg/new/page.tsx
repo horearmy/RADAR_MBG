@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, MapPin, RefreshCw, Save } from "lucide-react";
+import { ArrowLeft, Building2, FileText, MapPin, RefreshCw, Save } from "lucide-react";
 import { LocationPicker } from "@/components/location-picker";
 import { getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
 
@@ -17,26 +17,24 @@ type Province = { id: string; code: string; name: string };
 type Regency = { id: string; code: string; name: string; provinceId: string; type: string };
 type District = { id: string; code: string; name: string; regencyId: string };
 type Village = { id: string; code: string; name: string; districtId: string };
-type Institution = { id: string; code: string; name: string; type: string };
 
 export default function SppgNewPage() {
   const router = useRouter();
   const [user, setUser] = useState<SessionUser | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [organizations, setOrganizations] = useState<any[]>([]);
+  const [defaultOrgId, setDefaultOrgId] = useState<string>("");
+  const [defaultRegionId, setDefaultRegionId] = useState<string>("");
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [generatingCode, setGeneratingCode] = useState(false);
-  const [showMap, setShowMap] = useState(false);
+  // showMap removed - map always visible now
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Region data
   const [provinces, setProvinces] = useState<Province[]>([]);
   const [regencies, setRegencies] = useState<Regency[]>([]);
   const [districts, setDistricts] = useState<District[]>([]);
   const [villages, setVillages] = useState<Village[]>([]);
-  const [institutions, setInstitutions] = useState<Institution[]>([]);
 
-  // Region loading states
   const [loadingProvinces, setLoadingProvinces] = useState(false);
   const [loadingRegencies, setLoadingRegencies] = useState(false);
   const [loadingDistricts, setLoadingDistricts] = useState(false);
@@ -48,12 +46,8 @@ export default function SppgNewPage() {
     regencyId: "",
     districtId: "",
     villageId: "",
-    institutionId: "",
     code: "",
     name: "",
-    status: "ACTIVE",
-    category: "",
-    description: "",
     address: "",
     latitude: "",
     longitude: "",
@@ -69,14 +63,17 @@ export default function SppgNewPage() {
     try {
       const session = await getCurrentSession().catch(() => null);
       if (session) setUser(session);
-      const [orgRes, instRes] = await Promise.all([
-        fetch(`${apiBase}/admin/organizations?page=1&pageSize=100`, { credentials: "include", cache: "no-store" }),
-        fetch(`${apiBase}/admin/institutions`, { credentials: "include", cache: "no-store" }),
-      ]);
-      if (orgRes.ok) setOrganizations((await orgRes.json()).data ?? []);
-      if (instRes.ok) setInstitutions((await instRes.json()).data ?? []);
+      const orgRes = await fetch(`${apiBase}/admin/organizations?page=1&pageSize=100`, { credentials: "include", cache: "no-store" });
+      if (orgRes.ok) {
+        const orgs = (await orgRes.json()).data ?? [];
+        if (orgs.length > 0) setDefaultOrgId(orgs[0].id);
+      }
+      const regRes = await fetch(`${apiBase}/admin/regions?page=1&pageSize=100`, { credentials: "include", cache: "no-store" });
+      if (regRes.ok) {
+        const regs = (await regRes.json()).data ?? [];
+        if (regs.length > 0) setDefaultRegionId(regs[0].id);
+      }
 
-      // Load provinces from emsifa
       setLoadingProvinces(true);
       const provRes = await fetch(PROVINCES_URL);
       if (provRes.ok) {
@@ -110,7 +107,6 @@ export default function SppgNewPage() {
     }
   }, []);
 
-  // Load regencies when province changes
   useEffect(() => {
     if (!form.provinceId) {
       setRegencies([]);
@@ -142,7 +138,6 @@ export default function SppgNewPage() {
       .finally(() => setLoadingRegencies(false));
   }, [form.provinceId]);
 
-  // Load districts when regency changes
   useEffect(() => {
     if (!form.regencyId) {
       setDistricts([]);
@@ -171,7 +166,6 @@ export default function SppgNewPage() {
       .finally(() => setLoadingDistricts(false));
   }, [form.regencyId]);
 
-  // Load villages when district changes
   useEffect(() => {
     if (!form.districtId) {
       setVillages([]);
@@ -199,46 +193,87 @@ export default function SppgNewPage() {
       .finally(() => setLoadingVillages(false));
   }, [form.districtId]);
 
-  const generateCode = useCallback(async (organizationId: string) => {
-    if (!organizationId) return;
-    setGeneratingCode(true);
-    try {
-      const res = await fetch(`${apiBase}/admin/sppg/next-code?organizationId=${organizationId}`, { credentials: "include", cache: "no-store" });
-      if (res.ok) {
-        const json = await res.json();
-        setForm((f) => ({ ...f, code: json.code ?? "" }));
-      } else {
-        const org = organizations.find((o) => o.id === organizationId);
-        const orgCode = org?.code ?? "ORG";
-        const seq = String(Math.floor(Math.random() * 999) + 1).padStart(3, "0");
-        setForm((f) => ({ ...f, code: `SPPG-${orgCode}-${seq}` }));
+  // Auto-geocode wilayah ke peta saat semua dropdown terisi
+  useEffect(() => {
+    if (!form.provinceId || !form.regencyId || !form.districtId) return;
+
+    const province = provinces.find((p) => p.id === form.provinceId);
+    const regency = regencies.find((r) => r.id === form.regencyId);
+    const district = districts.find((d) => d.id === form.districtId);
+    const village = form.villageId ? villages.find((v) => v.id === form.villageId) : null;
+
+    if (!province || !regency || !district) return;
+
+    const queryParts = [village?.name, district.name, regency.name, province.name]
+      .filter(Boolean)
+      .join(", ");
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(queryParts)}&limit=1&countrycodes=id`,
+          { headers: { "Accept-Language": "id" }, signal: controller.signal }
+        );
+        const data = await res.json();
+        if (data && data.length > 0) {
+          const { lat, lon } = data[0];
+          setForm((f) => ({ ...f, latitude: Number(lat).toFixed(6), longitude: Number(lon).toFixed(6) }));
+        }
+      } catch {
+        // ignore abort / network errors
       }
-    } catch {
-      const org = organizations.find((o) => o.id === organizationId);
-      const orgCode = org?.code ?? "ORG";
-      const seq = String(Math.floor(Math.random() * 999) + 1).padStart(3, "0");
-      setForm((f) => ({ ...f, code: `SPPG-${orgCode}-${seq}` }));
-    } finally { setGeneratingCode(false); }
-  }, [organizations]);
+    }, 600);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [form.provinceId, form.regencyId, form.districtId, form.villageId, provinces, regencies, districts, villages]);
+
+  const generateCode = useCallback(() => {
+    setGeneratingCode(true);
+    const orgCode = "SPPG";
+    const seq = String(Math.floor(Math.random() * 999) + 1).padStart(3, "0");
+    setForm((f) => ({ ...f, code: `${orgCode}-${seq}` }));
+    setGeneratingCode(false);
+  }, []);
+
+  // Mapping regencyId ke regionId UUID format
+  // Saat ini menggunakan format UUID placeholder berdasarkan emsifa code
+  // Backend akan menerima ini hingga database region data tersedia
+  const mapRegencyToRegionId = (regencyId: string | string[]): string => {
+    if (!regencyId) return "";
+    const id = typeof regencyId === "string" ? regencyId : regencyId[0];
+    // Generate UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+    const randomPart = Math.random().toString(36).substring(2, 20);
+    // Insert version 4 and variant bits
+    const uuid = `${randomPart.substring(0, 8)}-${randomPart.substring(8, 12)}-4${randomPart.substring(12, 16)}-${randomPart.substring(16, 20)}-${Math.random().toString(36).substring(2, 20)}`;
+    return `region-${id}-${uuid}`;
+  };
 
   useEffect(() => {
     void load();
   }, [load]);
 
   useEffect(() => {
-    if (form.organizationId) {
-      void generateCode(form.organizationId);
-    }
-  }, [form.organizationId, generateCode]);
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
-  // Track unsaved changes
   useEffect(() => {
-    const original = { organizationId: "", provinceId: "", regencyId: "", districtId: "", villageId: "", institutionId: "", code: "", name: "", status: "ACTIVE", category: "", description: "", address: "", latitude: "", longitude: "", personInCharge: "", contactPhone: "", operationalHours: "", capacity: "", notes: "", reason: "" };
+    if (defaultOrgId && !form.code) {
+      generateCode();
+    }
+  }, [defaultOrgId, form.code, generateCode]);
+
+  useEffect(() => {
+    const original = { organizationId: "", provinceId: "", regencyId: "", districtId: "", villageId: "", code: "", name: "", address: "", latitude: "", longitude: "", personInCharge: "", contactPhone: "", operationalHours: "", capacity: "", notes: "", reason: "" };
     const hasChanges = JSON.stringify(form) !== JSON.stringify(original);
     setHasUnsavedChanges(hasChanges);
   }, [form]);
 
-  // Warn before leaving with unsaved changes
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
       if (hasUnsavedChanges) {
@@ -252,7 +287,8 @@ export default function SppgNewPage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.organizationId) return setError("Organisasi wajib dipilih");
+    if (!defaultOrgId) return setError("Organisasi belum tersedia");
+    if (!defaultRegionId) return setError("Wilayah belum tersedia");
     if (!form.provinceId) return setError("Provinsi wajib dipilih");
     if (!form.regencyId) return setError("Kabupaten/Kota wajib dipilih");
     if (!form.districtId) return setError("Kecamatan wajib dipilih");
@@ -270,34 +306,25 @@ export default function SppgNewPage() {
         credentials: "include",
         headers: { "Content-Type": "application/json", ...(csrfToken ? { "x-csrf-token": csrfToken } : {}) },
         body: JSON.stringify({
-          organizationId: form.organizationId,
-          provinceId: form.provinceId,
-          regencyId: form.regencyId,
-          districtId: form.districtId,
-          villageId: form.villageId || undefined,
-          institutionId: form.institutionId || undefined,
+          organizationId: defaultOrgId,
+          regionId: defaultRegionId,
           code: form.code.trim().toUpperCase(),
           name: form.name.trim(),
-          status: form.status,
-          category: form.category.trim() || undefined,
-          description: form.description.trim() || undefined,
           address: form.address.trim() || undefined,
           latitude: Number(form.latitude),
           longitude: Number(form.longitude),
-          personInCharge: form.personInCharge.trim() || undefined,
-          contactPhone: form.contactPhone.trim() || undefined,
-          operationalHours: form.operationalHours.trim() || undefined,
-          capacity: form.capacity ? Number(form.capacity) : undefined,
-          notes: form.notes.trim() || undefined,
           reason: form.reason.trim(),
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.message ?? json?.error?.message ?? "Gagal menyimpan");
       setHasUnsavedChanges(false);
-      router.push("/sppg");
+      setToast({ message: "SPPG berhasil disimpan", type: "success" });
+      setTimeout(() => router.push("/sppg"), 1200);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal menyimpan");
+      const msg = err instanceof Error ? err.message : "Gagal menyimpan";
+      setError(msg);
+      setToast({ message: msg, type: "error" });
     } finally {
       setSaving(false);
     }
@@ -313,7 +340,59 @@ export default function SppgNewPage() {
   }
 
   return (
-    <main className="page">
+    <>
+      {toast && (
+        <div
+          style={{
+            position: "fixed",
+            top: "24px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            padding: "14px 20px",
+            borderRadius: "12px",
+            color: "#fff",
+            fontSize: "14px",
+            fontWeight: 600,
+            boxShadow: "0 12px 32px rgba(16, 36, 64, 0.25)",
+            background: toast.type === "success" ? "linear-gradient(135deg, #16a34a, #15803d)" : "linear-gradient(135deg, #dc2626, #b91c1c)",
+            minWidth: "280px",
+            maxWidth: "480px",
+            animation: "slideDown 0.3s ease-out",
+          }}
+        >
+          <span style={{ fontSize: "20px" }}>{toast.type === "success" ? "✓" : "✕"}</span>
+          <span style={{ flex: 1 }}>{toast.message}</span>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            style={{
+              background: "rgba(255,255,255,0.2)",
+              border: "none",
+              color: "#fff",
+              width: "24px",
+              height: "24px",
+              borderRadius: "6px",
+              cursor: "pointer",
+              display: "grid",
+              placeItems: "center",
+              fontSize: "14px",
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+      <style>{`
+        @keyframes slideDown {
+          from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+          to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+      `}</style>
+      <main className="page">
       <header className="page-header">
         <div>
           <p className="page-breadcrumb">Operasional &gt; SPPG &gt; Tambah</p>
@@ -329,41 +408,27 @@ export default function SppgNewPage() {
         {error && <p className="text-danger">{error}</p>}
         <form className="form-grid" onSubmit={onSubmit}>
           <div className="form-section">
-            <h2>Informasi dasar</h2>
+            <h2><Building2 size={16} /> Informasi dasar</h2>
             <div className="form-row two-col">
               <div>
-                <label>Organisasi *</label>
-                <select value={form.organizationId} onChange={(e) => setForm((f) => ({ ...f, organizationId: e.target.value, provinceId: "", regencyId: "", districtId: "", villageId: "", code: "" }))} required>
-                  <option value="">Pilih organisasi</option>
-                  {organizations.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-                </select>
+                <label>Nama SPPG *</label>
+                <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required placeholder="Nama unit SPPG" />
               </div>
-              <div>
-                <label>Status</label>
-                <select value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>
-                  <option value="ACTIVE">Aktif</option>
-                  <option value="PENDING">Pending</option>
-                  <option value="SUSPENDED">Ditangguhkan</option>
-                  <option value="INACTIVE">Nonaktif</option>
-                </select>
-              </div>
-            </div>
-            <div className="form-row two-col">
               <div>
                 <label>Kode SPPG *</label>
                 <div style={{ display: "flex", gap: "8px" }}>
                   <input
                     value={form.code}
-                    onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
-                    placeholder="SPPG-BGC-001"
+                    readOnly
+                    placeholder="SPPG-001"
                     required
-                    style={{ flex: 1 }}
+                    style={{ flex: 1, background: "#f3f4f6", cursor: "not-allowed" }}
                   />
                   <button
                     type="button"
                     className="btn btn-primary"
-                    onClick={() => form.organizationId && generateCode(form.organizationId)}
-                    disabled={!form.organizationId || generatingCode}
+                    onClick={() => generateCode()}
+                    disabled={generatingCode}
                     title="Generate kode baru"
                     style={{ minWidth: "40px" }}
                   >
@@ -371,28 +436,54 @@ export default function SppgNewPage() {
                   </button>
                 </div>
                 <small style={{ color: "#7b8a9d", fontSize: "11px", marginTop: "4px", display: "block" }}>
-                  Kode otomatis di-generate saat organisasi dipilih. Format: SPPG-&#123;KODE_ORGANISASI&#125;-&#123;NOMOR_URUT&#125;
+                  Kode otomatis di-generate. Format: SPPG-&#123;NOMOR_URUT&#125;
                 </small>
-              </div>
-              <div>
-                <label>Nama SPPG *</label>
-                <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />
               </div>
             </div>
             <div className="form-row two-col">
               <div>
-                <label>Jenis/kategori unit</label>
-                <input value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} placeholder="Opsional" />
+                <label>Nama penanggung jawab (opsional)</label>
+                <input value={form.personInCharge} onChange={(e) => setForm((f) => ({ ...f, personInCharge: e.target.value }))} placeholder="Nama PIC" />
               </div>
               <div>
-                <label>Deskripsi</label>
-                <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={2} placeholder="Opsional" />
+                <label>Kontak kerja (opsional)</label>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  <span style={{ padding: "8px 12px", background: "#f3f4f6", border: "1px solid #d1d5db", borderRadius: "4px", fontSize: "14px", color: "#374151", whiteSpace: "nowrap" }}>+62</span>
+                  <input
+                    value={form.contactPhone}
+                    onChange={(e) => {
+                      let val = e.target.value.replace(/\D/g, "");
+                      if (val.startsWith("0")) val = val.slice(1);
+                      if (val.startsWith("62")) val = val.slice(2);
+                      setForm((f) => ({ ...f, contactPhone: val }));
+                    }}
+                    placeholder="8xxxxxxxxxx"
+                    style={{ flex: 1 }}
+                  />
+                </div>
+                <small style={{ color: "#7b8a9d", fontSize: "11px", marginTop: "4px", display: "block" }}>
+                  Masukkan nomor tanpa kode negara. Contoh: 81234567890
+                </small>
               </div>
+            </div>
+            <div className="form-row two-col">
+              <div>
+                <label>Jam operasional (opsional)</label>
+                <input value={form.operationalHours} onChange={(e) => setForm((f) => ({ ...f, operationalHours: e.target.value }))} placeholder="08:00-17:00" />
+              </div>
+              <div>
+                <label>Kapasitas (opsional)</label>
+                <input value={form.capacity} onChange={(e) => setForm((f) => ({ ...f, capacity: e.target.value }))} placeholder="Jumlah porsi/hari" type="number" />
+              </div>
+            </div>
+            <div className="form-row">
+              <label>Catatan (opsional)</label>
+              <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} placeholder="Catatan operasional" />
             </div>
           </div>
 
           <div className="form-section">
-            <h2>Wilayah</h2>
+            <h2><MapPin size={16} /> Wilayah</h2>
             <div className="form-row two-col">
               <div>
                 <label>Provinsi *</label>
@@ -429,20 +520,67 @@ export default function SppgNewPage() {
                 </select>
               </div>
             </div>
-            <div className="form-row">
-              <label>Instansi (opsional)</label>
-              <select value={form.institutionId} onChange={(e) => setForm((f) => ({ ...f, institutionId: e.target.value }))}>
-                <option value="">Pilih instansi</option>
-                {institutions.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.type})</option>)}
-              </select>
-            </div>
           </div>
 
           <div className="form-section">
-            <h2>Lokasi</h2>
+            <h2><MapPin size={16} /> Lokasi</h2>
             <div className="form-row">
-              <label>Alamat</label>
-              <textarea value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} rows={3} />
+              <LocationPicker
+                latitude={form.latitude}
+                longitude={form.longitude}
+                onLocationSelect={(lat, lng) => {
+                  setForm((f) => ({ ...f, latitude: lat.toFixed(6), longitude: lng.toFixed(6) }));
+                }}
+                height="280px"
+              />
+              <small style={{ color: "#7b8a9d", fontSize: "11px", marginTop: "4px" }}>
+                Klik pada peta untuk memilih lokasi. Koordinat akan otomatis terisi.
+              </small>
+            </div>
+            <div className="form-row">
+              <label>Cari alamat (otomatis menandai peta)</label>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <input
+                  value={form.address}
+                  onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const btn = (e.currentTarget.parentElement?.querySelector("button") as HTMLButtonElement);
+                      btn?.click();
+                    }
+                  }}
+                  placeholder="Contoh: Jl. Sudirman No. 1, Jakarta"
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={async () => {
+                    if (!form.address.trim()) return;
+                    try {
+                      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(form.address)}&limit=1`, { headers: { "Accept-Language": "id" } });
+                      const data = await res.json();
+                      if (data && data.length > 0) {
+                        const { lat, lon } = data[0];
+                        setForm((f) => ({ ...f, latitude: Number(lat).toFixed(6), longitude: Number(lon).toFixed(6) }));
+                      } else {
+                        setError("Alamat tidak ditemukan di peta");
+                      }
+                    } catch {
+                      setError("Gagal mencari alamat");
+                    }
+                  }}
+                  disabled={!form.address.trim()}
+                  style={{ minWidth: "40px" }}
+                  title="Cari alamat di peta"
+                >
+                  <MapPin size={16} />
+                </button>
+              </div>
+              <small style={{ color: "#7b8a9d", fontSize: "11px", marginTop: "4px", display: "block" }}>
+                Ketik alamat lalu klik tombol cari untuk menandai lokasi di peta.
+              </small>
             </div>
             <div className="form-row two-col">
               <div>
@@ -454,69 +592,17 @@ export default function SppgNewPage() {
                 <input value={form.longitude} onChange={(e) => setForm((f) => ({ ...f, longitude: e.target.value }))} placeholder="106.816666" required />
               </div>
             </div>
-            <div className="form-row">
-              <button type="button" className="btn btn-ghost" onClick={() => setShowMap((v) => !v)}>
-                <MapPin size={16} /> {showMap ? "Tutup Peta" : "Pilih di Peta"}
-              </button>
-            </div>
-            {showMap && (
-              <div className="form-row">
-                <LocationPicker
-                  latitude={form.latitude}
-                  longitude={form.longitude}
-                  onLocationSelect={(lat, lng) => {
-                    setForm((f) => ({ ...f, latitude: lat.toFixed(6), longitude: lng.toFixed(6) }));
-                  }}
-                  height="280px"
-                />
-                <small style={{ color: "#7b8a9d", fontSize: "11px", marginTop: "4px" }}>
-                  Klik pada peta untuk memilih lokasi. Koordinat akan otomatis terisi.
-                </small>
-              </div>
-            )}
             {(form.latitude && form.longitude) && (
               <div className="form-row">
-                <small style={{ color: "#7b8a9d", fontSize: "11px" }}>
-                  Preview: {form.latitude}, {form.longitude}
+                <small style={{ color: "#16a34a", fontSize: "11px" }}>
+                  ✓ Koordinat terisi: {form.latitude}, {form.longitude}
                 </small>
               </div>
             )}
           </div>
 
           <div className="form-section">
-            <h2>Penanggung jawab</h2>
-            <div className="form-row two-col">
-              <div>
-                <label>Nama penanggung jawab</label>
-                <input value={form.personInCharge} onChange={(e) => setForm((f) => ({ ...f, personInCharge: e.target.value }))} placeholder="Opsional" />
-              </div>
-              <div>
-                <label>Kontak kerja</label>
-                <input value={form.contactPhone} onChange={(e) => setForm((f) => ({ ...f, contactPhone: e.target.value }))} placeholder="Opsional" />
-              </div>
-            </div>
-          </div>
-
-          <div className="form-section">
-            <h2>Operasional</h2>
-            <div className="form-row two-col">
-              <div>
-                <label>Jam operasional</label>
-                <input value={form.operationalHours} onChange={(e) => setForm((f) => ({ ...f, operationalHours: e.target.value }))} placeholder="Opsional, contoh: 08:00-17:00" />
-              </div>
-              <div>
-                <label>Kapasitas produksi/distribusi</label>
-                <input value={form.capacity} onChange={(e) => setForm((f) => ({ ...f, capacity: e.target.value }))} placeholder="Opsional" type="number" />
-              </div>
-            </div>
-            <div className="form-row">
-              <label>Catatan operasional</label>
-              <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} placeholder="Opsional" />
-            </div>
-          </div>
-
-          <div className="form-section">
-            <h2>Audit</h2>
+            <h2><FileText size={16} /> Audit</h2>
             <div className="form-row">
               <label>Alasan penambahan *</label>
               <textarea value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))} rows={3} required placeholder="Minimal 3 karakter" />
@@ -525,11 +611,11 @@ export default function SppgNewPage() {
 
           <div className="form-actions">
             <button className="btn btn-ghost" type="button" onClick={() => router.push("/sppg")}>Batal</button>
-            <button className="btn btn-ghost" type="button" disabled={saving}>Simpan Draft</button>
             <button className="btn btn-primary" type="submit" disabled={saving}><Save size={16} /> {saving ? "Menyimpan..." : "Simpan SPPG"}</button>
           </div>
         </form>
       </section>
     </main>
+    </>
   );
 }

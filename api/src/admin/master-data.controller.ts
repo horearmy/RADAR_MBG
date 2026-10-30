@@ -122,7 +122,7 @@ export class MasterDataController {
     @Req() request: AuthenticatedRequest,
     @Query() query: MasterDataListDto,
   ) {
-    return this.masterData.listVehicles(request.principal!, query);
+    return this.masterData.listVehicles(request.principal!, query, request.tenantContext ?? null);
   }
 
   @Post('vehicles')
@@ -140,7 +140,7 @@ export class MasterDataController {
     @Req() request: AuthenticatedRequest,
     @Query() query: MasterDataListDto,
   ) {
-    return this.masterData.listDrivers(request.principal!, query);
+    return this.masterData.listDrivers(request.principal!, query, request.tenantContext ?? null);
   }
 
   @Post('drivers')

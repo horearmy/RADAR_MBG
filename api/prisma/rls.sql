@@ -1,0 +1,5 @@
+-- Example RLS (optional, requires superuser). Enable per tenant-owned table.
+-- ALTER TABLE trips ENABLE ROW LEVEL SECURITY;
+-- CREATE POLICY trips_tenant_isolation ON trips
+--   USING (tenant_id = current_setting('app.current_tenant_id')::uuid);
+-- Repeat for drivers, vehicles, geofences, routes, exception_cases.

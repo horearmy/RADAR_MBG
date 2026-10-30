@@ -7,12 +7,20 @@ import {
 import type { Request } from 'express';
 import { AuthService } from './auth.service.js';
 import type { SessionPrincipal } from './auth.service.js';
+import { TenantContextResolver } from './tenant-context.resolver.js';
+import type { TenantContext } from './tenant-context.js';
 
-export type AuthenticatedRequest = Request & { principal?: SessionPrincipal };
+export type AuthenticatedRequest = Request & {
+  principal?: SessionPrincipal;
+  tenantContext?: TenantContext | null;
+};
 
 @Injectable()
 export class SessionGuard implements CanActivate {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly tenantContextResolver: TenantContextResolver,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
@@ -27,6 +35,7 @@ export class SessionGuard implements CanActivate {
     }
 
     request.principal = principal;
+    request.tenantContext = await this.tenantContextResolver.resolve(principal.id);
     return true;
   }
 }

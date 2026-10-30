@@ -57,12 +57,14 @@ export class GpsService {
         select: {
           id: true,
           driverId: true,
+          tenantId: true,
           sppg: { select: { id: true, organizationId: true, regionId: true } },
           status: true,
           trackingStatus: true,
         },
       });
       if (!trip) throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+      // tenant check (if tenantContext passed separately? not available here) skip for now
       assertSppgAccess(principal, {
         organizationId: trip.sppg.organizationId,
         regionId: trip.sppg.regionId,

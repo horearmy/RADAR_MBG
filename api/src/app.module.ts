@@ -7,9 +7,12 @@ import { TripModule } from './trips/trip.module.js';
 import { AdminModule } from './admin/admin.module.js';
 import { ExceptionModule } from './exceptions/exception.module.js';
 import { AlertModule } from './alerts/alert.module.js';
+import { TenantModule } from './tenant/tenant.module.js';
+import { RegistrationModule } from './registration/registration.module.js';
+import { PlatformModule } from './platform/platform.module.js';
 
 @Module({
-  imports: [DatabaseModule, AuthModule, TripModule, AdminModule, ExceptionModule, AlertModule],
+  imports: [DatabaseModule, AuthModule, TripModule, AdminModule, ExceptionModule, AlertModule, TenantModule, RegistrationModule, PlatformModule],
   controllers: [AppController],
   providers: [AppService],
 })

@@ -79,6 +79,41 @@ export default function SppgPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const pageSize = 25;
+  const [registrations, setRegistrations] = useState<any[]>([]);
+  const [selectedReg, setSelectedReg] = useState<any>(null);
+  const [provisionToken, setProvisionToken] = useState<string | null>(null);
+
+  async function loadRegistrations() {
+    try {
+      const res = await fetch(`${apiBase}/public/sppg-registrations`, { credentials: 'include', cache: 'no-store' });
+      if (res.ok) setRegistrations(await res.json());
+    } catch {}
+  }
+
+  async function regAction(id: string, action: 'approve' | 'reject' | 'request-revision' | 'provision') {
+    const csrfRes = await fetch(`${apiBase}/auth/csrf`, { credentials: 'include' });
+    const csrfJson = await csrfRes.json();
+    const url = action === 'provision'
+      ? `${apiBase}/public/sppg-registrations/${id}/provision`
+      : `${apiBase}/public/sppg-registrations/${id}/${action}`;
+    const method = action === 'provision' ? 'POST' : 'PATCH';
+    const res = await fetch(url, {
+      method, credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfJson.csrfToken },
+      body: action === 'provision' ? undefined : JSON.stringify({ approverId: user?.id ?? 'admin', notes: 'review' }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      alert(body?.message ?? 'Gagal memproses pendaftaran');
+      return;
+    }
+    if (body?.invitationToken) {
+      setProvisionToken(body.invitationToken);
+    } else if (body?.alreadyProvisioned) {
+      alert('Pendaftaran ini sudah diprovisi sebelumnya.');
+    }
+    await loadRegistrations();
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -95,6 +130,7 @@ export default function SppgPage() {
       if (!res.ok) throw new Error(json?.message ?? "Gagal memuat data SPPG");
       setRows(json.data ?? []);
       setTotalPages(json.pagination?.totalPages ?? 1);
+      void loadRegistrations();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal memuat data SPPG");
     } finally {
@@ -282,6 +318,36 @@ export default function SppgPage() {
               </article>
             </section>
 
+            <section className="panel" style={{ marginBottom: 16 }}>
+              <div className="panel-header">
+                <div>
+                  <h2>Pendaftaran SPPG (Menunggu Review)</h2>
+                  <p>{registrations.filter((r) => r.status === 'SUBMITTED').length} baru</p>
+                </div>
+              </div>
+              <div className="table-wrap" style={{ maxHeight: 320, overflowY: 'auto' }}>
+                <table>
+                  <thead><tr><th>NOMOR</th><th>NAMA</th><th>STATUS</th><th>AKSI</th></tr></thead>
+                  <tbody>
+                    {registrations.map((r) => (
+                      <tr key={r.id} style={{ background: r.status === 'APPROVED' ? '#e8f7f0' : r.status === 'REJECTED' ? '#fff0ef' : undefined }}>
+                        <td>{r.registrationNumber}</td>
+                        <td>{r.sppgName}</td>
+                        <td><span className={`pill ${r.status === 'APPROVED' ? 'pill-active' : r.status === 'REJECTED' ? 'pill-danger' : r.status === 'REVISION_REQUIRED' ? 'pill-warning' : 'pill-info'}`}>{r.status}</span></td>
+                        <td className="space-x-2">
+                          <button className="btn btn-ghost" onClick={() => setSelectedReg(r)}>Detail</button>
+                          <button className="btn btn-primary" onClick={() => regAction(r.id, 'approve')}>Setujui</button>
+                          <button className="btn btn-danger" onClick={() => regAction(r.id, 'reject')}>Tolak</button>
+                          <button className="btn btn-warning" onClick={() => regAction(r.id, 'request-revision')}>Revisi</button>
+                          {r.status === 'APPROVED' && <button className="btn btn-success" onClick={() => regAction(r.id, 'provision')}>Provision</button>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
             <section className="panel">
               <div className="panel-header">
                 <div className="search-group">
@@ -386,6 +452,21 @@ export default function SppgPage() {
           </div>
         </div>
       </section>
+
+    {provisionToken && (
+      <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(7,27,58,.45)', backdropFilter: 'blur(6px)', zIndex: 50 }}>
+        <div className="modal" style={{ width: 'min(560px, 92vw)', borderRadius: 14, background: '#fff', padding: 20, boxShadow: '0 24px 60px rgba(7,27,58,.25)' }}>
+          <h2 style={{ marginTop: 0 }}>Provision Berhasil</h2>
+          <p>Token undangan (sekali tampil). Salin dan kirim ke pendaftar:</p>
+          <textarea readOnly value={provisionToken} style={{ width: '100%', minHeight: 80 }} />
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button className="btn btn-primary" onClick={() => navigator.clipboard.writeText(provisionToken)}>Salin Token</button>
+            <button className="btn btn-ghost" onClick={() => setProvisionToken(null)}>Tutup</button>
+          </div>
+        </div>
+      </div>
+    )}
+
     </main>
   );
 }

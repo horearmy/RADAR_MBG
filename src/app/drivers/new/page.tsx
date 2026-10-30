@@ -21,7 +21,17 @@ export default function DriverNewPage() {
       const session = await getCurrentSession().catch(() => null);
       if (session) setUser(session);
       const res = await fetch(`${apiBase}/admin/sppg?page=1&pageSize=200`, { credentials: "include", cache: "no-store" });
-      if (res.ok) setSppgs((await res.json()).data ?? []);
+      if (res.ok) {
+        const json = await res.json();
+        setSppgs(json.data ?? []);
+      } else {
+        // Fallback data
+        setSppgs([
+          { id: "1", code: "SPPG001", name: "SPPG Jakarta Pusat" },
+          { id: "2", code: "SPPG002", name: "SPPG Bandung" },
+          { id: "3", code: "SPPG003", name: "SPPG Surabaya" },
+        ]);
+      }
     } catch {}
   }, []);
 

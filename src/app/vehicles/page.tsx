@@ -31,6 +31,7 @@ type Vehicle = {
   createdAt?: string;
   updatedAt?: string;
   sppg?: { id: string; code: string; name: string };
+  assignedDriver?: { id: string; code: string; name: string } | null;
 };
 
 type StatusFilter = "ALL" | "ACTIVE" | "MAINTENANCE" | "INACTIVE";

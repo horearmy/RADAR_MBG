@@ -5,6 +5,14 @@ import dynamic from "next/dynamic";
 import "leaflet/dist/leaflet.css";
 
 const L = typeof window !== "undefined" ? require("leaflet") : null;
+if (L) {
+  delete (L.Icon.Default.prototype as any)._getIconUrl;
+  L.Icon.Default.mergeOptions({
+    iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  });
+}
 
 interface LocationPickerProps {
   latitude?: number | string;
@@ -25,13 +33,13 @@ export function LocationPicker({ latitude, longitude, onLocationSelect, height =
     const initialLat = latitude ? Number(latitude) : -6.2;
     const initialLng = longitude ? Number(longitude) : 106.816666;
 
-    map.current = L.map(mapContainer.current).setView([initialLat, initialLng], 12);
+    map.current = L.map(mapContainer.current!).setView([initialLat, initialLng], 12);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: "© OpenStreetMap contributors",
     }).addTo(map.current);
 
-    map.current.on("click", (e: L.LeafletMouseEvent) => {
+    map.current!.on("click", (e: L.LeafletMouseEvent) => {
       const { lat, lng } = e.latlng;
       onLocationSelect(lat, lng);
 

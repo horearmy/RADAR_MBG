@@ -265,8 +265,11 @@ export class ExceptionService {
     }
 
     return this.prisma.db.$transaction(async (tx) => {
+      const tenant = await tx.tenant.findUnique({ where: { legacySppgId: sppg.id } });
+      if (!tenant) throw new Error('TENANT_NOT_FOUND');
       const created = await tx.exceptionCase.create({
         data: {
+          tenantId: tenant.id,
           organizationId: sppg.organizationId,
           regionId: sppg.regionId,
           sppgId: sppg.id,
@@ -325,8 +328,11 @@ export class ExceptionService {
     requestId = 'alert-worker',
   ) {
     return this.prisma.db.$transaction(async (tx) => {
+      const tenant = await tx.tenant.findUnique({ where: { legacySppgId: input.sppgId } });
+      if (!tenant) throw new Error('TENANT_NOT_FOUND');
       const created = await tx.exceptionCase.create({
         data: {
+          tenantId: tenant.id,
           organizationId: input.organizationId,
           regionId: input.regionId,
           sppgId: input.sppgId,

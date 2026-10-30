@@ -80,8 +80,12 @@ export class RouteService {
         where: { sppgId: input.sppgId, deliveryLocationId: input.deliveryLocationId, active: true },
         data: { active: false },
       });
+      const tenant = await tx.tenant.findUnique({ where: { legacySppgId: input.sppgId } });
+      if (!tenant) throw new NotFoundException({ code: 'TENANT_NOT_FOUND' });
+
       const route = await tx.route.create({
         data: {
+          tenantId: tenant.id,
           sppgId: input.sppgId,
           deliveryLocationId: input.deliveryLocationId,
           name: input.name,

@@ -221,7 +221,7 @@ export class ApprovalService {
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,
         include: {
-          requestedByUser: { select: { id: true, username: true, displayName: true } },
+          requester: { select: { id: true, username: true, displayName: true } },
           decisions: {
             orderBy: { decidedAt: 'asc' },
             include: { approver: { select: { id: true, username: true, displayName: true } } },
@@ -238,7 +238,7 @@ export class ApprovalService {
       : [];
     const sppgById = new Map(sppgs.map((sppg) => [sppg.id, sppg]));
     return {
-      data: data.map((request) => ({ ...request, target: sppgById.get(request.targetId) ?? null })),
+      data: data.map((request) => ({ ...request, requestedByUser: request.requester, target: sppgById.get(request.targetId) ?? null })),
       pagination: {
         page: query.page,
         pageSize: query.pageSize,

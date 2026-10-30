@@ -185,10 +185,11 @@ export class MasterDataService {
     return this.page(data, total, query);
   }
 
-  async listVehicles(principal: SessionPrincipal, query: MasterDataListDto) {
+  async listVehicles(principal: SessionPrincipal, query: MasterDataListDto, tenantContext?: { tenantId: string } | null) {
     const scope = await this.resolveScope(principal);
     const isDriver = principal.driverId !== null || principal.roles.some((role) => role.code === 'DRIVER');
     const where: Prisma.VehicleWhereInput = {
+      ...(tenantContext?.tenantId ? { tenantId: tenantContext.tenantId } : {}),
       ...(scope.global
         ? {}
         : isDriver
@@ -227,10 +228,11 @@ export class MasterDataService {
     return this.page(data, total, query);
   }
 
-  async listDrivers(principal: SessionPrincipal, query: MasterDataListDto) {
+  async listDrivers(principal: SessionPrincipal, query: MasterDataListDto, tenantContext?: { tenantId: string } | null) {
     const scope = await this.resolveScope(principal);
     const isDriver = principal.driverId !== null || principal.roles.some((role) => role.code === 'DRIVER');
     const where: Prisma.DriverWhereInput = {
+      ...(tenantContext?.tenantId ? { tenantId: tenantContext.tenantId } : {}),
       ...(scope.global
         ? {}
         : isDriver
@@ -425,9 +427,13 @@ export class MasterDataService {
     }
     this.assertSppgAccess(principal, sppg);
 
+    const tenant = await this.prisma.db.tenant.findUnique({ where: { legacySppgId: sppg.id } });
+    if (!tenant) throw new NotFoundException({ code: 'TENANT_NOT_FOUND' });
+
     return this.createWithAudit(
       (tx) => tx.vehicle.create({
         data: {
+          tenantId: tenant.id,
           organizationId: sppg.organizationId,
           sppgId: sppg.id,
           plateNumber: input.plateNumber.trim().toUpperCase(),
@@ -457,9 +463,13 @@ export class MasterDataService {
     }
     this.assertSppgAccess(principal, sppg);
 
+    const tenant = await this.prisma.db.tenant.findUnique({ where: { legacySppgId: sppg.id } });
+    if (!tenant) throw new NotFoundException({ code: 'TENANT_NOT_FOUND' });
+
     return this.createWithAudit(
       (tx) => tx.driver.create({
         data: {
+          tenantId: tenant.id,
           sppgId: sppg.id,
           code: input.code.trim().toUpperCase(),
           name: input.name.trim(),

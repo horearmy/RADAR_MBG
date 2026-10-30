@@ -41,7 +41,7 @@ export class TripController {
   @Get()
   @RequirePermissions('trip:read')
   list(@Req() request: AuthenticatedRequest, @Query() query: ListTripsDto) {
-    return this.trips.listTrips(request.principal!, query);
+    return this.trips.listTrips(request.principal!, query, request.tenantContext ?? null);
   }
 
   @Get(':id')
@@ -50,7 +50,7 @@ export class TripController {
     @Req() request: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return this.trips.getTrip(id, request.principal!);
+    return this.trips.getTrip(id, request.principal!, request.tenantContext ?? null);
   }
 
   @Post()
@@ -80,6 +80,7 @@ export class TripController {
       request.principal!,
       this.requireIdempotencyKey(idempotencyKey),
       this.requestId(request),
+      request.tenantContext ?? null,
     );
   }
 
@@ -97,6 +98,7 @@ export class TripController {
       request.principal!,
       this.requireIdempotencyKey(idempotencyKey),
       this.requestId(request),
+      request.tenantContext ?? null,
     );
   }
 
@@ -114,6 +116,7 @@ export class TripController {
       request.principal!,
       this.requireIdempotencyKey(idempotencyKey),
       this.requestId(request),
+      request.tenantContext ?? null,
     );
   }
 
@@ -131,6 +134,7 @@ export class TripController {
       request.principal!,
       this.requireIdempotencyKey(idempotencyKey),
       this.requestId(request),
+      request.tenantContext ?? null,
     );
   }
 
@@ -148,6 +152,7 @@ export class TripController {
       request.principal!,
       this.requireIdempotencyKey(idempotencyKey),
       this.requestId(request),
+      request.tenantContext ?? null,
     );
   }
 
@@ -163,6 +168,7 @@ export class TripController {
       request.principal!,
       this.requireIdempotencyKey(idempotencyKey),
       this.requestId(request),
+      request.tenantContext ?? null,
     );
   }
 
@@ -180,6 +186,7 @@ export class TripController {
       input,
       this.requireIdempotencyKey(idempotencyKey),
       this.requestId(request),
+      request.tenantContext ?? null,
     );
   }
 
