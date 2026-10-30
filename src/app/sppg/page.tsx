@@ -81,7 +81,8 @@ export default function SppgPage() {
   const pageSize = 25;
   const [registrations, setRegistrations] = useState<any[]>([]);
   const [selectedReg, setSelectedReg] = useState<any>(null);
-  const [provisionToken, setProvisionToken] = useState<string | null>(null);
+  const [provisionResult, setProvisionResult] = useState<any>(null);
+  const [alreadyMsg, setAlreadyMsg] = useState<string | null>(null);
 
   async function loadRegistrations() {
     try {
@@ -107,10 +108,10 @@ export default function SppgPage() {
       alert(body?.message ?? 'Gagal memproses pendaftaran');
       return;
     }
-    if (body?.invitationToken) {
-      setProvisionToken(body.invitationToken);
-    } else if (body?.alreadyProvisioned) {
-      alert('Pendaftaran ini sudah diprovisi sebelumnya.');
+    if (body?.alreadyProvisioned) {
+      setAlreadyMsg('Pendaftaran ini sudah diprovisi sebelumnya.');
+    } else if (action === 'provision') {
+      setProvisionResult(body);
     }
     await loadRegistrations();
   }
@@ -453,15 +454,71 @@ export default function SppgPage() {
         </div>
       </section>
 
-    {provisionToken && (
+    {provisionResult && (
       <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(7,27,58,.45)', backdropFilter: 'blur(6px)', zIndex: 50 }}>
-        <div className="modal" style={{ width: 'min(560px, 92vw)', borderRadius: 14, background: '#fff', padding: 20, boxShadow: '0 24px 60px rgba(7,27,58,.25)' }}>
-          <h2 style={{ marginTop: 0 }}>Provision Berhasil</h2>
-          <p>Token undangan (sekali tampil). Salin dan kirim ke pendaftar:</p>
-          <textarea readOnly value={provisionToken} style={{ width: '100%', minHeight: 80 }} />
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button className="btn btn-primary" onClick={() => navigator.clipboard.writeText(provisionToken)}>Salin Token</button>
-            <button className="btn btn-ghost" onClick={() => setProvisionToken(null)}>Tutup</button>
+        <div className="modal" style={{ width: 'min(560px, 92vw)', borderRadius: 14, background: '#fff', padding: 0, boxShadow: '0 24px 60px rgba(7,27,58,.25)', overflow: 'hidden' }}>
+          <div style={{ padding: 20, borderBottom: '1px solid var(--color-border)' }}>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 650 }}>Provisioning Berhasil</h2>
+            <p style={{ margin: '4px 0 0', color: '#62728a', fontSize: 12 }}>Tenant dan undangan aktivasi telah dibuat.</p>
+          </div>
+          <div style={{ padding: 20, display: 'grid', gap: 8, fontSize: 13 }}>
+            <div><strong>Tenant ID:</strong> {provisionResult.tenant?.id}</div>
+            <div><strong>Nama SPPG:</strong> {provisionResult.tenant?.name}</div>
+            <div><strong>Admin:</strong> {provisionResult.tenant?.tenantCode}</div>
+            <div><strong>Kanal:</strong> Email (dev: log)</div>
+            <div><strong>Pengiriman:</strong> SENT (dev)</div>
+            <div><strong>Kedaluwarsa:</strong> 24 jam</div>
+            <div><strong>Status tenant:</strong> {provisionResult.tenant?.status}</div>
+            <div><strong>Status akun:</strong> INVITED</div>
+            <div style={{ marginTop: 8, color: '#62728a', fontSize: 11 }}>Token dibuat oleh server, disimpan sebagai hash, dan hanya dapat digunakan satu kali.</div>
+          </div>
+          <div style={{ padding: 20, borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn btn-ghost" onClick={() => setProvisionResult(null)}>Tutup</button>
+            <button className="btn btn-primary" onClick={() => setProvisionResult(null)}>Lihat Detail Tenant</button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {alreadyMsg && (
+      <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(7,27,58,.45)', backdropFilter: 'blur(6px)', zIndex: 50 }}>
+        <div className="modal" style={{ width: 'min(480px, 92vw)', borderRadius: 14, background: '#fff', padding: 20, boxShadow: '0 24px 60px rgba(7,27,58,.25)' }}>
+          <h2 style={{ marginTop: 0 }}>Sudah Diprovisi</h2>
+          <p>{alreadyMsg}</p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+            <button className="btn btn-primary" onClick={() => setAlreadyMsg(null)}>Tutup</button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {selectedReg && (
+      <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(7,27,58,.45)', backdropFilter: 'blur(6px)', zIndex: 50 }}>
+        <div className="modal" style={{ width: 'min(640px, 92vw)', borderRadius: 14, background: '#fff', padding: 0, boxShadow: '0 24px 60px rgba(7,27,58,.25)', overflow: 'hidden' }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 650 }}>Detail Pendaftaran</h2>
+            <button onClick={() => setSelectedReg(null)} style={{ background: 'transparent', border: 0, cursor: 'pointer', fontSize: 18 }}>X</button>
+          </div>
+          <div style={{ padding: 20, display: 'grid', gap: 8, gridTemplateColumns: '1fr 1fr' }}>
+            <div><strong>Nomor:</strong> {selectedReg.registrationNumber}</div>
+            <div><strong>Status:</strong> {selectedReg.status}</div>
+            <div><strong>Nama SPPG:</strong> {selectedReg.sppgName}</div>
+            <div><strong>Kode Resmi:</strong> {selectedReg.officialCode ?? '-'}</div>
+            <div><strong>Wilayah:</strong> {selectedReg.provinceCode}/{selectedReg.regencyCode}/{selectedReg.districtCode}/{selectedReg.villageCode}</div>
+            <div><strong>Alamat:</strong> {selectedReg.fullAddress}</div>
+            <div><strong>PIC:</strong> {selectedReg.contactName}</div>
+            <div><strong>Email:</strong> {selectedReg.contactEmail}</div>
+            <div><strong>Telepon:</strong> {selectedReg.contactPhone}</div>
+            <div><strong>Submitted:</strong> {selectedReg.submittedAt}</div>
+            <div><strong>Reviewed:</strong> {selectedReg.reviewedAt ?? '-'}</div>
+            <div style={{ gridColumn: '1 / -1' }}><strong>Catatan:</strong> {selectedReg.reviewNotes ?? '-'}</div>
+          </div>
+          <div style={{ padding: '16px 20px', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn btn-primary" onClick={() => { regAction(selectedReg.id, 'approve'); setSelectedReg(null); }}>Setujui</button>
+            <button className="btn btn-danger" onClick={() => { regAction(selectedReg.id, 'reject'); setSelectedReg(null); }}>Tolak</button>
+            <button className="btn btn-warning" onClick={() => { regAction(selectedReg.id, 'request-revision'); setSelectedReg(null); }}>Revisi</button>
+            {selectedReg.status === 'APPROVED' && <button className="btn btn-success" onClick={() => { regAction(selectedReg.id, 'provision'); setSelectedReg(null); }}>Provision</button>}
+            <button className="btn btn-ghost" onClick={() => setSelectedReg(null)}>Tutup</button>
           </div>
         </div>
       </div>
