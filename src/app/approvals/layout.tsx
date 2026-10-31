@@ -7,9 +7,7 @@ export default function ApprovalsLayout({ children }: { children: React.ReactNod
       <Suspense fallback={<aside className="sidebar" />}>
         <AppSidebar />
       </Suspense>
-      <section className="main-column">
-        <div className="content-area">{children}</div>
-      </section>
+      <section className="main-column">{children}</section>
     </div>
   );
 }
