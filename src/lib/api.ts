@@ -750,9 +750,10 @@ export async function getDashboardData(user: SessionUser): Promise<DashboardData
   };
 }
 
-export async function getTrips(query: { status?: string; page?: number; pageSize?: number } = {}): Promise<Paginated<TripSummary>> {
+export async function getTrips(query: { status?: string; q?: string; page?: number; pageSize?: number } = {}): Promise<Paginated<TripSummary>> {
   const params = new URLSearchParams();
   if (query.status) params.set('status', query.status);
+  if (query.q) params.set('q', query.q);
   params.set('page', String(query.page ?? 1));
   params.set('pageSize', String(query.pageSize ?? 25));
   return apiGet<Paginated<TripSummary>>(`/trips?${params.toString()}`);

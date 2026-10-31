@@ -33,22 +33,44 @@ import {
 
 const TERMINAL_STATUSES = [TripStatus.COMPLETED, TripStatus.CANCELLED];
 
+const TRIP_STATUS_LABELS: Array<{ status: TripStatus; label: string }> = [
+  { status: TripStatus.DRAFT, label: 'draf' },
+  { status: TripStatus.SCHEDULED, label: 'terjadwal' },
+  { status: TripStatus.READY_TO_DEPART, label: 'siap berangkat' },
+  { status: TripStatus.IN_TRANSIT, label: 'dalam perjalanan' },
+  { status: TripStatus.ARRIVAL_DETECTED, label: 'kedatangan terdeteksi' },
+  { status: TripStatus.ARRIVAL_VERIFIED, label: 'kedatangan terverifikasi' },
+  { status: TripStatus.DELIVERY_IN_PROGRESS, label: 'penyaluran berlangsung' },
+  { status: TripStatus.DELIVERED, label: 'terkirim' },
+  { status: TripStatus.COMPLETED, label: 'selesai' },
+  { status: TripStatus.CANCELLED, label: 'dibatalkan' },
+  { status: TripStatus.EXCEPTION, label: 'perlu perhatian' },
+];
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 @Injectable()
 export class TripService {
   constructor(private readonly prisma: PrismaService) {}
 
   async listTrips(principal: SessionPrincipal, query: ListTripsDto, tenantContext?: { tenantId: string } | null) {
+    const search = query.q ? this.searchWhere(query.q) : null;
     const where: Prisma.TripWhereInput = {
-      ...this.scopeWhere(principal, tenantContext),
-      ...(query.status ? { status: query.status } : {}),
-      ...(query.from || query.to
-        ? {
-            plannedDepartureAt: {
-              ...(query.from ? { gte: new Date(query.from) } : {}),
-              ...(query.to ? { lte: new Date(query.to) } : {}),
-            },
-          }
-        : {}),
+      AND: [
+        this.scopeWhere(principal, tenantContext),
+        ...(query.status ? [{ status: query.status }] : []),
+        ...(query.from || query.to
+          ? [
+              {
+                plannedDepartureAt: {
+                  ...(query.from ? { gte: new Date(query.from) } : {}),
+                  ...(query.to ? { lte: new Date(query.to) } : {}),
+                },
+              },
+            ]
+          : []),
+        ...(search ? [{ OR: search }] : []),
+      ],
     };
     const skip = (query.page - 1) * query.pageSize;
     const [items, total] = await Promise.all([
@@ -885,6 +907,33 @@ export class TripService {
       regionId: sppg.regionId,
       sppgId: sppg.id,
     });
+  }
+
+  private searchWhere(term: string): Prisma.TripWhereInput[] {
+    const contains = { contains: term, mode: 'insensitive' as const };
+    const conditions: Prisma.TripWhereInput[] = [
+      { sppg: { is: { name: contains } } },
+      { sppg: { is: { code: contains } } },
+      { deliveryLocation: { is: { name: contains } } },
+      { deliveryLocation: { is: { code: contains } } },
+      { driver: { is: { name: contains } } },
+      { driver: { is: { code: contains } } },
+      { vehicle: { is: { plateNumber: contains } } },
+    ];
+
+    const normalized = term.toLowerCase();
+    const statuses = TRIP_STATUS_LABELS.filter(
+      (entry) => entry.label.includes(normalized) || entry.status.toLowerCase().replaceAll('_', ' ').includes(normalized),
+    ).map((entry) => entry.status);
+    if (statuses.length > 0) {
+      conditions.push({ status: { in: statuses } });
+    }
+
+    if (UUID_PATTERN.test(term)) {
+      conditions.push({ id: term });
+    }
+
+    return conditions;
   }
 
   private scopeWhere(principal: SessionPrincipal, tenantContext?: { tenantId: string } | null): Prisma.TripWhereInput {

@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsEnum,
   IsISO8601,
@@ -17,6 +17,16 @@ export class ListTripsDto {
   @IsOptional()
   @IsEnum(TripStatus)
   status?: TripStatus;
+
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    return trimmed.length === 0 ? undefined : trimmed;
+  })
+  @IsString()
+  @Length(1, 100)
+  q?: string;
 
   @IsOptional()
   @IsISO8601()
