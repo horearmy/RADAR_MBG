@@ -44,6 +44,7 @@ import {
   getDashboardData,
   getSessionRole,
   hasPermission,
+  hasPlatformPermission,
   type DashboardData,
   type ExceptionSummary,
   type SessionUser,
@@ -203,7 +204,7 @@ export default function Home() {
 
       if (!active) return;
       setSessionUser(user);
-      if (!hasPermission(user, "trip:read") && !hasPermission(user, "exception:read")) {
+      if (!hasPlatformPermission(user, "trip:read") && !hasPlatformPermission(user, "exception:read")) {
         setSessionState("forbidden");
         return;
       }

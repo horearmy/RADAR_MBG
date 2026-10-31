@@ -1,16 +1,23 @@
-// Negative cross-tenant tests (detail).
-// Requires test DB + seeding fixture (two tenants A/B with users).
-// Scenarios:
-// 1. Tenant A listTrips cannot return tenant B trips.
-// 2. Tenant A getTripById(B trip) -> 404.
-// 3. Tenant A createTrip with tenant B driver/vehicle -> 400/404.
-// 4. Tenant A cannot read driver/vehicle of tenant B.
-// 5. Tenant A cannot upload/download document of tenant B.
-// 6. Tenant suspended cannot perform normal ops.
-import { describe, it } from 'vitest';
+// Cross-tenant negative tests (e2e skeleton).
+// Requires seeded DB (run seed-cross-tenant.ts) and two tenant admins.
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
+import request from 'supertest';
+import { AppModule } from './../src/app.module.js';
 
-describe('cross-tenant negative (detail)', () => {
-  it('placeholder', () => {
-    // implement with auth + seeding harness
+describe('cross-tenant negative (e2e)', () => {
+  let app: INestApplication;
+
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = moduleFixture.createNestApplication();
+    await app.init();
+  });
+
+  afterAll(async () => { await app.close(); });
+
+  it('tenant A cannot read tenant B driver (placeholder)', async () => {
+    // TODO: login as tenant A, fetch /admin/drivers with tenant B driver id, expect 404/403.
+    expect(true).toBe(true);
   });
 });

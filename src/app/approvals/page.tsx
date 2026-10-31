@@ -226,6 +226,7 @@ export default function ApprovalsPage() {
 
   return (
     <div className="approval-page">
+      {/* MARKER: updated approvals page */}
       <header className="topbar">
         <div className="breadcrumb"><span>Workspace</span><strong>Persetujuan</strong></div>
         <div className="topbar-actions"><HeaderAccount user={user} /></div>

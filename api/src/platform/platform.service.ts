@@ -5,6 +5,10 @@ import { PrismaService } from '../database/prisma.service.js';
 export class PlatformService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async listTenants() {
+    return this.prisma.db.tenant.findMany({ orderBy: { createdAt: 'desc' }, take: 100 });
+  }
+
   async summary(filters?: { tenantId?: string; from?: string; to?: string }) {
     const tripWhere: any = {};
     if (filters?.tenantId) tripWhere.tenantId = filters.tenantId;

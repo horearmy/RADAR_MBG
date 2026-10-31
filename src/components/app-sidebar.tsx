@@ -23,7 +23,7 @@ import {
   Users,
   Utensils,
 } from "lucide-react";
-import { getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
+import { getCurrentSession, hasPermission, hasPlatformPermission, type SessionUser } from "@/lib/api";
 
 type NavItem = { label: string; icon: typeof LayoutDashboard; href?: string; permissions?: string[] };
 
@@ -35,7 +35,6 @@ const navigation: NavItem[] = [
 ];
 
 const management: NavItem[] = [
-  { label: "SPPG", icon: Utensils, href: "/sppg", permissions: ["master:read", "sppg:read", "organization:read"] },
   { label: "Driver", icon: Users, href: "/drivers", permissions: ["master:read"] },
   { label: "Kendaraan", icon: Truck, href: "/vehicles", permissions: ["master:read"] },
 ];
@@ -74,12 +73,12 @@ export function AppSidebar() {
 
   if (!user) return <aside className="sidebar" aria-busy="true" />;
 
-  const canReadAudit = hasPermission(user, "audit:read");
-  const canManageUsers = hasPermission(user, "admin:manage_users");
-  const canAccessApprovals = hasPermission(user, "sppg:manage") || hasPermission(user, "approval:review");
+  const canReadAudit = hasPlatformPermission(user, "audit:read");
+  const canManageUsers = hasPlatformPermission(user, "admin:manage_users");
+  const canAccessApprovals = hasPlatformPermission(user, "sppg:manage") || hasPlatformPermission(user, "approval:review");
   const canDrive = hasPermission(user, "trip:start") && hasPermission(user, "trip:location:update");
-  const canAccessGeofences = hasPermission(user, "geofence:read") || hasPermission(user, "geofence:manage");
-  const canManageAdmin = hasPermission(user, "admin:manage_users") || hasPermission(user, "admin:manage_roles");
+  const canAccessGeofences = hasPlatformPermission(user, "geofence:read") || hasPlatformPermission(user, "geofence:manage");
+  const canManageAdmin = hasPlatformPermission(user, "admin:manage_users") || hasPlatformPermission(user, "admin:manage_roles");
 
   const canAccessNav = (item: NavItem) => !item.permissions || item.permissions.some((permission) => hasPermission(user, permission));
 
@@ -104,6 +103,11 @@ export function AppSidebar() {
           </Link>
         ))}
         <p className="nav-caption nav-caption-spaced">OPERASIONAL</p>
+        {hasPlatformPermission(user, "sppg:read") || hasPlatformPermission(user, "master:read") ? (
+          <Link className={`nav-item nav-link${isNavActive("/sppg", pathname) ? " nav-active" : ""}`} href="/sppg">
+            <Utensils size={17} strokeWidth={1.8} /><span>SPPG</span>
+          </Link>
+        ) : null}
         {management.filter(canAccessNav).map(({ label, icon: Icon, href }) =>
           href ? (
             <Link key={label} className={`nav-item nav-link${isNavActive(href, pathname) ? " nav-active" : ""}`} href={href}>
