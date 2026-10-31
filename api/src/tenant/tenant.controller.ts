@@ -55,6 +55,16 @@ export class TenantController {
     return this.service.listAudit(req.tenantContext!.tenantId);
   }
 
+  @Post('users/bulk-role')
+  bulkRole(@Req() req: AuthenticatedRequest, @Body() body: { userIds: string[]; role: 'TENANT_ADMIN' | 'TENANT_OPERATOR' | 'TENANT_DRIVER' | 'TENANT_VIEWER' }) {
+    return this.service.bulkAssignRole(req.tenantContext!.tenantId, body.userIds, body.role);
+  }
+
+  @Post('users/bulk-status')
+  bulkStatus(@Req() req: AuthenticatedRequest, @Body() body: { userIds: string[]; status: 'ACTIVE' | 'SUSPENDED' | 'INACTIVE' }) {
+    return this.service.bulkUpdateStatus(req.tenantContext!.tenantId, body.userIds, body.status);
+  }
+
   @Get('users')
   listUsers(@Req() req: AuthenticatedRequest) {
     return this.service.listUsers(req.tenantContext!.tenantId);

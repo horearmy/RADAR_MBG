@@ -81,6 +81,7 @@ export default function TenantTripsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState("");
+  const [toast, setToast] = useState<string | null>(null);
   const [form, setForm] = useState<TripFormState>({ sppgId: '', deliveryLocationId: '', vehicleId: '', driverId: '', plannedDepartureAt: '', plannedArrivalAt: '', plannedQuantity: '100' });
   const [sppgOptions, setSppgOptions] = useState<SppgSummary[] | null>(null);
   const [resources, setResources] = useState<TripResourceOptions | null>(null);
@@ -230,6 +231,7 @@ export default function TenantTripsPage() {
         plannedQuantity,
       });
       closeCreate();
+      setToast('Perjalanan berhasil dibuat.');
       await load();
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Gagal membuat perjalanan");
@@ -251,6 +253,7 @@ export default function TenantTripsPage() {
 
   return (
     <div className="p-6">
+      {toast && <div style={{ position: 'fixed', top: 16, right: 16, background: '#16a34a', color: '#fff', padding: '12px 16px', borderRadius: 8, zIndex: 100, boxShadow: '0 4px 12px rgba(0,0,0,.15)' }}>{toast}</div>}
       <div className="page-heading">
         <div>
           <div className="eyebrow"><span className="eyebrow-line" />MANAJEMEN</div>

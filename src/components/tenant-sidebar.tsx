@@ -39,15 +39,7 @@ export function TenantSidebar() {
             <Icon size={17} strokeWidth={1.8} /><span>{label}</span>
           </Link>
         ))}
-        <p className="nav-caption nav-caption-spaced">TAUTAN</p>
-        <div className="app-link-grid">
-          {links.map(({ href, label, icon: Icon }) => (
-            <Link key={href} href={href} className={`app-link-card${pathname === href ? ' app-link-card-active' : ''}`}>
-              <Icon size={24} strokeWidth={1.6} />
-              <span>{label}</span>
-            </Link>
-          ))}
-        </div>
+        {/* Tautan dipindahkan ke halaman utama */}
       </nav>
     </aside>
   );

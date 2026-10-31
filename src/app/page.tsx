@@ -452,6 +452,7 @@ export default function Home() {
               <Link href="/acceptinvitation" className="app-link-card"><KeyRound size={20} /><span>Aktivasi Akun</span></Link>
               <Link href="/reporting" className="app-link-card"><BarChart3 size={20} /><span>Laporan</span></Link>
               <Link href="/tenant" className="app-link-card"><Building2 size={20} /><span>Workspace Tenant</span></Link>
+              <Link href="/driver" className="app-link-card"><Navigation size={20} /><span>Mode Pengemudi</span></Link>
             </div>
           </section>
           <footer className="page-footer"><span><span className="footer-dot" /> RADAR MBG <i>·</i> Data operasional</span><span>Zona waktu Asia/Jakarta <i>·</i> Dimuat {formatClock(dashboard.refreshedAt)} WIB</span></footer>

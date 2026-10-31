@@ -26,7 +26,7 @@ import {
   Users,
   Utensils,
 } from "lucide-react";
-import { getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
+import { getCurrentSession, hasPermission, hasPlatformPermission, type SessionUser } from "@/lib/api";
 
 const apiBase = process.env.NEXT_PUBLIC_RADAR_API_URL ?? "http://localhost:4000/api/v1";
 
@@ -122,6 +122,11 @@ export default function SppgPage() {
     try {
       const sessionRes = await getCurrentSession().catch(() => null);
       if (sessionRes) setUser(sessionRes);
+      if (sessionRes && !hasPlatformPermission(sessionRes, 'sppg:read') && !hasPlatformPermission(sessionRes, 'master:read')) {
+        setError('Akses ke halaman SPPG platform tidak diizinkan.');
+        setLoading(false);
+        return;
+      }
       const params = new URLSearchParams();
       params.set("page", String(page));
       params.set("pageSize", String(pageSize));
@@ -256,7 +261,7 @@ export default function SppgPage() {
                 <button className="btn btn-ghost" onClick={() => load()} disabled={loading}>
                   <RefreshCw size={16} /> Muat ulang
                 </button>
-                {hasPermission(user, "master:manage") && (
+                {hasPlatformPermission(user, "master:manage") && (
                   <Link className="btn btn-primary" href="/sppg/new">
                     <Plus size={16} /> Tambah SPPG
                   </Link>

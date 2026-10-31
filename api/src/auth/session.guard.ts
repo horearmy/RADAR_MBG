@@ -35,7 +35,11 @@ export class SessionGuard implements CanActivate {
     }
 
     request.principal = principal;
-    request.tenantContext = await this.tenantContextResolver.resolve(principal.id);
+    const tenantContext = await this.tenantContextResolver.resolve(principal.id);
+    request.tenantContext = tenantContext;
+    if (tenantContext) {
+      request.principal.tenantRole = tenantContext.role;
+    }
     return true;
   }
 }

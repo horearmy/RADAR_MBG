@@ -115,28 +115,13 @@ export function AppSidebar() {
             </button>
           ),
         )}
-        <p className="nav-caption nav-caption-spaced">TAUTAN</p>
-        <div className="app-link-grid">
-          {links.filter(canAccessNav).map(({ label, icon: Icon, href }) => (
-            <Link key={label} href={href ?? "/"} className={`app-link-card${isNavActive(href, pathname) ? " app-link-card-active" : ""}`}>
-              <Icon size={28} strokeWidth={1.6} />
-              <span>{label}</span>
-            </Link>
-          ))}
-        </div>
+        {/* Tautan dipindahkan ke halaman utama */}
         {canReadAudit && <Link className="nav-item nav-link" href="/audit"><Activity size={17} strokeWidth={1.8} /><span>Audit explorer</span></Link>}
         {canManageUsers && <Link className="nav-item nav-link" href="/users"><Users size={17} strokeWidth={1.8} /><span>Administrasi akun</span></Link>}
         {canAccessGeofences && <Link className="nav-item nav-link" href="/geofences"><MapPinned size={17} strokeWidth={1.8} /><span>Geofence</span></Link>}
         {user.mfaEnabled === false && <Link className="nav-item nav-link" href="/security/mfa"><ShieldCheck size={17} strokeWidth={1.8} /><span>Daftarkan MFA</span></Link>}
         {canAccessApprovals && <Link className="nav-item nav-link" href="/approvals"><ClipboardCheck size={17} strokeWidth={1.8} /><span>Persetujuan</span></Link>}
-        {canDrive && (
-          <>
-            <p className="nav-caption nav-caption-spaced">PENGEMUDI</p>
-            <Link className="nav-item nav-link" href="/driver">
-              <Navigation size={17} strokeWidth={1.8} /><span>Mode pengemudi</span>
-            </Link>
-          </>
-        )}
+        {/* Mode pengemudi dipindahkan ke Tautan Cepat */}
       </nav>
 
       <div className="sidebar-bottom">

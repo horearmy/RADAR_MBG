@@ -74,8 +74,22 @@ export class RegistrationService {
       const tenantCode = `SPPG-${reg.registrationNumber}`;
       let tenant = await this.prisma.db.tenant.findUnique({ where: { tenantCode } });
       if (!tenant) {
+        const org = await this.prisma.db.organization.findFirst();
+        const region = await this.prisma.db.region.findFirst({ where: org ? { organizationId: org.id } : undefined });
+        const sppg = await this.prisma.db.sppg.create({
+          data: {
+            organizationId: org!.id,
+            regionId: region!.id,
+            code: reg.registrationNumber.slice(0, 32),
+            name: reg.sppgName,
+            address: reg.fullAddress,
+            latitude: reg.latitude,
+            longitude: reg.longitude,
+            status: 'ACTIVE',
+          },
+        });
         tenant = await this.prisma.db.tenant.create({
-          data: { tenantCode, name: reg.sppgName, status: 'ACTIVE' },
+          data: { tenantCode, name: reg.sppgName, status: 'ACTIVE', legacySppgId: sppg.id },
         });
       }
     await this.prisma.db.sppgProfile.upsert({

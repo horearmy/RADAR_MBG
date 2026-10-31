@@ -225,16 +225,15 @@ export default function ApprovalsPage() {
   if (!canReview && !canRequest) return <main className="session-state"><span className="session-error-mark">!</span><h1>Akses terbatas</h1><p>{error}</p><Link className="session-retry" href="/">Kembali ke dashboard</Link></main>;
 
   return (
-    <main className="approval-page">
-      <header className="approval-topbar">
-        <Link href="/" className="approval-back"><ArrowLeft size={15} /> Dashboard</Link>
-        <div className="approval-brand"><span className="brand-mark"><span /><span /><span /></span><strong>RADAR<span>MBG</span></strong></div>
-        <HeaderAccount user={user} />
+    <div className="approval-page">
+      <header className="topbar">
+        <div className="breadcrumb"><span>Workspace</span><strong>Persetujuan</strong></div>
+        <div className="topbar-actions"><HeaderAccount user={user} /></div>
       </header>
-      <div className="approval-content">
-        <div className="approval-heading">
+      <div className="content-area">
+        <div className="page-heading">
           <div className="approval-heading-icon"><ClipboardCheck size={19} /></div>
-          <div><div className="eyebrow"><span className="eyebrow-line" />MODEL B · PEMISAHAN TUGAS</div><h1>Persetujuan</h1><p>Perubahan status SPPG menunggu keputusan pihak yang berbeda dari pemohon.</p></div>
+          <div><div className="eyebrow"><span className="eyebrow-line" />MODEL B · PEMISAHAN TUGAS</div><h1>Persetujuan Perubahan Status SPPG</h1><p>Daftar permohonan perubahan status SPPG (suspend/aktifkan) yang menunggu persetujuan. Pendaftaran SPPG baru dikelola di halaman SPPG.</p></div>
           <button className="approval-refresh" onClick={() => setReloadKey((value) => value + 1)} type="button"><RefreshCw size={14} /> Muat ulang</button>
         </div>
 
@@ -249,15 +248,21 @@ export default function ApprovalsPage() {
               <label className="approval-field"><span>Status yang diminta</span><select required disabled={!selectedSppg} onChange={(event) => setTargetStatus(event.target.value)} value={targetStatus}><option value="">Pilih status</option>{["PENDING", "ACTIVE", "SUSPENDED", "ARCHIVED"].filter((status) => status !== selectedSppg?.status).map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}</select></label>
               <label className="approval-field approval-reason-field"><span>Alasan wajib</span><textarea maxLength={2000} minLength={3} onChange={(event) => setRequestReason(event.target.value)} placeholder="Jelaskan kebutuhan dan dampak perubahan status" required value={requestReason} /></label>
               {!sppgs.length && <p className="approval-empty-inline">Tidak ada SPPG dalam scope yang dapat dipilih.</p>}
-              <button className="approval-button approve" disabled={busy === "request" || !selectedSppg || !targetStatus || requestReason.trim().length < 3} type="submit">{busy === "request" ? "Mengirim…" : "Kirim untuk persetujuan"}</button>
+              <button className="btn btn-primary" disabled={busy === "request" || !selectedSppg || !targetStatus || requestReason.trim().length < 3} type="submit">{busy === "request" ? "Mengirim…" : "Kirim untuk persetujuan"}</button>
             </form>
           </section>
         )}
 
+        <section className="kpi-grid" style={{ marginBottom: 16 }}>
+          <article className="kpi-card"><div className="kpi-label">Menunggu</div><div className="kpi-value">{inbox.length}</div></article>
+          <article className="kpi-card"><div className="kpi-label">Disetujui</div><div className="kpi-value">{mine.filter((r) => r.status === 'APPROVED').length}</div></article>
+          <article className="kpi-card"><div className="kpi-label">Ditolak</div><div className="kpi-value">{mine.filter((r) => r.status === 'REJECTED').length}</div></article>
+          <article className="kpi-card"><div className="kpi-label">Total</div><div className="kpi-value">{inbox.length + mine.length}</div></article>
+        </section>
         {canReview && <section className="approval-section"><div className="approval-section-heading"><div><h2>Inbox approver</h2><p>{inbox.length} permintaan pada halaman ini</p></div><span className="approval-count">{inbox.length}</span></div>{inbox.length ? <div className="approval-list">{inbox.map((request) => <ApprovalCard key={request.id} request={request} reviewer busy={busy === request.id} decisionReason={decisionReasons[request.id] ?? ""} onReasonChange={(value) => setDecisionReasons((current) => ({ ...current, [request.id]: value }))} onDecision={(decision) => void submitDecision(request, decision)} />)}</div> : <div className="approval-empty"><ClipboardCheck size={20} /><strong>Tidak ada permintaan menunggu</strong><span>Permintaan dalam scope akan muncul di sini.</span></div>}</section>}
 
         {canRequest && <section className="approval-section"><div className="approval-section-heading"><div><h2>Permintaan saya</h2><p>Status dan jejak keputusan permintaan yang Anda ajukan.</p></div></div>{mine.length ? <div className="approval-list">{mine.map((request) => <ApprovalCard key={request.id} request={request} reviewer={false} busy={false} decisionReason="" onReasonChange={() => undefined} onDecision={() => undefined} />)}</div> : <div className="approval-empty"><ClipboardCheck size={20} /><strong>Belum ada permintaan</strong><span>Permintaan yang dikirim akan tampil di sini.</span></div>}</section>}
       </div>
-    </main>
+    </div>
   );
 }

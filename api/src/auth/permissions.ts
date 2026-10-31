@@ -13,11 +13,41 @@ export function RequirePermissions(...permissions: string[]) {
   return SetMetadata(REQUIRED_PERMISSIONS, permissions);
 }
 
+const TENANT_ROLE_PERMISSIONS: Record<string, string[]> = {
+  TENANT_ADMIN: [
+    'trip:read', 'trip:create', 'trip:schedule', 'trip:dispatch', 'trip:manage', 'trip:start', 'trip:location:update', 'trip:track:read',
+    'master:read', 'master:manage', 'sppg:read', 'sppg:manage', 'organization:read',
+    'geofence:read', 'geofence:manage',
+    'exception:read',
+    'report:read',
+    'tenant:read',
+  ],
+  TENANT_OPERATOR: [
+    'trip:read', 'trip:create', 'trip:schedule', 'trip:dispatch', 'trip:manage', 'trip:track:read',
+    'master:read', 'sppg:read',
+    'geofence:read',
+    'exception:read',
+    'report:read',
+    'tenant:read',
+  ],
+  TENANT_DRIVER: [
+    'trip:read', 'trip:start', 'trip:location:update', 'trip:track:read',
+  ],
+  TENANT_VIEWER: [
+    'trip:read', 'trip:track:read',
+    'master:read', 'sppg:read',
+    'report:read',
+    'tenant:read',
+  ],
+};
+
 export function hasPermission(
   principal: SessionPrincipal,
   permission: string,
 ): boolean {
-  return principal.roles.some((role) => role.permissions.includes(permission));
+  if (principal.roles.some((role) => role.permissions.includes(permission))) return true;
+  if (principal.tenantRole && TENANT_ROLE_PERMISSIONS[principal.tenantRole]?.includes(permission)) return true;
+  return false;
 }
 
 export function canAccessSppg(

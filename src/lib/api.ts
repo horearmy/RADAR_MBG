@@ -665,7 +665,14 @@ export function changeTripDestination(
   );
 }
 
-export function hasPermission(user: SessionUser | null | undefined, permission: string): boolean {
+const TENANT_ROLE_PERMISSIONS: Record<string, string[]> = {
+  TENANT_ADMIN: ['trip:read', 'trip:create', 'trip:schedule', 'trip:dispatch', 'trip:manage', 'trip:start', 'trip:location:update', 'trip:track:read', 'master:read', 'master:manage', 'sppg:read', 'sppg:manage', 'organization:read', 'geofence:read', 'geofence:manage', 'exception:read', 'report:read', 'tenant:read'],
+  TENANT_OPERATOR: ['trip:read', 'trip:create', 'trip:schedule', 'trip:dispatch', 'trip:manage', 'trip:track:read', 'master:read', 'sppg:read', 'geofence:read', 'exception:read', 'report:read', 'tenant:read'],
+  TENANT_DRIVER: ['trip:read', 'trip:start', 'trip:location:update', 'trip:track:read'],
+  TENANT_VIEWER: ['trip:read', 'trip:track:read', 'master:read', 'sppg:read', 'report:read', 'tenant:read'],
+};
+
+export function hasPlatformPermission(user: SessionUser | null | undefined, permission: string): boolean {
   if (!user) return false;
   const roles = (user as any)?.roles;
   if (!Array.isArray(roles)) return false;
@@ -675,6 +682,22 @@ export function hasPermission(user: SessionUser | null | undefined, permission: 
     const perms = role?.permissions;
     if (Array.isArray(perms) && perms.includes(permission)) return true;
   }
+  return false;
+}
+
+export function hasPermission(user: SessionUser | null | undefined, permission: string): boolean {
+  if (!user) return false;
+  const roles = (user as any)?.roles;
+  if (Array.isArray(roles)) {
+    for (let i = 0; i < roles.length; i++) {
+      const role = roles[i];
+      if (!role) continue;
+      const perms = role?.permissions;
+      if (Array.isArray(perms) && perms.includes(permission)) return true;
+    }
+  }
+  const tenantRole = (user as any)?.tenantRole;
+  if (tenantRole && TENANT_ROLE_PERMISSIONS[tenantRole]?.includes(permission)) return true;
   return false;
 }
 

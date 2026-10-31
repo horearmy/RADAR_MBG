@@ -1,11 +1,13 @@
 'use client';
 import { useState } from 'react';
+import { KeyRound, Eye, EyeOff } from 'lucide-react';
 const apiBase = process.env.NEXT_PUBLIC_RADAR_API_URL ?? 'http://localhost:4000/api/v1';
 
 export default function AcceptInvitationPage() {
   const [token, setToken] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [showPass, setShowPass] = useState(false);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -34,21 +36,32 @@ export default function AcceptInvitationPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F4F7FB', padding: 24 }}>
-      <div style={{ width: '100%', maxWidth: 480, background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 12px 40px rgba(7,27,58,.12)' }}>
-        <h1 style={{ margin: '0 0 8px', fontSize: 24, fontWeight: 650, color: '#15243a' }}>Terima Undangan</h1>
-        <p style={{ margin: '0 0 16px', color: '#62728a', fontSize: 13 }}>Masukkan token undangan dan buat password untuk mengaktifkan akun Anda.</p>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #F4F7FB, #EAF2FF)', padding: 24 }}>
+      <div style={{ width: '100%', maxWidth: 480, background: '#fff', borderRadius: 14, padding: 32, boxShadow: '0 20px 60px rgba(7,27,58,.12)', animation: 'fadeIn .3s ease' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+          <div style={{ width: 56, height: 56, borderRadius: 14, background: '#EAF2FF', display: 'grid', placeItems: 'center', color: '#1677FF' }}>
+            <KeyRound size={28} />
+          </div>
+        </div>
+        <h1 style={{ margin: '0 0 8px', fontSize: 24, fontWeight: 650, color: '#15243a', textAlign: 'center' }}>Aktivasi Akun</h1>
+        <p style={{ margin: '0 0 20px', color: '#62728a', fontSize: 13, textAlign: 'center' }}>Masukkan token undangan dan buat password untuk mengaktifkan akun Anda.</p>
         <form onSubmit={submit} style={{ display: 'grid', gap: 12 }}>
-          <textarea className="date-button" placeholder="Token undangan" value={token} onChange={(e) => setToken(e.target.value)} required rows={3} />
-          <input type="password" className="date-button" placeholder="Password baru (min. 8 karakter)" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <textarea className="date-button" placeholder="Token undangan" value={token} onChange={(e) => setToken(e.target.value)} required rows={3} style={{ minHeight: 80, resize: 'vertical' }} />
+          <div style={{ position: 'relative' }}>
+            <input type={showPass ? 'text' : 'password'} className="date-button" placeholder="Password baru (min. 8 karakter)" value={password} onChange={(e) => setPassword(e.target.value)} required style={{ paddingRight: 40 }} />
+            <button type="button" onClick={() => setShowPass(!showPass)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 0, cursor: 'pointer', color: '#62728a' }}>
+              {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
           <input type="password" className="date-button" placeholder="Konfirmasi password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
-          <button type="submit" disabled={saving} className="export-button" style={{ justifyContent: 'center' }}>
+          <button type="submit" disabled={saving} className="export-button" style={{ justifyContent: 'center', minHeight: 42, fontSize: 13, fontWeight: 650 }}>
             {saving ? 'Memproses...' : 'Aktifkan Akun'}
           </button>
-          {error && <p style={{ color: '#ef4444', margin: 0 }}>{error}</p>}
-          {msg && <p style={{ color: '#16a765', margin: 0 }}>{msg} <a href="/login" style={{ color: '#1677FF' }}>Login</a></p>}
+          {error && <p style={{ color: '#ef4444', margin: 0, fontSize: 12 }}>{error}</p>}
+          {msg && <p style={{ color: '#16a765', margin: 0, fontSize: 12 }}>{msg} <a href="/login" style={{ color: '#1677FF', fontWeight: 600 }}>Login</a></p>}
         </form>
       </div>
+      <style>{`@keyframes fadeIn { from { opacity: .6; transform: translateY(8px); } to { opacity: 1; transform: none; } }`}</style>
     </div>
   );
 }

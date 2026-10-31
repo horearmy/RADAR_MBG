@@ -36,6 +36,7 @@ export type SessionPrincipal = {
   displayName: string;
   mfaEnabled: boolean;
   driverId: string | null;
+  tenantRole?: string | null;
   roles: Array<{
     code: string;
     isGlobal: boolean;

@@ -145,6 +145,26 @@ export class TenantService {
     });
   }
 
+  async bulkAssignRole(tenantId: string, userIds: string[], role: 'TENANT_ADMIN' | 'TENANT_OPERATOR' | 'TENANT_DRIVER' | 'TENANT_VIEWER') {
+    await this.prisma.db.tenantMembership.updateMany({
+      where: { tenantId, userId: { in: userIds } },
+      data: { role },
+    });
+    return { updated: userIds.length };
+  }
+
+  async bulkUpdateStatus(tenantId: string, userIds: string[], status: 'ACTIVE' | 'SUSPENDED' | 'INACTIVE') {
+    await this.prisma.db.tenantMembership.updateMany({
+      where: { tenantId, userId: { in: userIds } },
+      data: { status },
+    });
+    await this.prisma.db.user.updateMany({
+      where: { id: { in: userIds } },
+      data: { status },
+    });
+    return { updated: userIds.length };
+  }
+
   async listUsers(tenantId: string) {
     return this.prisma.db.tenantMembership.findMany({
       where: { tenantId },

@@ -896,6 +896,8 @@ model TenantMembership {
 
   @@unique([tenantId, userId])
   @@index([userId, status])
+  @@index([tenantId, status])
+  @@index([tenantId, role, status])
   @@map("tenant_memberships")
 }
 
