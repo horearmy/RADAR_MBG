@@ -954,3 +954,22 @@ body :where(p,small,td,th,time,li) { line-height: 1.5; }
 .route-search-results { z-index: 30; box-shadow: 0 8px 24px rgb(7 27 58 / 16%); } .route-search-row { overflow: visible; } .route-search-panel { overflow: visible; } .route-search-row input { position: relative; z-index: 1; }\n
 
 .route-search-panel { z-index: 100; position: relative; } .route-search-row { z-index: auto; } .route-search-results { z-index: 101; position: absolute; } .geofence-map-panel { overflow: visible; }\n
+
+/* Trips page professional polish */
+.trips-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+.trips-toolbar .search-group { flex: 1 1 280px; max-width: 420px; }
+.trips-filter-label { color: #8492a4; font-size: 9px; font-weight: 600; }
+.panel-meta { color: #8a97a8; font-size: 9px; font-weight: 600; white-space: nowrap; }
+.trips-list-panel .table-wrapper { border-top: 1px solid #f0f2f5; }
+.trips-list-panel .data-table { min-width: 980px; }
+.trips-list-panel .data-table th:nth-child(2) { min-width: 230px; }
+.trips-list-panel .data-table td { height: 60px; }
+.toast { display: flex; align-items: center; gap: 9px; margin-bottom: 14px; padding: 10px 12px; border: 1px solid #cdeadd; border-radius: 8px; color: #12664a; background: #eefaf4; font-size: 11px; font-weight: 600; box-shadow: 0 2px 8px rgb(7 27 58 / 6%); }
+.toast > span { flex: 1; }
+.toast button { display: grid; width: 22px; height: 22px; place-items: center; border: 0; border-radius: 5px; color: inherit; background: transparent; cursor: pointer; }
+.toast button:hover { background: rgb(18 102 74 / 10%); }
+.toast-success > svg { color: #16a765; flex: 0 0 auto; }
+@media (max-width: 760px) { .trips-toolbar { flex-direction: column; align-items: stretch; } .trips-toolbar .search-group { max-width: none; } .trips-filter { width: 100%; } .trips-filter .trip-filter-select { flex: 1; min-width: 0; } }
+
+.trips-list-panel .empty-state { border-top: 1px solid #f0f2f5; }
+

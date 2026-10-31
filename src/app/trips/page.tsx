@@ -3,17 +3,21 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Suspense } from "react";
 import { HeaderAccount } from "@/components/account-menu";
+import { AppSidebar } from "@/components/app-sidebar";
 import {
   AlertTriangle,
-  ArrowLeft,
   ArrowRight,
   CalendarClock,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Gauge,
   MapPin,
   Plus,
   RefreshCw,
+  Route,
   Search,
   Truck,
   UserRound,
@@ -205,6 +209,18 @@ export default function TripsPage() {
   });
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState("");
+  const [toast, setToast] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const next = query.trim();
+      setSearchTerm((current) => (current === next ? current : next));
+      setPage(1);
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [query]);
 
   useEffect(() => {
     let active = true;
@@ -236,7 +252,12 @@ export default function TripsPage() {
       }
 
       try {
-        const result = await getTrips({ status: status || undefined, page, pageSize: PAGE_SIZE });
+        const result = await getTrips({
+          status: status || undefined,
+          q: searchTerm || undefined,
+          page,
+          pageSize: PAGE_SIZE,
+        });
         if (!active) return;
         setData(result);
       } catch (error: unknown) {
@@ -258,7 +279,13 @@ export default function TripsPage() {
     return () => {
       active = false;
     };
-  }, [page, reloadKey, router, status]);
+  }, [page, reloadKey, router, searchTerm, status]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   useEffect(() => {
     if (!createOpen) return;
@@ -414,6 +441,7 @@ export default function TripsPage() {
         plannedQuantity,
       });
       setCreateOpen(false);
+      setToast('Perjalanan berhasil dibuat.');
       router.push(`/trips/${result.trip.id}`);
     } catch (error: unknown) {
       if (error instanceof Error && error.message === "UNAUTHENTICATED") {
@@ -469,6 +497,8 @@ export default function TripsPage() {
     ["READY_TO_DEPART", "IN_TRANSIT", "ARRIVAL_DETECTED", "ARRIVAL_VERIFIED", "DELIVERY_IN_PROGRESS"].includes(trip.status),
   ).length;
   const canCreateTrip = hasPermission(sessionUser, "trip:create") && hasPermission(sessionUser, "master:read");
+  const completedCount = trips.filter((trip) => trip.status === "COMPLETED" || trip.status === "DELIVERED").length;
+  const completionRate = trips.length === 0 ? 0 : Math.round((completedCount / trips.length) * 100);
   const activeSppgOptions = (sppgOptions ?? []).filter((sppg) => sppg.status === "ACTIVE");
   const selectedSppg = activeSppgOptions.find((sppg) => sppg.id === form.sppgId) ?? null;
   const destinationOptions = selectedSppg
@@ -485,43 +515,97 @@ export default function TripsPage() {
   const resourcesReady = resourceState === "ready";
 
   return (
-    <main className="trip-page trips-page">
-      <header className="trip-topbar">
-        <Link className="trip-back" href="/">
-          <ArrowLeft size={15} />
-          Ringkasan
-        </Link>
-        <Link className="trip-brand" href="/" aria-label="RADAR MBG beranda">
-          <span className="brand-mark"><span /><span /><span /></span>
-          <strong>RADAR<span>MBG</span></strong>
-        </Link>
-        <HeaderAccount user={sessionUser} />
-      </header>
+    <main className="app-shell">
+      <Suspense fallback={<aside className="sidebar" />}>
+        <AppSidebar />
+      </Suspense>
+      <section className="main-column">
+        <header className="topbar">
+          <div className="breadcrumb"><span>Workspace</span><strong>Perjalanan</strong></div>
+          <div className="topbar-actions"><HeaderAccount user={sessionUser} /></div>
+        </header>
 
-      <div className="trip-content">
-        <div className="trip-heading">
+        <div className="content-area">
+        {toast && (
+          <div className="toast toast-success" role="status">
+            <CheckCircle2 size={16} />
+            <span>{toast}</span>
+            <button onClick={() => setToast(null)} aria-label="Tutup notifikasi"><X size={14} /></button>
+          </div>
+        )}
+        <div className="page-heading">
           <div>
             <div className="eyebrow"><span className="eyebrow-line" />OPERASIONAL</div>
-            <h1>Semua perjalanan</h1>
-            <p>Daftar trip sesuai scope akses, diurutkan dari jadwal terbaru.</p>
+            <h1>Manajemen perjalanan</h1>
+            <p>Pantau dan kelola pengiriman MBG sesuai scope akses Anda.</p>
           </div>
-          <div className="trip-heading-actions">
+          <div className="page-actions">
             {canCreateTrip && (
-              <button className="trip-create-trigger" onClick={openCreate}>
-                <Plus size={15} />
-                Buat perjalanan
+              <button className="btn btn-primary" onClick={openCreate}>
+                <Plus size={16} />
+                Tambah perjalanan
               </button>
             )}
-            <button className="session-retry" onClick={() => setReloadKey((value) => value + 1)} disabled={loading}>
+            <button className="btn" onClick={() => setReloadKey((value) => value + 1)} disabled={loading}>
               <RefreshCw size={14} />
               {loading ? "Memuat..." : "Muat ulang"}
             </button>
           </div>
         </div>
 
+        <div className="kpi-grid kpi-grid-4">
+          <article className="kpi-card kpi-card-enhanced">
+            <div className="kpi-top">
+              <span className="kpi-icon icon-navy"><Route size={16} /></span>
+              <span className="kpi-trend trend-up">{pagination ? `${pagination.page}/${Math.max(1, totalPages)}` : "—"}</span>
+            </div>
+            <div className="kpi-label">Total perjalanan</div>
+            <div className="kpi-value">{pagination?.total ?? 0}</div>
+            <div className="kpi-foot"><span className="kpi-dot blue-dot" />{searchTerm || status ? "Sesuai filter aktif" : "Seluruh perjalanan"}</div>
+          </article>
+          <article className="kpi-card kpi-card-enhanced">
+            <div className="kpi-top">
+              <span className="kpi-icon icon-blue"><Truck size={16} /></span>
+            </div>
+            <div className="kpi-label">Sedang berjalan</div>
+            <div className="kpi-value">{activeCount}</div>
+            <div className="kpi-foot"><span className="kpi-dot blue-dot" />Aktif di halaman ini</div>
+          </article>
+          <article className="kpi-card kpi-card-enhanced">
+            <div className="kpi-top">
+              <span className="kpi-icon icon-green"><CheckCircle2 size={16} /></span>
+            </div>
+            <div className="kpi-label">Selesai</div>
+            <div className="kpi-value">{completedCount}</div>
+            <div className="kpi-foot"><span className="kpi-dot blue-dot" />Selesai di halaman ini</div>
+          </article>
+          <article className="kpi-card kpi-card-enhanced">
+            <div className="kpi-top">
+              <span className="kpi-icon icon-amber"><Gauge size={16} /></span>
+            </div>
+            <div className="kpi-label">Tingkat penyelesaian</div>
+            <div className="kpi-value">{completionRate}<span className="unit">%</span></div>
+            <div className="kpi-foot">
+              <span className="progress-track"><i style={{ width: `${completionRate}%` }} /></span>
+              Dari trip di halaman ini
+            </div>
+          </article>
+        </div>
+
         <section className="panel trips-toolbar">
           <div className="trips-filter">
-            <label htmlFor="trip-status">Status</label>
+            <div className="search-group">
+              <Search size={14} />
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Cari rute, pengemudi, plat nomor, atau status"
+                aria-label="Cari perjalanan"
+                maxLength={100}
+              />
+            </div>
+            <label className="trips-filter-label" htmlFor="trip-status">Status</label>
             <select
               id="trip-status"
               className="trip-filter-select"
@@ -532,6 +616,19 @@ export default function TripsPage() {
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
+            {(query || status) && (
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  setQuery("");
+                  setSearchTerm("");
+                  changeStatus("");
+                }}
+              >
+                <X size={13} />
+                Reset
+              </button>
+            )}
           </div>
           <div className="trips-toolbar-stats">
             <span><strong>{pagination?.total ?? 0}</strong> total</span>
@@ -541,34 +638,61 @@ export default function TripsPage() {
         </section>
 
         <section className="panel trips-list-panel">
-          <div className="panel-heading">
+          <div className="panel-header">
             <div>
               <div className="section-title-row">
                 <h2>Daftar perjalanan</h2>
-                <span className="count-chip">{pagination?.total ?? 0}</span>
+                <span className="count-chip">{trips.length}</span>
               </div>
-              <p>{status ? `Filter: ${statusOptions.find((option) => option.value === status)?.label}` : "Semua status"}</p>
+              <p>
+                {status
+                  ? `Filter: ${statusOptions.find((option) => option.value === status)?.label}`
+                  : "Semua status"}
+                {searchTerm ? ` · Pencarian: “${query.trim()}”` : ""}
+              </p>
+            </div>
+            <div className="panel-actions">
+              <span className="panel-meta">
+                {pagination ? `${trips.length} dari ${pagination.total} trip` : "—"}
+              </span>
             </div>
           </div>
 
           {loadError ? (
-            <div className="trips-empty">
+            <div className="empty-state">
               <AlertTriangle size={19} />
               <strong>Daftar perjalanan gagal dimuat</strong>
               <span>API tidak merespons atau sesi tidak lagi valid.</span>
-              <button className="session-retry" onClick={() => setReloadKey((value) => value + 1)}>Coba lagi</button>
+              <button className="btn btn-sm" onClick={() => setReloadKey((value) => value + 1)}>Coba lagi</button>
             </div>
           ) : loading && !data ? (
-            <div className="trips-empty"><span className="session-spinner" /><span>Memuat perjalanan...</span></div>
+            <div className="empty-state"><span className="session-spinner" /><span>Memuat perjalanan...</span></div>
           ) : trips.length === 0 ? (
-            <div className="trips-empty">
+            <div className="empty-state">
               <Search size={19} />
-              <strong>Tidak ada perjalanan</strong>
-              <span>{status ? "Tidak ada trip dengan status ini." : "Belum ada trip dalam scope akses Anda."}</span>
+              <strong>{searchTerm ? "Tidak ada hasil pencarian" : "Tidak ada perjalanan"}</strong>
+              <span>
+                {searchTerm
+                  ? "Coba kata kunci lain atau reset filter."
+                  : status
+                    ? "Tidak ada trip dengan status ini."
+                    : "Belum ada trip dalam scope akses Anda."}
+              </span>
+              {searchTerm && (
+                <button
+                  className="btn btn-sm"
+                  onClick={() => {
+                    setQuery("");
+                    setSearchTerm("");
+                  }}
+                >
+                  Hapus pencarian
+                </button>
+              )}
             </div>
           ) : (
-            <div className={`table-wrap ${loading ? "trips-table-loading" : ""}`}>
-              <table>
+            <div className={`table-wrapper ${loading ? "trips-table-loading" : ""}`}>
+              <table className="data-table">
                 <thead>
                   <tr>
                     <th>Trip</th>
@@ -636,20 +760,22 @@ export default function TripsPage() {
             </span>
             <div>
               <button
-                className="trips-page-button"
+                className="btn btn-sm"
                 onClick={() => setPage((value) => Math.max(1, value - 1))}
                 disabled={loading || page <= 1}
                 aria-label="Halaman sebelumnya"
               >
                 <ChevronLeft size={15} />
+                Sebelumnya
               </button>
               <span className="trips-page-number">{page} / {Math.max(1, totalPages)}</span>
               <button
-                className="trips-page-button"
+                className="btn btn-sm"
                 onClick={() => setPage((value) => value + 1)}
                 disabled={loading || totalPages === 0 || page >= totalPages}
                 aria-label="Halaman berikutnya"
               >
+                Berikutnya
                 <ChevronRight size={15} />
               </button>
             </div>
@@ -863,6 +989,7 @@ export default function TripsPage() {
           </div>
         </div>
       )}
+      </section>
     </main>
   );
 }
