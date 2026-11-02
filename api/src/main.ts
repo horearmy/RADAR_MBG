@@ -9,7 +9,7 @@ import { createCsrfMiddleware } from './auth/csrf.middleware.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
-  const allowedOrigins = (process.env.WEB_ORIGINS ?? 'http://localhost:3000')
+  const allowedOrigins = (process.env.WEB_ORIGINS ?? 'http://localhost:3000,http://127.0.0.1:3000')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
@@ -24,6 +24,7 @@ async function bootstrap() {
     origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'Idempotency-Key'],
   });
   app.useGlobalPipes(
     new ValidationPipe({
