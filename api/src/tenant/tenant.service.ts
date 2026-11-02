@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
 import { EmailService } from './email.service.js';
+import type { FeaturesConfig } from './tenant-features.controller.js';
+import * as argon2 from 'argon2';
 
 @Injectable()
 export class TenantService {
@@ -97,6 +99,108 @@ export class TenantService {
     });
   }
 
+async createDeliveryLocation(tenantId: string, input: { code: string; name: string; address?: string; latitude?: number; longitude?: number }) {
+    const sppgId = await this.legacySppg(tenantId);
+    const sppg = await this.prisma.db.sppg.findUnique({ where: { id: sppgId } });
+    if (!sppg) throw new Error('SPPG_NOT_FOUND');
+
+    return this.prisma.db.deliveryLocation.create({
+      data: {
+        organizationId: sppg.organizationId,
+        regionId: sppg.regionId,
+        code: input.code.trim().toUpperCase(),
+        name: input.name.trim(),
+        address: input.address?.trim() ?? null,
+        latitude: input.latitude ?? null,
+        longitude: input.longitude ?? null,
+        active: true,
+      },
+    });
+  }
+
+async getDeliveryLocation(tenantId: string, id: string) {
+    const sppgId = await this.legacySppg(tenantId);
+    const sppg = await this.prisma.db.sppg.findUnique({ where: { id: sppgId } });
+    if (!sppg) throw new Error('SPPG_NOT_FOUND');
+    const loc = await this.prisma.db.deliveryLocation.findFirst({
+      where: { id, organizationId: sppg.organizationId },
+    });
+    if (!loc) throw new Error('LOCATION_NOT_FOUND');
+    return loc;
+  }
+
+  async updateDeliveryLocation(tenantId: string, id: string, data: { name?: string; address?: string; latitude?: number; longitude?: number; active?: boolean }) {
+    const sppgId = await this.legacySppg(tenantId);
+    const sppg = await this.prisma.db.sppg.findUnique({ where: { id: sppgId } });
+    if (!sppg) throw new Error('SPPG_NOT_FOUND');
+    const loc = await this.prisma.db.deliveryLocation.findFirst({
+      where: { id, organizationId: sppg.organizationId },
+    });
+    if (!loc) throw new Error('LOCATION_NOT_FOUND');
+    return this.prisma.db.deliveryLocation.update({
+      where: { id },
+      data: {
+        ...(data.name !== undefined ? { name: data.name.trim() } : {}),
+        ...(data.address !== undefined ? { address: data.address.trim() || null } : {}),
+        ...(data.latitude !== undefined ? { latitude: data.latitude } : {}),
+        ...(data.longitude !== undefined ? { longitude: data.longitude } : {}),
+        ...(data.active !== undefined ? { active: data.active } : {}),
+      },
+    });
+  }
+
+  async listDeliveryLocations(tenantId: string) {
+    const sppgId = await this.legacySppg(tenantId);
+    const sppg = await this.prisma.db.sppg.findUnique({ where: { id: sppgId } });
+    if (!sppg) return [];
+    return this.prisma.db.deliveryLocation.findMany({
+      where: { organizationId: sppg.organizationId, regionId: sppg.regionId },
+      select: { id: true, code: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async createTrip(tenantId: string, principal: { id: string }, input: {
+    deliveryLocationId: string;
+    vehicleId: string;
+    driverId: string;
+    plannedDepartureAt: string;
+    plannedArrivalAt: string;
+    plannedQuantity: number;
+  }) {
+    const sppgId = await this.legacySppg(tenantId);
+    const sppg = await this.prisma.db.sppg.findUnique({ where: { id: sppgId } });
+    if (!sppg) throw new Error('SPPG_NOT_FOUND');
+
+    const vehicle = await this.prisma.db.vehicle.findFirst({ where: { id: input.vehicleId, tenantId } });
+    if (!vehicle) throw new Error('VEHICLE_NOT_AVAILABLE');
+
+    const driver = await this.prisma.db.driver.findFirst({ where: { id: input.driverId, tenantId } });
+    if (!driver) throw new Error('DRIVER_NOT_AVAILABLE');
+
+    const deliveryLocation = await this.prisma.db.deliveryLocation.findFirst({ where: { id: input.deliveryLocationId, organizationId: sppg.organizationId } });
+    if (!deliveryLocation) throw new Error('INVALID_DESTINATION');
+
+    const trip = await this.prisma.db.trip.create({
+      data: {
+        tenantId,
+        organizationId: sppg.organizationId,
+        sppgId,
+        createdBy: principal.id,
+        deliveryLocationId: input.deliveryLocationId,
+        vehicleId: input.vehicleId,
+        driverId: input.driverId,
+        plannedDepartureAt: new Date(input.plannedDepartureAt),
+        plannedArrivalAt: new Date(input.plannedArrivalAt),
+        plannedQuantity: input.plannedQuantity,
+        status: 'SCHEDULED',
+        version: 1,
+      },
+    });
+
+    return trip;
+  }
+
   async listVehicles(tenantId: string) {
     return this.prisma.db.vehicle.findMany({
       where: { tenantId },
@@ -138,9 +242,16 @@ export class TenantService {
       take: 50,
       select: {
         id: true, status: true, plannedDepartureAt: true, plannedQuantity: true,
+        trackingStatus: true, verificationStatus: true,
         driver: { select: { name: true } },
         vehicle: { select: { plateNumber: true } },
         deliveryLocation: { select: { name: true } },
+        sppg: { select: { name: true } },
+        positions: {
+          select: { latitude: true, longitude: true, serverReceivedAt: true, accuracyMeters: true },
+          orderBy: { serverReceivedAt: 'desc' },
+          take: 1,
+        },
       },
     });
   }
@@ -165,6 +276,68 @@ export class TenantService {
     return { updated: userIds.length };
   }
 
+async createUser(tenantId: string, username: string, displayName: string, password: string, role: 'TENANT_ADMIN' | 'TENANT_OPERATOR' | 'TENANT_DRIVER' | 'TENANT_VIEWER', driverId: string | undefined, invitedByUserId: string) {
+    const passwordHash = await argon2.hash(password);
+    const user = await this.prisma.db.user.create({
+      data: {
+        username: username.trim().toLowerCase(),
+        displayName: displayName.trim() || username.trim(),
+        passwordHash,
+        status: 'ACTIVE',
+        passwordChangedAt: new Date(),
+        ...(driverId ? { driver: { connect: { id: driverId } } } : {}),
+      },
+    });
+    const membership = await this.prisma.db.tenantMembership.create({
+      data: {
+        tenantId,
+        userId: user.id,
+        role,
+        status: 'ACTIVE',
+        invitedByUserId,
+      },
+    });
+    return { user, membership };
+  }
+
+async getUser(tenantId: string, userId: string) {
+    const membership = await this.prisma.db.tenantMembership.findFirst({
+      where: { tenantId, userId },
+      include: { user: { select: { id: true, username: true, displayName: true, status: true, driver: { select: { id: true, code: true, name: true } } } } },
+    });
+    if (!membership) throw new Error('USER_NOT_FOUND');
+    return { ...membership.user, role: membership.role, membershipId: membership.id, membershipStatus: membership.status };
+  }
+
+  async updateUser(tenantId: string, userId: string, data: { displayName?: string; role?: 'TENANT_ADMIN' | 'TENANT_OPERATOR' | 'TENANT_DRIVER' | 'TENANT_VIEWER'; status?: 'ACTIVE' | 'SUSPENDED' | 'INACTIVE'; password?: string }, actorUserId: string) {
+    const membership = await this.prisma.db.tenantMembership.findFirst({
+      where: { tenantId, userId },
+    });
+    if (!membership) throw new Error('USER_NOT_FOUND');
+
+    if (data.displayName !== undefined || data.password !== undefined) {
+      const userData: any = {};
+      if (data.displayName !== undefined) userData.displayName = data.displayName.trim();
+      if (data.password !== undefined) {
+        userData.passwordHash = await (await import('argon2')).hash(data.password);
+        userData.passwordChangedAt = new Date();
+      }
+      await this.prisma.db.user.update({ where: { id: userId }, data: userData });
+    }
+
+    if (data.role !== undefined || data.status !== undefined) {
+      await this.prisma.db.tenantMembership.update({
+        where: { id: membership.id },
+        data: {
+          ...(data.role !== undefined ? { role: data.role } : {}),
+          ...(data.status !== undefined ? { status: data.status } : {}),
+        },
+      });
+    }
+
+    return this.getUser(tenantId, userId);
+  }
+
   async listUsers(tenantId: string) {
     return this.prisma.db.tenantMembership.findMany({
       where: { tenantId },
@@ -172,13 +345,14 @@ export class TenantService {
     });
   }
 
-  async inviteUser(tenantId: string, username: string, displayName: string, role: 'TENANT_ADMIN' | 'TENANT_OPERATOR' | 'TENANT_DRIVER' | 'TENANT_VIEWER', invitedByUserId: string) {
+  async inviteUser(tenantId: string, username: string, displayName: string, role: 'TENANT_ADMIN' | 'TENANT_OPERATOR' | 'TENANT_DRIVER' | 'TENANT_VIEWER', invitedByUserId: string, driverId?: string) {
     const user = await this.prisma.db.user.create({
       data: {
         username,
         displayName,
         passwordHash: '',
         status: 'INVITED',
+        ...(driverId ? { driver: { connect: { id: driverId } } } : {}),
       },
     });
     const membership = await this.prisma.db.tenantMembership.create({
@@ -226,5 +400,24 @@ export class TenantService {
       data: { consumedAt: new Date() },
     });
     return { ok: true };
+  }
+
+  async setTenantFeatures(tenantId: string, actorUserId: string, features: FeaturesConfig) {
+    const featuresJson = features as any;
+    await this.prisma.db.user.updateMany({
+      where: { tenantMemberships: { some: { tenantId } } },
+      data: { features: featuresJson },
+    });
+    await this.prisma.db.auditLog.create({
+      data: {
+        tenantId,
+        actorUserId,
+        action: 'tenant.features.set',
+        entityType: 'user',
+        result: 'SUCCESS',
+        reason: 'Fitur per tenant telah dikonfigurasi',
+      },
+    });
+    return { success: true, features: featuresJson };
   }
 }

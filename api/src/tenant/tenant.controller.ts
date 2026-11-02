@@ -25,6 +25,31 @@ export class TenantController {
     return this.service.updateProfile(req.tenantContext!.tenantId, req.principal!.id, body as never);
   }
 
+  @Post('delivery-locations')
+  createDeliveryLocation(@Req() req: AuthenticatedRequest, @Body() body: { code: string; name: string; address?: string; latitude?: number; longitude?: number }) {
+    return this.service.createDeliveryLocation(req.tenantContext!.tenantId, body);
+  }
+
+  @Get('delivery-locations/:id')
+  getDeliveryLocation(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.service.getDeliveryLocation(req.tenantContext!.tenantId, id);
+  }
+
+  @Patch('delivery-locations/:id')
+  updateDeliveryLocation(@Req() req: AuthenticatedRequest, @Param('id') id: string, @Body() body: { name?: string; address?: string; latitude?: number; longitude?: number; active?: boolean }) {
+    return this.service.updateDeliveryLocation(req.tenantContext!.tenantId, id, body);
+  }
+
+  @Get('delivery-locations')
+  deliveryLocations(@Req() req: AuthenticatedRequest) {
+    return this.service.listDeliveryLocations(req.tenantContext!.tenantId);
+  }
+
+  @Post('trips')
+  createTrip(@Req() req: AuthenticatedRequest, @Body() body: { deliveryLocationId: string; vehicleId: string; driverId: string; plannedDepartureAt: string; plannedArrivalAt: string; plannedQuantity: number }) {
+    return this.service.createTrip(req.tenantContext!.tenantId, req.principal!, body);
+  }
+
   @Get('drivers')
   drivers(@Req() req: AuthenticatedRequest) {
     return this.service.listDrivers(req.tenantContext!.tenantId);
@@ -70,9 +95,24 @@ export class TenantController {
     return this.service.listUsers(req.tenantContext!.tenantId);
   }
 
+  @Get('users/:id')
+  getUser(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.service.getUser(req.tenantContext!.tenantId, id);
+  }
+
+  @Patch('users/:id')
+  updateUser(@Req() req: AuthenticatedRequest, @Param('id') id: string, @Body() body: { displayName?: string; role?: 'TENANT_ADMIN' | 'TENANT_OPERATOR' | 'TENANT_DRIVER' | 'TENANT_VIEWER'; status?: 'ACTIVE' | 'SUSPENDED' | 'INACTIVE'; password?: string }) {
+    return this.service.updateUser(req.tenantContext!.tenantId, id, body, req.principal!.id);
+  }
+
+  @Post('users')
+  createUser(@Req() req: AuthenticatedRequest, @Body() body: { username: string; displayName: string; password: string; role?: 'TENANT_ADMIN' | 'TENANT_OPERATOR' | 'TENANT_DRIVER' | 'TENANT_VIEWER'; driverId?: string }) {
+    return this.service.createUser(req.tenantContext!.tenantId, body.username, body.displayName, body.password, body.role ?? 'TENANT_DRIVER', body.driverId, req.principal!.id);
+  }
+
   @Post('invitations')
-  invite(@Req() req: AuthenticatedRequest, @Body() body: { username: string; displayName: string; role: 'TENANT_ADMIN' | 'TENANT_OPERATOR' | 'TENANT_DRIVER' | 'TENANT_VIEWER' }) {
-    return this.service.inviteUser(req.tenantContext!.tenantId, body.username, body.displayName, body.role, req.principal!.id);
+  invite(@Req() req: AuthenticatedRequest, @Body() body: { username: string; displayName: string; role: 'TENANT_ADMIN' | 'TENANT_OPERATOR' | 'TENANT_DRIVER' | 'TENANT_VIEWER'; driverId?: string }) {
+    return this.service.inviteUser(req.tenantContext!.tenantId, body.username, body.displayName, body.role, req.principal!.id, body.driverId);
   }
 
   @Post('invitations/accept')
