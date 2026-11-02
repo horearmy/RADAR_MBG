@@ -95,6 +95,7 @@ model User {
   disabledAt                DateTime?                 @map("disabled_at") @db.Timestamptz(6)
   mfaPendingSecretEncrypted String?                   @map("mfa_pending_secret_encrypted") @db.VarChar(512)
   mfaPendingExpiresAt       DateTime?                 @map("mfa_pending_expires_at") @db.Timestamptz(6)
+  features                  Json?                     @map("features") @db.Json
   accountTokensCreated      AccountAccessToken[]      @relation("AccountTokenCreator")
   accountTokens             AccountAccessToken[]      @relation("AccountTokenUser")
   approvalDecisions         ApprovalDecision[]        @relation("ApprovalApprover")
@@ -104,9 +105,11 @@ model User {
   mfaRecoveryCodes          MfaRecoveryCode[]
   routes                    Route[]
   sessions                  Session[]
+  tenantMemberships         TenantMembership[]
+  recipientMemberships      RecipientMembership[]
+  notificationEvents        NotificationEvent[]
   tripsCreated              Trip[]                    @relation("TripCreatedBy")
   roles                     UserRole[]
-  tenantMemberships         TenantMembership[]
 
   @@index([status])
   @@map("users")
@@ -259,7 +262,6 @@ model ApprovalDecision {
 
 model AuditLog {
   id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String?  @map("tenant_id") @db.Uuid
   actorUserId String?  @map("actor_user_id") @db.Uuid
   action      String   @db.VarChar(120)
   entityType  String   @map("entity_type") @db.VarChar(100)
@@ -271,6 +273,7 @@ model AuditLog {
   requestId   String?  @map("request_id") @db.VarChar(100)
   ipAddress   String?  @map("ip_address") @db.Inet
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenantId    String?  @map("tenant_id") @db.Uuid
 
   @@index([createdAt])
   @@index([actorUserId, createdAt])
@@ -280,7 +283,6 @@ model AuditLog {
 
 model Driver {
   id          String                    @id @default(uuid()) @db.Uuid
-  tenantId    String                    @map("tenant_id") @db.Uuid
   sppgId      String                    @map("sppg_id") @db.Uuid
   userId      String?                   @unique @map("user_id") @db.Uuid
   code        String                    @db.VarChar(32)
@@ -289,7 +291,10 @@ model Driver {
   status      DriverStatus              @default(ACTIVE)
   createdAt   DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenantId    String                    @map("tenant_id") @db.Uuid
   assignments DriverVehicleAssignment[]
+  deliveryAssignments DeliveryAssignment[]
+  locationEvents LocationEvent[]
   sppg        Sppg                      @relation(fields: [sppgId], references: [id])
   user        User?                     @relation(fields: [userId], references: [id], onDelete: Restrict)
   trips       Trip[]
@@ -301,7 +306,6 @@ model Driver {
 
 model Vehicle {
   id             String                    @id @default(uuid()) @db.Uuid
-  tenantId       String                    @map("tenant_id") @db.Uuid
   organizationId String                    @map("organization_id") @db.Uuid
   sppgId         String                    @map("sppg_id") @db.Uuid
   plateNumber    String                    @unique @map("plate_number") @db.VarChar(20)
@@ -310,7 +314,9 @@ model Vehicle {
   status         VehicleStatus             @default(ACTIVE)
   createdAt      DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenantId       String                    @map("tenant_id") @db.Uuid
   assignments    DriverVehicleAssignment[]
+  deliveryAssignments DeliveryAssignment[]
   trips          Trip[]
   organization   Organization              @relation(fields: [organizationId], references: [id])
   sppg           Sppg                      @relation(fields: [sppgId], references: [id])
@@ -346,7 +352,6 @@ model DriverVehicleAssignment {
 
 model DeliveryLocation {
   id             String                    @id @default(uuid()) @db.Uuid
-  tenantId       String?                   @map("tenant_id") @db.Uuid
   organizationId String                    @map("organization_id") @db.Uuid
   regionId       String                    @map("region_id") @db.Uuid
   code           String                    @db.VarChar(32)
@@ -358,6 +363,7 @@ model DeliveryLocation {
   active         Boolean                   @default(true)
   createdAt      DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenantId       String?                   @map("tenant_id") @db.Uuid
   organization   Organization              @relation(fields: [organizationId], references: [id])
   region         Region                    @relation(fields: [regionId], references: [id])
   geofences      Geofence[]
@@ -374,7 +380,6 @@ model DeliveryLocation {
 
 model Trip {
   id                   String                    @id @default(uuid()) @db.Uuid
-  tenantId             String                    @map("tenant_id") @db.Uuid
   organizationId       String                    @map("organization_id") @db.Uuid
   sppgId               String                    @map("sppg_id") @db.Uuid
   deliveryLocationId   String                    @map("delivery_location_id") @db.Uuid
@@ -400,6 +405,7 @@ model Trip {
   version              Int                       @default(1)
   createdAt            DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenantId             String                    @map("tenant_id") @db.Uuid
   arrivalOverrides     ArrivalOverride[]
   arrivalVerifications ArrivalVerification[]
   deliveryRecords      DeliveryRecord[]
@@ -413,6 +419,10 @@ model Trip {
   organization         Organization              @relation(fields: [organizationId], references: [id])
   sppg                 Sppg                      @relation("TripOrigin", fields: [sppgId], references: [id])
   vehicle              Vehicle                   @relation(fields: [vehicleId], references: [id])
+  deliveryStops        DeliveryStop[]
+  deliveryAssignments  DeliveryAssignment[]
+  locationEvents       LocationEvent[]
+  geofenceEvents       GeofenceEvent[]
 
   @@index([organizationId, status, plannedDepartureAt])
   @@index([sppgId, plannedDepartureAt])
@@ -467,7 +477,6 @@ model TripEvent {
 
 model Geofence {
   id                          String                    @id @default(uuid()) @db.Uuid
-  tenantId                    String?                   @map("tenant_id") @db.Uuid
   sppgId                      String?                   @map("sppg_id") @db.Uuid
   deliveryLocationId          String?                   @map("delivery_location_id") @db.Uuid
   type                        GeofenceType
@@ -487,6 +496,7 @@ model Geofence {
   updatedAt                   DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
   shapeType                   String                    @default("CIRCLE") @map("shape_type") @db.VarChar(20)
   polygonCoordinates          Json?                     @map("polygon_coordinates")
+  tenantId                    String?                   @map("tenant_id") @db.Uuid
   deliveryLocation            DeliveryLocation?         @relation(fields: [deliveryLocationId], references: [id], onDelete: Restrict)
   sppg                        Sppg?                     @relation(fields: [sppgId], references: [id], onDelete: Restrict)
 
@@ -498,7 +508,6 @@ model Geofence {
 
 model Route {
   id                       String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId                 String           @map("tenant_id") @db.Uuid
   sppgId                   String           @map("sppg_id") @db.Uuid
   deliveryLocationId       String           @map("delivery_location_id") @db.Uuid
   name                     String           @db.VarChar(160)
@@ -511,6 +520,7 @@ model Route {
   createdAt                DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   idempotencyKey           String?          @unique @map("idempotency_key") @db.VarChar(128)
+  tenantId                 String           @map("tenant_id") @db.Uuid
   users                    User             @relation(fields: [createdBy], references: [id])
   deliveryLocation         DeliveryLocation @relation("RouteDestination", fields: [deliveryLocationId], references: [id])
   sppg                     Sppg             @relation("RouteOrigin", fields: [sppgId], references: [id])
@@ -585,7 +595,6 @@ model ArrivalOverride {
 
 model ExceptionCase {
   id              String            @id @default(uuid()) @db.Uuid
-  tenantId        String            @map("tenant_id") @db.Uuid
   organizationId  String            @map("organization_id") @db.Uuid
   regionId        String            @map("region_id") @db.Uuid
   sppgId          String            @map("sppg_id") @db.Uuid
@@ -606,6 +615,7 @@ model ExceptionCase {
   resolutionNote  String?           @map("resolution_note") @db.VarChar(4000)
   createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenantId        String            @map("tenant_id") @db.Uuid
   organization    Organization      @relation(fields: [organizationId], references: [id])
   region          Region            @relation(fields: [regionId], references: [id])
   sppg            Sppg              @relation(fields: [sppgId], references: [id])
@@ -723,6 +733,123 @@ model worker_leases {
   expires_at  DateTime @db.Timestamptz(6)
 
   @@index([expires_at])
+}
+
+model Tenant {
+  id            String               @id @default(uuid()) @db.Uuid
+  tenantCode    String               @unique @map("tenant_code") @db.VarChar(50)
+  name          String               @db.VarChar(200)
+  status        TenantStatus         @default(PENDING_ACTIVATION)
+  activatedAt   DateTime?            @map("activated_at") @db.Timestamptz(6)
+  suspendedAt   DateTime?            @map("suspended_at") @db.Timestamptz(6)
+  legacySppgId  String?              @unique @map("legacy_sppg_id") @db.Uuid
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  profile       SppgProfile?
+  memberships   TenantMembership[]
+  registrations TenantRegistration[]
+
+  @@map("tenants")
+}
+
+model TenantMembership {
+  id              String           @id @default(uuid()) @db.Uuid
+  tenantId        String           @map("tenant_id") @db.Uuid
+  userId          String           @map("user_id") @db.Uuid
+  role            TenantRole
+  status          MembershipStatus @default(ACTIVE)
+  invitedByUserId String?          @map("invited_by_user_id") @db.Uuid
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  user            User             @relation(fields: [userId], references: [id])
+
+  @@unique([tenantId, userId])
+  @@index([userId, status])
+  @@index([tenantId, status])
+  @@index([tenantId, role, status])
+  @@map("tenant_memberships")
+}
+
+model SppgProfile {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @unique @map("tenant_id") @db.Uuid
+  sppgName         String   @map("sppg_name") @db.VarChar(200)
+  officialCode     String?  @map("official_code") @db.VarChar(100)
+  fullAddress      String   @map("full_address")
+  latitude         Decimal? @db.Decimal(10, 7)
+  longitude        Decimal? @db.Decimal(10, 7)
+  contactPhone     String?  @map("contact_phone") @db.VarChar(40)
+  profileStatus    String   @default("ACTIVE") @map("profile_status") @db.VarChar(30)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  capacity         Int?
+  districtCode     String?  @map("district_code") @db.VarChar(20)
+  notes            String?  @db.VarChar(2000)
+  operationalHours String?  @map("operational_hours") @db.VarChar(80)
+  personInCharge   String?  @map("person_in_charge") @db.VarChar(160)
+  provinceCode     String?  @map("province_code") @db.VarChar(20)
+  regencyCode      String?  @map("regency_code") @db.VarChar(20)
+  villageCode      String?  @map("village_code") @db.VarChar(20)
+  tenant           Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@map("sppg_profiles")
+}
+
+model TenantRegistration {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  registrationNumber String                 @unique @map("registration_number") @db.VarChar(60)
+  tenantId           String?                @map("tenant_id") @db.Uuid
+  sppgName           String                 @map("sppg_name") @db.VarChar(200)
+  officialCode       String?                @map("official_code") @db.VarChar(100)
+  provinceCode       String                 @map("province_code") @db.VarChar(20)
+  regencyCode        String                 @map("regency_code") @db.VarChar(20)
+  districtCode       String                 @map("district_code") @db.VarChar(20)
+  villageCode        String                 @map("village_code") @db.VarChar(20)
+  fullAddress        String                 @map("full_address")
+  latitude           Decimal?               @db.Decimal(10, 7)
+  longitude          Decimal?               @db.Decimal(10, 7)
+  contactName        String                 @map("contact_name") @db.VarChar(150)
+  contactEmail       String                 @map("contact_email") @db.VarChar(200)
+  contactPhone       String                 @map("contact_phone") @db.VarChar(40)
+  status             RegistrationStatus     @default(DRAFT)
+  submittedAt        DateTime?              @map("submitted_at") @db.Timestamptz(6)
+  reviewedByUserId   String?                @map("reviewed_by_user_id") @db.Uuid
+  reviewedAt         DateTime?              @map("reviewed_at") @db.Timestamptz(6)
+  reviewNotes        String?                @map("review_notes")
+  createdAt          DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  documents          RegistrationDocument[]
+  approvals          TenantApproval[]
+  tenant             Tenant?                @relation(fields: [tenantId], references: [id])
+
+  @@map("tenant_registrations")
+}
+
+model RegistrationDocument {
+  id             String             @id @default(uuid()) @db.Uuid
+  registrationId String             @map("registration_id") @db.Uuid
+  objectKey      String             @map("object_key") @db.VarChar(512)
+  mimeType       String             @map("mime_type") @db.VarChar(120)
+  byteSize       BigInt             @map("byte_size")
+  sha256         String             @db.VarChar(64)
+  uploadedBy     String?            @map("uploaded_by") @db.Uuid
+  uploadedAt     DateTime           @default(now()) @map("uploaded_at") @db.Timestamptz(6)
+  registration   TenantRegistration @relation(fields: [registrationId], references: [id])
+
+  @@map("registration_documents")
+}
+
+model TenantApproval {
+  id             String             @id @default(uuid()) @db.Uuid
+  registrationId String             @map("registration_id") @db.Uuid
+  approverId     String             @map("approver_id") @db.Uuid
+  decision       String             @db.VarChar(32)
+  reason         String?            @db.VarChar(2000)
+  decidedAt      DateTime           @default(now()) @map("decided_at") @db.Timestamptz(6)
+  registration   TenantRegistration @relation(fields: [registrationId], references: [id])
+
+  @@map("tenant_approvals")
 }
 
 enum AccountStatus {
@@ -864,124 +991,6 @@ enum ExceptionStatus {
   CLOSED_WITH_NOTE
 }
 
-// === Multi-tenant V2 (additive) ===
-model Tenant {
-  id            String        @id @default(uuid()) @db.Uuid
-  tenantCode    String        @unique @map("tenant_code") @db.VarChar(50)
-  name          String        @db.VarChar(200)
-  status        TenantStatus  @default(PENDING_ACTIVATION)
-  activatedAt   DateTime?     @map("activated_at") @db.Timestamptz(6)
-  suspendedAt   DateTime?     @map("suspended_at") @db.Timestamptz(6)
-  legacySppgId  String?       @unique @map("legacy_sppg_id") @db.Uuid
-  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
-  memberships   TenantMembership[]
-  profile       SppgProfile?
-  registrations TenantRegistration[]
-
-  @@map("tenants")
-}
-
-model TenantMembership {
-  id              String            @id @default(uuid()) @db.Uuid
-  tenantId        String            @map("tenant_id") @db.Uuid
-  userId          String            @map("user_id") @db.Uuid
-  role            TenantRole
-  status          MembershipStatus  @default(ACTIVE)
-  invitedByUserId String?           @map("invited_by_user_id") @db.Uuid
-  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant          Tenant            @relation(fields: [tenantId], references: [id])
-  user            User              @relation(fields: [userId], references: [id])
-
-  @@unique([tenantId, userId])
-  @@index([userId, status])
-  @@index([tenantId, status])
-  @@index([tenantId, role, status])
-  @@map("tenant_memberships")
-}
-
-model SppgProfile {
-  id            String   @id @default(uuid()) @db.Uuid
-  tenantId      String   @unique @map("tenant_id") @db.Uuid
-  sppgName      String   @map("sppg_name") @db.VarChar(200)
-  officialCode  String?  @map("official_code") @db.VarChar(100)
-  fullAddress   String   @map("full_address") @db.Text
-  latitude      Decimal? @db.Decimal(10,7)
-  longitude     Decimal? @db.Decimal(10,7)
-  contactPhone  String?  @map("contact_phone") @db.VarChar(40)
-  provinceCode  String?  @map("province_code") @db.VarChar(20)
-  regencyCode   String?  @map("regency_code") @db.VarChar(20)
-  districtCode  String?  @map("district_code") @db.VarChar(20)
-  villageCode   String?  @map("village_code") @db.VarChar(20)
-  personInCharge String? @map("person_in_charge") @db.VarChar(160)
-  operationalHours String? @map("operational_hours") @db.VarChar(80)
-  capacity      Int?
-  notes         String?  @db.VarChar(2000)
-  profileStatus String   @default("ACTIVE") @map("profile_status") @db.VarChar(30)
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-
-  @@map("sppg_profiles")
-}
-
-model TenantRegistration {
-  id              String             @id @default(uuid()) @db.Uuid
-  registrationNumber String          @unique @map("registration_number") @db.VarChar(60)
-  tenantId        String?            @map("tenant_id") @db.Uuid
-  sppgName        String             @map("sppg_name") @db.VarChar(200)
-  officialCode    String?            @map("official_code") @db.VarChar(100)
-  provinceCode    String             @map("province_code") @db.VarChar(20)
-  regencyCode     String             @map("regency_code") @db.VarChar(20)
-  districtCode    String             @map("district_code") @db.VarChar(20)
-  villageCode     String             @map("village_code") @db.VarChar(20)
-  fullAddress     String             @map("full_address") @db.Text
-  latitude        Decimal?           @db.Decimal(10,7)
-  longitude       Decimal?           @db.Decimal(10,7)
-  contactName     String             @map("contact_name") @db.VarChar(150)
-  contactEmail    String             @map("contact_email") @db.VarChar(200)
-  contactPhone    String             @map("contact_phone") @db.VarChar(40)
-  status          RegistrationStatus @default(DRAFT)
-  submittedAt     DateTime?          @map("submitted_at") @db.Timestamptz(6)
-  reviewedByUserId String?           @map("reviewed_by_user_id") @db.Uuid
-  reviewedAt      DateTime?          @map("reviewed_at") @db.Timestamptz(6)
-  reviewNotes     String?            @map("review_notes") @db.Text
-  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant          Tenant?            @relation(fields: [tenantId], references: [id])
-  documents       RegistrationDocument[]
-  approvals       TenantApproval[]
-
-  @@map("tenant_registrations")
-}
-
-model RegistrationDocument {
-  id             String   @id @default(uuid()) @db.Uuid
-  registrationId String   @map("registration_id") @db.Uuid
-  objectKey      String   @map("object_key") @db.VarChar(512)
-  mimeType       String   @map("mime_type") @db.VarChar(120)
-  byteSize       BigInt   @map("byte_size")
-  sha256         String   @db.VarChar(64)
-  uploadedBy     String?  @map("uploaded_by") @db.Uuid
-  uploadedAt     DateTime @default(now()) @map("uploaded_at") @db.Timestamptz(6)
-  registration   TenantRegistration @relation(fields: [registrationId], references: [id])
-
-  @@map("registration_documents")
-}
-
-model TenantApproval {
-  id             String   @id @default(uuid()) @db.Uuid
-  registrationId String   @map("registration_id") @db.Uuid
-  approverId     String   @map("approver_id") @db.Uuid
-  decision       String   @db.VarChar(32)
-  reason         String?  @db.VarChar(2000)
-  decidedAt      DateTime @default(now()) @map("decided_at") @db.Timestamptz(6)
-  registration   TenantRegistration @relation(fields: [registrationId], references: [id])
-
-  @@map("tenant_approvals")
-}
-
 enum TenantStatus {
   PENDING_ACTIVATION
   ACTIVE
@@ -1011,4 +1020,134 @@ enum RegistrationStatus {
   REVISION_REQUIRED
   APPROVED
   REJECTED
+}
+
+model RecipientOrganization {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @db.VarChar(160)
+  code        String   @unique @db.VarChar(32)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  sites RecipientSite[]
+
+  @@map("recipient_organizations")
+}
+
+model RecipientSite {
+  id                     String                @id @default(uuid()) @db.Uuid
+  recipientOrganizationId String               @map("recipient_organization_id") @db.Uuid
+  deliveryLocationId     String?               @map("delivery_location_id") @db.Uuid
+  name                   String                @db.VarChar(160)
+  code                   String                @db.VarChar(32)
+  active                 Boolean               @default(true)
+  createdAt              DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization RecipientOrganization @relation(fields: [recipientOrganizationId], references: [id])
+  memberships  RecipientMembership[]
+  deliveryStops DeliveryStop[]
+
+  @@unique([recipientOrganizationId, code])
+  @@map("recipient_sites")
+}
+
+model RecipientMembership {
+  id              String            @id @default(uuid()) @db.Uuid
+  userId          String            @map("user_id") @db.Uuid
+  recipientSiteId String            @map("recipient_site_id") @db.Uuid
+  status          MembershipStatus  @default(ACTIVE)
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user   User          @relation(fields: [userId], references: [id])
+  site   RecipientSite @relation(fields: [recipientSiteId], references: [id])
+
+  @@unique([userId, recipientSiteId])
+  @@map("recipient_memberships")
+}
+
+model DeliveryStop {
+  id                String   @id @default(uuid()) @db.Uuid
+  tripId            String   @map("trip_id") @db.Uuid
+  recipientSiteId   String   @map("recipient_site_id") @db.Uuid
+  sequenceNumber    Int      @map("sequence_number")
+  plannedArrivalAt  DateTime? @map("planned_arrival_at") @db.Timestamptz(6)
+  status            String   @default("PENDING") @db.VarChar(32)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  trip   Trip          @relation(fields: [tripId], references: [id])
+  site   RecipientSite @relation(fields: [recipientSiteId], references: [id])
+
+  geofenceEvents GeofenceEvent[]
+
+  @@map("delivery_stops")
+}
+
+model DeliveryAssignment {
+  id        String   @id @default(uuid()) @db.Uuid
+  tripId    String   @map("trip_id") @db.Uuid
+  driverId  String   @map("driver_id") @db.Uuid
+  vehicleId String   @map("vehicle_id") @db.Uuid
+  status    String   @default("ASSIGNED") @db.VarChar(32)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  trip    Trip    @relation(fields: [tripId], references: [id])
+  driver  Driver  @relation(fields: [driverId], references: [id])
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
+
+  @@map("delivery_assignments")
+}
+
+model LocationEvent {
+  id            String   @id @default(uuid()) @db.Uuid
+  tripId        String   @map("trip_id") @db.Uuid
+  driverId      String   @map("driver_id") @db.Uuid
+  latitude      Decimal  @db.Decimal(9, 6)
+  longitude     Decimal  @db.Decimal(9, 6)
+  accuracyM     Decimal? @map("accuracy_m") @db.Decimal(6, 2)
+  speedMps      Decimal? @map("speed_mps") @db.Decimal(6, 2)
+  sequenceNumber Int     @map("sequence_number")
+  recordedAt    DateTime @map("recorded_at") @db.Timestamptz(6)
+  receivedAt    DateTime @default(now()) @map("received_at") @db.Timestamptz(6)
+
+  trip   Trip   @relation(fields: [tripId], references: [id])
+  driver Driver @relation(fields: [driverId], references: [id])
+
+  @@unique([tripId, sequenceNumber])
+  @@index([tripId, recordedAt])
+  @@map("location_events")
+}
+
+model GeofenceEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  tripId    String   @map("trip_id") @db.Uuid
+  stopId    String   @map("stop_id") @db.Uuid
+  eventType String   @map("event_type") @db.VarChar(32)
+  distanceM Decimal? @map("distance_m") @db.Decimal(8, 2)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  trip Trip         @relation(fields: [tripId], references: [id])
+  stop DeliveryStop @relation(fields: [stopId], references: [id])
+
+  @@map("geofence_events")
+}
+
+model NotificationEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  type      String   @db.VarChar(64)
+  title     String   @db.VarChar(200)
+  body      String?  @db.Text
+  status    String   @default("QUEUED") @db.VarChar(16)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  readAt    DateTime? @map("read_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, status])
+  @@map("notification_events")
 }
