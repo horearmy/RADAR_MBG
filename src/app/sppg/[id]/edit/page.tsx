@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Save } from "lucide-react";
 import { getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
 
 const apiBase = process.env.NEXT_PUBLIC_RADAR_API_URL ?? "http://localhost:4000/api/v1";
 
-export default function SppgEditPage() {
+function SppgEditContent() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -161,5 +161,13 @@ export default function SppgEditPage() {
         )}
       </section>
     </main>
+  );
+}
+
+export default function SppgEditPage() {
+  return (
+    <Suspense fallback={<div className="page"><p>Memuat...</p></div>}>
+      <SppgEditContent />
+    </Suspense>
   );
 }

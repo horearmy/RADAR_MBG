@@ -8,7 +8,9 @@ export default function VehiclesLayout({ children }: { children: React.ReactNode
       <Suspense fallback={<aside className="sidebar" />}>
         <AppSidebar />
       </Suspense>
-      <VehiclesChrome>{children}</VehiclesChrome>
+      <Suspense fallback={<section className="main-column"><div className="content-area">Memuat...</div></section>}>
+        <VehiclesChrome>{children}</VehiclesChrome>
+      </Suspense>
     </main>
   );
 }

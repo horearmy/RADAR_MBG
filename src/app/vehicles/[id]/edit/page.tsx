@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Save, Truck } from "lucide-react";
 import { getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
 
 const apiBase = process.env.NEXT_PUBLIC_RADAR_API_URL ?? "http://localhost:4000/api/v1";
 
-export default function VehicleEditPage() {
+function VehicleEditContent() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -150,5 +150,13 @@ export default function VehicleEditPage() {
         )}
       </section>
     </main>
+  );
+}
+
+export default function VehicleEditPage() {
+  return (
+    <Suspense fallback={<div className="page"><p>Memuat...</p></div>}>
+      <VehicleEditContent />
+    </Suspense>
   );
 }

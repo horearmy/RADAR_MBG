@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -39,7 +39,7 @@ function statusPill(status: string) {
   return <span className="pill pill-neutral">{status}</span>;
 }
 
-export default function SppgDetailPage() {
+function SppgDetailContent() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -272,5 +272,13 @@ export default function SppgDetailPage() {
         </>
       )}
     </main>
+  );
+}
+
+export default function SppgDetailPage() {
+  return (
+    <Suspense fallback={<div className="page"><p>Memuat...</p></div>}>
+      <SppgDetailContent />
+    </Suspense>
   );
 }
