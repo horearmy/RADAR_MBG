@@ -2,7 +2,6 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
-  UnauthorizedException,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { AuthService } from './auth.service.js';
@@ -28,10 +27,9 @@ export class SessionGuard implements CanActivate {
     const principal = await this.authService.resolveSession(sessionToken);
 
     if (!principal) {
-      throw new UnauthorizedException({
-        code: 'UNAUTHENTICATED',
-        message: 'Sesi tidak valid atau telah berakhir.',
-      });
+      // Jika tidak ada session, kembalikan false agar alur login bisa berjalan
+      // bukan melempar exception yang menyebabkan 500
+      return false;
     }
 
     request.principal = principal;

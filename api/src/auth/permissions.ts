@@ -45,6 +45,8 @@ export function hasPermission(
   principal: SessionPrincipal,
   permission: string,
 ): boolean {
+  // Global admins (SUPERADMIN) have all permissions
+  if (principal.roles.some((role) => role.isGlobal)) return true;
   if (principal.roles.some((role) => role.permissions.includes(permission))) return true;
   if (principal.tenantRole && TENANT_ROLE_PERMISSIONS[principal.tenantRole]?.includes(permission)) return true;
   return false;

@@ -37,6 +37,7 @@ export type SessionPrincipal = {
   mfaEnabled: boolean;
   driverId: string | null;
   tenantRole?: string | null;
+  features?: Record<string, boolean> | null;
   roles: Array<{
     code: string;
     isGlobal: boolean;
@@ -309,6 +310,7 @@ export class AuthService {
       displayName: session.user.displayName,
       mfaEnabled: session.user.mfaEnabled,
       driverId: session.user.driver?.id ?? null,
+      features: session.user.features as Record<string, boolean> | null,
       roles: session.user.roles.map(({ role, organizationId, regionId, sppgId }) => ({
         code: role.code,
         isGlobal: role.isGlobal,
