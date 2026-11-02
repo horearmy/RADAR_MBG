@@ -14,7 +14,6 @@ import {
   FilePlus,
   KeyRound,
   LayoutDashboard,
-  Link2,
   MapPinned,
   Navigation,
   Settings2,
@@ -23,7 +22,7 @@ import {
   Users,
   Utensils,
 } from "lucide-react";
-import { getCurrentSession, hasPermission, hasPlatformPermission, type SessionUser } from "@/lib/api";
+import { getCurrentSession, hasPermission, hasPlatformPermission, isPlatformAdmin, type SessionUser } from "@/lib/api";
 
 type NavItem = { label: string; icon: typeof LayoutDashboard; href?: string; permissions?: string[] };
 
@@ -79,6 +78,7 @@ export function AppSidebar() {
   const canDrive = hasPermission(user, "trip:start") && hasPermission(user, "trip:location:update");
   const canAccessGeofences = hasPlatformPermission(user, "geofence:read") || hasPlatformPermission(user, "geofence:manage");
   const canManageAdmin = hasPlatformPermission(user, "admin:manage_users") || hasPlatformPermission(user, "admin:manage_roles");
+  const platformAdmin = isPlatformAdmin(user);
 
   const canAccessNav = (item: NavItem) => !item.permissions || item.permissions.some((permission) => hasPermission(user, permission));
 
@@ -108,24 +108,26 @@ export function AppSidebar() {
             <Utensils size={17} strokeWidth={1.8} /><span>SPPG</span>
           </Link>
         ) : null}
-        {management.filter(canAccessNav).map(({ label, icon: Icon, href }) =>
-          href ? (
+        {platformAdmin ? (
+          <Link className={`nav-item nav-link${isNavActive("/tenants", pathname) ? " nav-active" : ""}`} href="/tenants">
+            <Building2 size={17} strokeWidth={1.8} /><span>Tenant</span>
+          </Link>
+        ) : null}
+        {management.filter(canAccessNav).map(({ label, icon: Icon, href }) => {
+          if (!href) return null;
+          return (
             <Link key={label} className={`nav-item nav-link${isNavActive(href, pathname) ? " nav-active" : ""}`} href={href}>
               <Icon size={17} strokeWidth={1.8} /><span>{label}</span>
             </Link>
-          ) : (
-            <button key={label} className="nav-item nav-item-soon" disabled title={`${label} segera hadir`}>
-              <Icon size={17} strokeWidth={1.8} /><span>{label}</span><small className="nav-soon-tag">Segera</small>
-            </button>
-          ),
-        )}
+          );
+        })}
         {/* Tautan dipindahkan ke halaman utama */}
         {canReadAudit && <Link className="nav-item nav-link" href="/audit"><Activity size={17} strokeWidth={1.8} /><span>Audit explorer</span></Link>}
         {canManageUsers && <Link className="nav-item nav-link" href="/users"><Users size={17} strokeWidth={1.8} /><span>Administrasi akun</span></Link>}
         {canAccessGeofences && <Link className="nav-item nav-link" href="/geofences"><MapPinned size={17} strokeWidth={1.8} /><span>Geofence</span></Link>}
         {user.mfaEnabled === false && <Link className="nav-item nav-link" href="/security/mfa"><ShieldCheck size={17} strokeWidth={1.8} /><span>Daftarkan MFA</span></Link>}
         {canAccessApprovals && <Link className="nav-item nav-link" href="/approvals"><ClipboardCheck size={17} strokeWidth={1.8} /><span>Persetujuan</span></Link>}
-        {/* Mode pengemudi dipindahkan ke Tautan Cepat */}
+        {canDrive && <Link className={`nav-item nav-link${isNavActive("/driver", pathname) ? " nav-active" : ""}`} href="/driver"><Navigation size={17} strokeWidth={1.8} /><span>Mode pengemudi</span></Link>}
       </nav>
 
       <div className="sidebar-bottom">
