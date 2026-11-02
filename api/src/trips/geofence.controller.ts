@@ -28,7 +28,7 @@ export class GeofenceController {
     @Req() request: AuthenticatedRequest,
     @Query() query: ListGeofencesDto,
   ) {
-    return this.geofences.listForLocation(query, request.principal!);
+    return this.geofences.listForLocation(query, request.principal!, request.tenantContext ?? null);
   }
 
   @Post()
@@ -51,6 +51,7 @@ export class GeofenceController {
       request.principal!,
       idempotencyKey,
       requestId,
+      request.tenantContext ?? null,
     );
   }
 }
