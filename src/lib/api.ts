@@ -3,6 +3,7 @@ export type SessionUser = {
   username: string;
   displayName: string;
   mfaEnabled?: boolean;
+  tenantRole?: string | null;
   roles: Array<{
     code: string;
     isGlobal: boolean;
@@ -305,11 +306,23 @@ export type DashboardData = {
   refreshedAt: string;
 };
 
+export type PlatformDashboardSummary = {
+  tenants: {
+    total: number;
+    active: number;
+    pendingActivation: number;
+    suspended: number;
+  };
+  registrations: { pendingReview: number };
+  approvals: { pending: number };
+  refreshedAt: string;
+};
+
 const configuredBaseUrl = process.env.NEXT_PUBLIC_RADAR_API_URL;
 export const apiBaseUrl = configuredBaseUrl ??
   (process.env.NODE_ENV === 'development' ? 'http://localhost:4000/api/v1' : '');
 
-async function apiGet<T>(path: string): Promise<T> {
+export async function apiGet<T>(path: string): Promise<T> {
   if (!apiBaseUrl) throw new Error('API_NOT_CONFIGURED');
 
   const response = await fetch(`${apiBaseUrl}${path}`, {
@@ -333,11 +346,11 @@ async function getCsrfToken(): Promise<string> {
   return csrfToken;
 }
 
-async function apiMutate<T>(
+export async function apiMutate<T>(
   path: string,
   method: 'POST' | 'PATCH',
   body?: unknown,
-  idempotencyKey = crypto.randomUUID(),
+  idempotencyKey: string = crypto.randomUUID(),
 ): Promise<T> {
   if (!apiBaseUrl) throw new Error('API_NOT_CONFIGURED');
 
@@ -373,7 +386,7 @@ async function apiMutate<T>(
 async function apiUpload<T>(
   path: string,
   file: File,
-  idempotencyKey = crypto.randomUUID(),
+  idempotencyKey: string = crypto.randomUUID(),
 ): Promise<T> {
   if (!apiBaseUrl) throw new Error('API_NOT_CONFIGURED');
 
@@ -616,6 +629,17 @@ export function createTrip(input: CreateTripInput) {
   return apiMutate<TripMutationResult>('/trips', 'POST', input);
 }
 
+export function createTenantTrip(input: {
+  deliveryLocationId: string;
+  vehicleId: string;
+  driverId: string;
+  plannedDepartureAt: string;
+  plannedArrivalAt: string;
+  plannedQuantity: number;
+}) {
+  return apiMutate<unknown>('/tenant/trips', 'POST', input);
+}
+
 export function scheduleTrip(id: string) {
   return apiMutate<TripMutationResult>(`/trips/${encodeURIComponent(id)}/schedule`, 'POST');
 }
@@ -673,30 +697,21 @@ const TENANT_ROLE_PERMISSIONS: Record<string, string[]> = {
 };
 
 export function hasPlatformPermission(user: SessionUser | null | undefined, permission: string): boolean {
-  if (!user) return false;
-  const roles = (user as any)?.roles;
-  if (!Array.isArray(roles)) return false;
-  for (let i = 0; i < roles.length; i++) {
-    const role = roles[i];
-    if (!role) continue;
-    const perms = role?.permissions;
-    if (Array.isArray(perms) && perms.includes(permission)) return true;
-  }
-  return false;
+  if (!user?.roles) return false;
+  return user.roles.some((role) => Array.isArray(role?.permissions) && role.permissions.includes(permission));
+}
+
+export function isPlatformAdmin(user: SessionUser | null | undefined): boolean {
+  if (!user?.roles) return false;
+  return user.roles.some((role) => Boolean(role?.isGlobal));
 }
 
 export function hasPermission(user: SessionUser | null | undefined, permission: string): boolean {
   if (!user) return false;
-  const roles = (user as any)?.roles;
-  if (Array.isArray(roles)) {
-    for (let i = 0; i < roles.length; i++) {
-      const role = roles[i];
-      if (!role) continue;
-      const perms = role?.permissions;
-      if (Array.isArray(perms) && perms.includes(permission)) return true;
-    }
+  if (user.roles?.some((role) => Array.isArray(role?.permissions) && role.permissions.includes(permission))) {
+    return true;
   }
-  const tenantRole = (user as any)?.tenantRole;
+  const tenantRole = user.tenantRole;
   if (tenantRole && TENANT_ROLE_PERMISSIONS[tenantRole]?.includes(permission)) return true;
   return false;
 }
@@ -750,6 +765,10 @@ export async function getDashboardData(user: SessionUser): Promise<DashboardData
   };
 }
 
+export async function getPlatformDashboardSummary(): Promise<PlatformDashboardSummary> {
+  return apiGet<PlatformDashboardSummary>('/platform/dashboard-summary');
+}
+
 export async function getTrips(query: { status?: string; q?: string; page?: number; pageSize?: number } = {}): Promise<Paginated<TripSummary>> {
   const params = new URLSearchParams();
   if (query.status) params.set('status', query.status);
@@ -781,11 +800,12 @@ export function startTrip(id: string, input: StartTripInput) {
   );
 }
 
-export function appendTripLocation(id: string, input: TripLocationInput) {
+export function appendTripLocation(id: string, input: TripLocationInput, idempotencyKey?: string) {
   return apiMutate<{ positionId: string; replayed: boolean }>(
     `/trips/${encodeURIComponent(id)}/locations`,
     'POST',
     input,
+    idempotencyKey,
   );
 }
 
@@ -816,11 +836,13 @@ export function submitTripDelivery(
     confirmationNote?: string;
     deviceTimestamp?: string;
   },
+  idempotencyKey?: string,
 ) {
   return apiMutate<DeliverySubmitResult>(
     `/trips/${encodeURIComponent(id)}/delivery`,
     'POST',
     input,
+    idempotencyKey,
   );
 }
 
@@ -844,10 +866,11 @@ export function completeTrip(id: string) {
   }>(`/trips/${encodeURIComponent(id)}/complete`, 'POST');
 }
 
-export function uploadTripProof(id: string, file: File) {
+export function uploadTripProof(id: string, file: File, idempotencyKey?: string) {
   return apiUpload<ProofSummary>(
     `/trips/${encodeURIComponent(id)}/delivery/proofs`,
     file,
+    idempotencyKey,
   );
 }
 

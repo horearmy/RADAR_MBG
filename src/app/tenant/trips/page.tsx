@@ -1,39 +1,32 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { ChevronRight, Navigation, Plus, RefreshCw, Truck, UserRound, X } from "lucide-react";
 import { HeaderAccount } from "@/components/account-menu";
+import { TenantSidebar } from "@/components/tenant-sidebar";
 import {
-  ArrowLeft,
-  CalendarClock,
-  MapPin,
-  Navigation,
-  Plus,
-  RefreshCw,
-  Search,
-  Truck,
-  UserRound,
-  X,
-} from "lucide-react";
-import {
-  createTrip,
+  apiBaseUrl,
+  createTenantTrip,
   getCurrentSession,
-  getSppgOptions,
-  getTripResourceOptions,
-  getTrips,
-  type Paginated,
+  hasPermission,
   type SessionUser,
-  type SppgSummary,
-  type TripResourceOptions,
-  type TripSummary,
 } from "@/lib/api";
 
-const PAGE_SIZE = 25;
 const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
 
+type Trip = {
+  id: string;
+  status: string;
+  plannedDepartureAt: string | null;
+  plannedArrivalAt: string | null;
+  plannedQuantity?: number;
+  vehicle: { plateNumber: string } | null;
+  driver: { name: string } | null;
+  deliveryLocation: { name: string } | null;
+};
+
 type TripFormState = {
-  sppgId: string;
   deliveryLocationId: string;
   vehicleId: string;
   driverId: string;
@@ -42,331 +35,353 @@ type TripFormState = {
   plannedQuantity: string;
 };
 
-function defaultTripForm(nowMs: number = Date.now()): TripFormState {
-  const now = new Date(nowMs + WIB_OFFSET_MS);
-  const arrival = new Date(now.getTime() + 2 * 60 * 60_000);
-  return {
-    sppgId: "",
-    deliveryLocationId: "",
-    vehicleId: "",
-    driverId: "",
-    plannedDepartureAt: toWibInput(now),
-    plannedArrivalAt: toWibInput(arrival),
-    plannedQuantity: "100",
-  };
-}
+type DriverOption = { id: string; code: string; name: string };
+type VehicleOption = { id: string; plateNumber: string; label?: string | null };
+type DeliveryLocationOption = { id: string; code: string; name: string };
 
 function toWibInput(date: Date) {
-  const wib = new Date(date.getTime() + WIB_OFFSET_MS);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${wib.getUTCFullYear()}-${pad(wib.getUTCMonth() + 1)}-${pad(wib.getUTCDate())}T${pad(wib.getUTCHours())}:${pad(wib.getUTCMinutes())}`;
+  return new Date(date.getTime() + WIB_OFFSET_MS).toISOString().slice(0, 16);
 }
 
 function wibInputToIso(value: string) {
-  if (!value) return null;
-  const date = new Date(`${value}:00+07:00`);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  const parsed = new Date(`${value}:00+07:00`);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
+}
+
+function createTripErrorMessage(error: unknown) {
+  const code = error instanceof Error ? error.message : "";
+  switch (code) {
+    case "SPPG_NOT_RESOLVED":
+      return "SPPG untuk akun ini belum dapat ditentukan. Hubungi administrator platform agar akun terhubung ke SPPG.";
+    case "VEHICLE_NOT_AVAILABLE":
+      return "Kendaraan tidak aktif atau bukan milik tenant.";
+    case "DRIVER_NOT_AVAILABLE":
+      return "Pengemudi tidak aktif atau bukan milik tenant.";
+    case "INVALID_DESTINATION":
+      return "Lokasi tujuan tidak valid.";
+    case "INVALID_TRIP_SCHEDULE":
+      return "Waktu tiba harus setelah waktu berangkat.";
+    case "CSRF_INVALID":
+    case "CSRF_UNAVAILABLE":
+      return "Sesi keamanan kedaluwarsa. Muat ulang halaman lalu coba lagi.";
+    case "REQUEST_FAILED_403":
+    case "FORBIDDEN":
+      return "Peran Anda tidak memiliki izin untuk membuat perjalanan.";
+    case "API_NOT_CONFIGURED":
+      return "Alamat API belum dikonfigurasi.";
+    default:
+      return "Perjalanan gagal dibuat. Periksa data lalu coba lagi.";
+  }
+}
+
+function formatClock(value: string | null | undefined) {
+  if (!value) return "--:--";
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return "--:--";
+  const parts = new Intl.DateTimeFormat("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: "Asia/Jakarta",
+  }).formatToParts(date);
+  const hour = parts.find((part) => part.type === "hour")?.value ?? "--";
+  const minute = parts.find((part) => part.type === "minute")?.value ?? "--";
+  return `${hour}:${minute}`;
+}
+
+function tripState(status: string): { label: string; tone: string } {
+  switch (status) {
+    case "COMPLETED": return { label: "Selesai", tone: "green" };
+    case "DELIVERED": return { label: "Terkirim", tone: "green" };
+    case "DELIVERY_IN_PROGRESS": return { label: "Penyaluran", tone: "violet" };
+    case "ARRIVAL_VERIFIED": return { label: "Tiba terverifikasi", tone: "green" };
+    case "ARRIVAL_DETECTED": return { label: "Tiba", tone: "violet" };
+    case "IN_TRANSIT": return { label: "Dalam perjalanan", tone: "blue" };
+    case "READY_TO_DEPART": return { label: "Siap berangkat", tone: "amber" };
+    case "SCHEDULED": return { label: "Terjadwal", tone: "blue" };
+    case "CANCELLED": return { label: "Dibatalkan", tone: "red" };
+    case "EXCEPTION": return { label: "Perlu perhatian", tone: "red" };
+    default: return { label: "Draf", tone: "blue" };
+  }
 }
 
 export default function TenantTripsPage() {
-  const router = useRouter();
-  const [user, setUser] = useState<SessionUser | null>(null);
-  const [rows, setRows] = useState<TripSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [search, setSearch] = useState("");
-
-  const [createOpen, setCreateOpen] = useState(false);
-  const [createBusy, setCreateBusy] = useState(false);
-  const [createError, setCreateError] = useState("");
-  const [toast, setToast] = useState<string | null>(null);
-  const [form, setForm] = useState<TripFormState>({ sppgId: '', deliveryLocationId: '', vehicleId: '', driverId: '', plannedDepartureAt: '', plannedArrivalAt: '', plannedQuantity: '100' });
-  const [sppgOptions, setSppgOptions] = useState<SppgSummary[] | null>(null);
-  const [resources, setResources] = useState<TripResourceOptions | null>(null);
-  const [optionsState, setOptionsState] = useState<"idle" | "loading" | "ready" | "error">("idle");
-  const [resourceState, setResourceState] = useState<"idle" | "loading" | "ready" | "error">("idle");
-  const resourceRequestRef = useRef(0);
+  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
+  const [sessionState, setSessionState] = useState<"checking" | "ready" | "unavailable" | "data-error">("checking");
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState<TripFormState>({ deliveryLocationId: "", vehicleId: "", driverId: "", plannedDepartureAt: "", plannedArrivalAt: "", plannedQuantity: "" });
+  const [drivers, setDrivers] = useState<DriverOption[]>([]);
+  const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
+  const [deliveryLocations, setDeliveryLocations] = useState<DeliveryLocationOption[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
-    setForm(defaultTripForm(Date.now()));
-  }, []);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const session = await getCurrentSession().catch(() => null);
-      if (session) setUser(session);
-      const result: Paginated<TripSummary> = await getTrips({ page, pageSize: PAGE_SIZE });
-      setRows(result.data ?? []);
-      setTotalPages(result.pagination?.totalPages ?? 1);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal memuat perjalanan");
-    } finally {
-      setLoading(false);
-    }
-  }, [page]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  async function loadResources(sppgId: string) {
-    const requestId = ++resourceRequestRef.current;
-    setResourceState("loading");
-    try {
-      const result = await getTripResourceOptions(sppgId);
-      if (requestId !== resourceRequestRef.current) return;
-      setResources(result);
-      setResourceState("ready");
-    } catch {
-      if (requestId !== resourceRequestRef.current) return;
-      setResourceState("error");
-    }
-  }
-
-  async function loadCreateOptions() {
-    resourceRequestRef.current += 1;
-    setOptionsState("loading");
-    setResources(null);
-    setResourceState("idle");
-    try {
-      const result = await getSppgOptions();
-      setSppgOptions(result);
-      setOptionsState("ready");
-      const firstSppg = result.find((sppg) => sppg.status === "ACTIVE") ?? null;
-      setForm((current) => ({ ...current, sppgId: firstSppg?.id ?? "" }));
-      if (firstSppg) await loadResources(firstSppg.id);
-    } catch {
-      setOptionsState("error");
-    }
-  }
-
-  function openCreate() {
-    if (createBusy) return;
-    setCreateOpen(true);
-    setCreateError("");
-    setForm(defaultTripForm(Date.now()));
-    setResources(null);
-    setResourceState("idle");
-    if (optionsState !== "ready" || !sppgOptions) {
-      void loadCreateOptions();
-      return;
-    }
-    const firstSppg = sppgOptions.find((sppg) => sppg.status === "ACTIVE") ?? null;
-    setForm((current) => ({ ...current, sppgId: firstSppg?.id ?? "" }));
-    if (firstSppg) void loadResources(firstSppg.id);
-  }
-
-  function closeCreate() {
-    if (createBusy) return;
-    resourceRequestRef.current += 1;
-    setCreateOpen(false);
-    setCreateError("");
-  }
-
-  function updateField(field: keyof TripFormState, value: string) {
-    setForm((current) => ({ ...current, [field]: value }));
-  }
-
-  function changeDeparture(value: string) {
-    setForm((current) => {
-      const departure = wibInputToIso(value);
-      const arrival = wibInputToIso(current.plannedArrivalAt);
-      if (!departure || (arrival && new Date(arrival) > new Date(departure))) {
-        return { ...current, plannedDepartureAt: value };
-      }
-      const nextArrival = new Date(new Date(departure).getTime() + 2 * 60 * 60_000);
-      return { ...current, plannedDepartureAt: value, plannedArrivalAt: toWibInput(nextArrival) };
-    });
-  }
-
-  function changeSppg(value: string) {
-    setForm((current) => ({
-      ...current,
-      sppgId: value,
+    const departure = new Date(Date.now() + 30 * 60_000);
+    departure.setUTCSeconds(0, 0);
+    departure.setUTCMinutes(Math.ceil(departure.getUTCMinutes() / 15) * 15);
+    const arrival = new Date(departure.getTime() + 2 * 60 * 60_000);
+    setForm({
       deliveryLocationId: "",
       vehicleId: "",
       driverId: "",
-    }));
-    void loadResources(value);
-  }
+      plannedDepartureAt: toWibInput(departure),
+      plannedArrivalAt: toWibInput(arrival),
+      plannedQuantity: "",
+    });
+  }, []);
 
-  async function submitCreate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (createBusy) return;
-    setCreateError("");
-
-    if (resourceState !== "ready" || !resources) {
-      setCreateError("Pilihan tujuan, kendaraan, dan pengemudi belum siap.");
-      return;
-    }
-    if (!form.sppgId || !form.deliveryLocationId || !form.vehicleId || !form.driverId) {
-      setCreateError("Lengkapi SPPG, tujuan, kendaraan, dan pengemudi.");
-      return;
-    }
-    const plannedQuantity = Number(form.plannedQuantity);
-    if (!Number.isInteger(plannedQuantity) || plannedQuantity < 1 || plannedQuantity > 100_000) {
-      setCreateError("Jumlah porsi harus bilangan bulat 1-100.000.");
-      return;
-    }
-    const plannedDepartureAt = wibInputToIso(form.plannedDepartureAt);
-    const plannedArrivalAt = wibInputToIso(form.plannedArrivalAt);
-    if (!plannedDepartureAt || !plannedArrivalAt) {
-      setCreateError("Jadwal berangkat dan tiba wajib diisi.");
-      return;
-    }
-
-    setCreateBusy(true);
+  const loadTrips = async (silent: boolean) => {
+    if (!silent) setSessionState("checking");
     try {
-      await createTrip({
-        sppgId: form.sppgId,
+      const res = await fetch(`${apiBaseUrl}/tenant/trips`, { credentials: "include" });
+      if (!res.ok) throw new Error("Gagal memuat perjalanan");
+      const data = await res.json();
+      setTrips(Array.isArray(data) ? data : data.data ?? []);
+      setSessionState("ready");
+      setRefreshError(null);
+    } catch {
+      if (silent) setRefreshError("Pembaruan gagal. Data terakhir tetap ditampilkan.");
+      else setSessionState("data-error");
+    }
+  };
+
+  const loadResources = async () => {
+    try {
+      const [driversRes, vehiclesRes, locsRes] = await Promise.all([
+        fetch(`${apiBaseUrl}/tenant/drivers`, { credentials: "include" }),
+        fetch(`${apiBaseUrl}/tenant/vehicles`, { credentials: "include" }),
+        fetch(`${apiBaseUrl}/tenant/delivery-locations`, { credentials: "include" }),
+      ]);
+      if (driversRes.ok) {
+        const d = await driversRes.json();
+        setDrivers(Array.isArray(d) ? d : d.data ?? []);
+      }
+      if (vehiclesRes.ok) {
+        const v = await vehiclesRes.json();
+        setVehicles(Array.isArray(v) ? v : v.data ?? []);
+      }
+      if (locsRes.ok) {
+        const l = await locsRes.json();
+        setDeliveryLocations(Array.isArray(l) ? l : l.data ?? []);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const user = await getCurrentSession();
+        if (!active) return;
+        setSessionUser(user);
+        await loadTrips(false);
+        await loadResources();
+      } catch {
+        if (!active) return;
+        setSessionState("unavailable");
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const handleRefresh = async (silent = true) => {
+    setRefreshing(true);
+    try { await loadTrips(silent); } finally { setRefreshing(false); }
+  };
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const plannedDepartureAt = wibInputToIso(form.plannedDepartureAt);
+      const plannedArrivalAt = wibInputToIso(form.plannedArrivalAt);
+      if (!plannedDepartureAt || !plannedArrivalAt) throw new Error("INVALID_TRIP_SCHEDULE");
+      await createTenantTrip({
         deliveryLocationId: form.deliveryLocationId,
         vehicleId: form.vehicleId,
         driverId: form.driverId,
         plannedDepartureAt,
         plannedArrivalAt,
-        plannedQuantity,
+        plannedQuantity: Number(form.plannedQuantity) || 0,
       });
-      closeCreate();
-      setToast('Perjalanan berhasil dibuat.');
-      await load();
+      setShowForm(false);
+      setForm({ deliveryLocationId: "", vehicleId: "", driverId: "", plannedDepartureAt: "", plannedArrivalAt: "", plannedQuantity: "" });
+      await loadTrips(true);
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : "Gagal membuat perjalanan");
+      setFormError(createTripErrorMessage(err));
     } finally {
-      setCreateBusy(false);
+      setSubmitting(false);
     }
-  }
+  };
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((row) =>
-      row.id.toLowerCase().includes(q) ||
-      row.driver?.name?.toLowerCase().includes(q) ||
-      row.vehicle?.plateNumber?.toLowerCase().includes(q) ||
-      row.deliveryLocation?.name?.toLowerCase().includes(q)
-    );
-  }, [rows, search]);
+  if (sessionState === "checking") return <main className="session-state"><span className="session-spinner" /><p>Memuat perjalanan…</p></main>;
+  if (sessionState === "unavailable" || !sessionUser) return <main className="session-state"><span className="session-error-mark">!</span><h1>Layanan belum tersedia</h1><p>Pastikan API dan PostgreSQL aktif.</p><button className="session-retry" onClick={() => window.location.reload()}>Coba lagi</button></main>;
+  if (sessionState === "data-error") return <main className="session-state"><span className="session-error-mark">!</span><h1>Data gagal dimuat</h1><p>Periksa koneksi API lalu coba lagi.</p><button className="session-retry" onClick={() => window.location.reload()}>Coba lagi</button></main>;
+
+  const canReadTrips = hasPermission(sessionUser, "trip:read");
+  const canCreateTrip = hasPermission(sessionUser, "trip:create");
 
   return (
-    <div className="p-6">
-      {toast && <div style={{ position: 'fixed', top: 16, right: 16, background: '#16a34a', color: '#fff', padding: '12px 16px', borderRadius: 8, zIndex: 100, boxShadow: '0 4px 12px rgba(0,0,0,.15)' }}>{toast}</div>}
-      <div className="page-heading">
-        <div>
-          <div className="eyebrow"><span className="eyebrow-line" />MANAJEMEN</div>
-          <h1>Perjalanan</h1>
-          <p>Perjalanan distribusi milik SPPG Anda.</p>
-        </div>
-        <div className="page-actions">
-          <button className="btn btn-primary" onClick={openCreate}><Plus size={16} /> Tambah perjalanan</button>
-        </div>
-      </div>
-
-      <section className="panel">
-        <div className="panel-heading">
-          <h2>Daftar perjalanan</h2>
-        </div>
-        <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>STATUS</th>
-                  <th>DRIVER</th>
-                  <th>KENDARAAN</th>
-                  <th>TUJUAN</th>
-                  <th>QTY</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row) => (
-                  <tr key={row.id}>
-                    <td>{row.id.slice(0, 8)}</td>
-                    <td><span className="status-pill">{row.status}</span></td>
-                    <td>{row.driver?.name ?? "-"}</td>
-                    <td>{row.vehicle?.plateNumber ?? "-"}</td>
-                    <td>{row.deliveryLocation?.name ?? "-"}</td>
-                    <td>{row.plannedQuantity}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+    <div className="app-shell">
+      <TenantSidebar />
+      <section className="main-column">
+        <header className="topbar">
+          <div className="breadcrumb"><span>Tenant</span><ChevronRight size={14} /><strong>Perjalanan</strong></div>
+          <div className="topbar-actions">
+            <span className="environment"><span className="live-dot" />DATA OPERASIONAL</span>
+            <span className="topbar-divider" />
+            <HeaderAccount user={sessionUser} />
           </div>
-        </section>
-
-      {createOpen && (
-        <div className="modal-backdrop" style={{ background: 'rgba(7,27,58,.45)', backdropFilter: 'blur(4px)' }}>
-          <div className="modal" style={{ borderRadius: 14, boxShadow: '0 24px 60px rgba(7,27,58,.25)', animation: 'modalIn .2s ease' }}>
-            <div className="modal-header" style={{ borderBottom: '1px solid var(--color-border)', padding: '16px 20px' }}>
-              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 650 }}>Tambah Perjalanan</h2>
-              <button onClick={closeCreate} style={{ background: 'transparent', border: 0, cursor: 'pointer' }}><X size={18} /></button>
+        </header>
+        <main className="content-area dashboard-content">
+          <div className="page-heading">
+            <div>
+              <div className="eyebrow"><span className="eyebrow-line" />{new Intl.DateTimeFormat("id-ID", { weekday: "long", day: "2-digit", month: "long", year: "numeric", timeZone: "Asia/Jakarta" }).format(new Date()).toUpperCase()}</div>
+              <h1>Perjalanan Tenant</h1>
+              <p>Daftar perjalanan operasional SPPG.</p>
             </div>
-            <form onSubmit={submitCreate} className="modal-body" style={{ display: 'grid', gap: 14, padding: 20 }}>
-              {createError && <p className="text-danger">{createError}</p>}
-              <div className="form-grid">
-                <div className="form-row">
-                  <label>SPPG</label>
-                  <select value={form.sppgId} onChange={(e) => changeSppg(e.target.value)} required>
-                    <option value="">Pilih SPPG</option>
-                    {(sppgOptions ?? []).map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-row">
-                  <label>Tujuan</label>
-                  <select value={form.deliveryLocationId} onChange={(e) => updateField("deliveryLocationId", e.target.value)} required disabled={resourceState !== "ready"}>
-                    <option value="">Pilih tujuan</option>
-                    {(resources?.deliveryLocations ?? []).map((d) => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-row">
-                  <label>Kendaraan</label>
-                  <select value={form.vehicleId} onChange={(e) => updateField("vehicleId", e.target.value)} required disabled={resourceState !== "ready"}>
-                    <option value="">Pilih kendaraan</option>
-                    {(resources?.vehicles ?? []).map((v) => (
-                      <option key={v.id} value={v.id}>{v.plateNumber}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-row">
-                  <label>Driver</label>
-                  <select value={form.driverId} onChange={(e) => updateField("driverId", e.target.value)} required disabled={resourceState !== "ready"}>
-                    <option value="">Pilih driver</option>
-                    {(resources?.drivers ?? []).map((d) => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-row two-col">
-                  <div>
-                    <label>Berangkat</label>
-                    <input type="datetime-local" value={form.plannedDepartureAt} onChange={(e) => changeDeparture(e.target.value)} required />
-                  </div>
-                  <div>
-                    <label>Tiba</label>
-                    <input type="datetime-local" value={form.plannedArrivalAt} onChange={(e) => updateField("plannedArrivalAt", e.target.value)} required />
-                  </div>
-                </div>
-                <div className="form-row">
-                  <label>Jumlah porsi</label>
-                  <input type="number" min={1} max={100000} value={form.plannedQuantity} onChange={(e) => updateField("plannedQuantity", e.target.value)} required />
-                </div>
-              </div>
-              <div className="modal-actions">
-                <button type="button" className="btn btn-ghost" onClick={closeCreate}>Batal</button>
-                <button type="submit" className="btn btn-primary" disabled={createBusy}>{createBusy ? "Menyimpan..." : "Buat perjalanan"}</button>
-              </div>
-            </form>
+            <div className="page-heading-actions">
+              {canCreateTrip && (
+                <button className="export-button" onClick={() => setShowForm(true)}>
+                  <Plus size={15} />
+                  Buat perjalanan
+                </button>
+              )}
+              <button className="export-button" onClick={() => void handleRefresh(true)} disabled={refreshing}>
+                <RefreshCw size={15} className={refreshing ? "spin" : undefined} />
+                {refreshing ? "Memuat…" : "Muat ulang"}
+              </button>
+            </div>
           </div>
-        </div>
-      )}
-      <style>{`@keyframes modalIn { from { opacity:.7; transform: translateY(8px); } to { opacity:1; transform:none; } }`}</style>
+
+          {refreshError && <p className="refresh-warning" role="status">{refreshError}</p>}
+
+          {/* KPI Cards */}
+          <section className="kpi-grid kpi-grid-4" aria-label="Ringkasan perjalanan" style={{ marginBottom: "1rem" }}>
+            <article className="kpi-card">
+              <div className="kpi-top"><span className="kpi-icon icon-blue"><Truck size={17} /></span><span className="kpi-trend trend-neutral">Total</span></div>
+              <p className="kpi-label">Total Perjalanan</p>
+              <div className="kpi-value">{trips.length} <span>trip</span></div>
+              <div className="kpi-foot">Termuat</div>
+            </article>
+            <article className="kpi-card">
+              <div className="kpi-top"><span className="kpi-icon icon-green"><Truck size={17} /></span><span className="kpi-trend trend-neutral">Aktif</span></div>
+              <p className="kpi-label">Perjalanan Aktif</p>
+              <div className="kpi-value">{trips.filter((t) => ["IN_TRANSIT", "DELIVERY_IN_PROGRESS", "ARRIVAL_DETECTED", "ARRIVAL_VERIFIED"].includes(t.status)).length} <span>trip</span></div>
+              <div className="kpi-foot">Dalam perjalanan / penyaluran</div>
+            </article>
+            <article className="kpi-card">
+              <div className="kpi-top"><span className="kpi-icon icon-navy"><UserRound size={17} /></span><span className="kpi-trend trend-neutral">Selesai</span></div>
+              <p className="kpi-label">Perjalanan Selesai</p>
+              <div className="kpi-value">{trips.filter((t) => t.status === "COMPLETED").length} <span>trip</span></div>
+              <div className="kpi-foot">Telah diselesaikan</div>
+            </article>
+            <article className="kpi-card">
+              <div className="kpi-top"><span className="kpi-icon icon-amber"><Truck size={17} /></span><span className="kpi-trend trend-neutral">Terjadwal</span></div>
+              <p className="kpi-label">Perjalanan Terjadwal</p>
+              <div className="kpi-value">{trips.filter((t) => t.status === "SCHEDULED" || t.status === "READY_TO_DEPART").length} <span>trip</span></div>
+              <div className="kpi-foot">Menunggu keberangkatan</div>
+            </article>
+          </section>
+
+          {showForm && (
+            <section className="panel" aria-label="Buat perjalanan">
+              <div className="panel-heading">
+                <div>
+                  <div className="section-title-row"><h2>Buat perjalanan</h2></div>
+                  <p>Isi data perjalanan baru.</p>
+                </div>
+                <button className="square-button" onClick={() => setShowForm(false)} aria-label="Tutup form"><X size={16} /></button>
+              </div>
+              <form onSubmit={handleSubmit} className="trip-form">
+                <div className="form-grid">
+                  <label>
+                    <span>Kendaraan</span>
+                    <select value={form.vehicleId} onChange={(e) => setForm((f) => ({ ...f, vehicleId: e.target.value }))} required>
+                      <option value="">Pilih kendaraan</option>
+                      {vehicles.map((v) => <option key={v.id} value={v.id}>{v.plateNumber} {v.label ? `· ${v.label}` : ""}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Pengemudi</span>
+                    <select value={form.driverId} onChange={(e) => setForm((f) => ({ ...f, driverId: e.target.value }))} required>
+                      <option value="">Pilih pengemudi</option>
+                      {drivers.map((d) => <option key={d.id} value={d.id}>{d.code} · {d.name}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Lokasi tujuan</span>
+                    <select value={form.deliveryLocationId} onChange={(e) => setForm((f) => ({ ...f, deliveryLocationId: e.target.value }))} required>
+                      <option value="">Pilih lokasi tujuan</option>
+                      {deliveryLocations.map((l) => <option key={l.id} value={l.id}>{l.code} · {l.name}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Waktu berangkat</span>
+                    <input type="datetime-local" value={form.plannedDepartureAt} onChange={(e) => setForm((f) => ({ ...f, plannedDepartureAt: e.target.value }))} required />
+                  </label>
+                  <label>
+                    <span>Waktu tiba (estimasi)</span>
+                    <input type="datetime-local" value={form.plannedArrivalAt} onChange={(e) => setForm((f) => ({ ...f, plannedArrivalAt: e.target.value }))} required />
+                  </label>
+                  <label>
+                    <span>Jumlah porsi</span>
+                    <input type="number" value={form.plannedQuantity} onChange={(e) => setForm((f) => ({ ...f, plannedQuantity: e.target.value }))} placeholder="0" min="0" />
+                  </label>
+                </div>
+                {formError && <p className="refresh-warning" role="alert">{formError}</p>}
+                <div className="page-heading-actions">
+                  <button type="button" className="export-button" onClick={() => setShowForm(false)} disabled={submitting}>Batal</button>
+                  <button type="submit" className="export-button" disabled={submitting}>{submitting ? "Menyimpan…" : "Simpan perjalanan"}</button>
+                </div>
+              </form>
+            </section>
+          )}
+
+          <section className="panel trips-panel" aria-label="Perjalanan terkini">
+            <div className="panel-heading">
+              <div>
+                <div className="section-title-row"><h2>Perjalanan terkini</h2><span className="count-chip">{trips.filter(t => ["IN_TRANSIT","DELIVERY_IN_PROGRESS","ARRIVAL_DETECTED","ARRIVAL_VERIFIED"].includes(t.status)).length} aktif</span></div>
+                <p>Diurutkan berdasarkan waktu berangkat.</p>
+              </div>
+            </div>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>PERJALANAN</th><th>RUTE &amp; PENGEMUDI</th><th>STATUS</th><th>PORSI</th><th>ETA</th></tr>
+                </thead>
+                <tbody>
+                  {trips.map((trip) => {
+                    const state = tripState(trip.status);
+                    return (
+                      <tr key={trip.id}>
+                        <td><span className="trip-id">TRP-{trip.id.slice(0, 8).toUpperCase()}</span><span className="table-sub">{trip.vehicle?.plateNumber ?? "—"} <i>·</i> {formatClock(trip.plannedDepartureAt)}</span></td>
+                        <td><div className="driver-cell"><span className="driver-avatar avatar-blue">{trip.driver?.name?.charAt(0) ?? "?"}</span><span className="route-copy"><strong>{trip.deliveryLocation?.name ?? "—"}</strong><small>{trip.driver?.name ?? "—"}</small></span></div></td>
+                        <td><span className={`status-pill status-${state.tone}`}><span className="status-dot" />{state.label}</span></td>
+                        <td><span className="portion-value">{trip.plannedQuantity ?? "—"} porsi</span></td>
+                        <td><span className="eta-value">{trip.status === "COMPLETED" ? "Selesai" : trip.status === "CANCELLED" ? "—" : formatClock(trip.plannedArrivalAt)}</span></td>
+                      </tr>
+                    );
+                  })}
+                  {!trips.length && <tr><td colSpan={5} className="table-empty">Belum ada perjalanan.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <footer className="page-footer">
+            <span><span className="footer-dot" /> RADAR MBG <i>·</i> Data operasional tenant</span>
+            <span>Zona waktu Asia/Jakarta <i>·</i> {trips.length} perjalanan</span>
+          </footer>
+        </main>
+      </section>
     </div>
   );
 }
