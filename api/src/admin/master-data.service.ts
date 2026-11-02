@@ -943,6 +943,36 @@ export class MasterDataService {
       };
     }
 
+    // Tenant users: resolve scope from tenant's SPPG
+    if (principal.tenantRole) {
+      const membership = await this.prisma.db.tenantMembership.findFirst({
+        where: { userId: principal.id, status: 'ACTIVE' },
+        select: { tenantId: true },
+      });
+      if (membership?.tenantId) {
+        const tenant = await this.prisma.db.tenant.findUnique({
+          where: { id: membership.tenantId },
+          select: { legacySppgId: true },
+        });
+        if (tenant?.legacySppgId) {
+          const sppg = await this.prisma.db.sppg.findUnique({
+            where: { id: tenant.legacySppgId },
+            select: { id: true, regionId: true, organizationId: true },
+          });
+          if (sppg) {
+            return {
+              global: false,
+              organizationIds: [sppg.organizationId],
+              directOrganizationIds: [sppg.organizationId],
+              regionIds: [sppg.regionId],
+              sppgIds: [sppg.id],
+              sppgRegionIds: [sppg.regionId],
+            };
+          }
+        }
+      }
+    }
+
     const directOrganizationIds = principal.roles.flatMap(
       (role) => role.organizationId ? [role.organizationId] : [],
     );
