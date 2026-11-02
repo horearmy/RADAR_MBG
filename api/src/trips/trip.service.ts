@@ -946,7 +946,15 @@ export class TripService {
       if (role.sppgId) rules.push({ sppgId: role.sppgId });
     }
 
-    const scope = rules.length ? { OR: rules } : { id: { in: [] } };
+    let scope: Prisma.TripWhereInput;
+    if (rules.length) {
+      scope = { OR: rules };
+    } else if (tenantContext?.tenantId) {
+      // Tenant users without legacy roles (e.g. TENANT_DRIVER) are scoped by tenant.
+      scope = { tenantId: tenantContext.tenantId };
+    } else {
+      scope = { id: { in: [] } };
+    }
     const requiresDriverScope =
       principal.driverId !== null || principal.roles.some((role) => role.code === 'DRIVER');
     let result: Prisma.TripWhereInput;
@@ -957,7 +965,7 @@ export class TripService {
     } else {
       result = scope;
     }
-    if (tenantContext?.tenantId) {
+    if (tenantContext?.tenantId && rules.length) {
       result = { AND: [result, { tenantId: tenantContext.tenantId }] };
     }
     return result;
