@@ -1724,3 +1724,8 @@ a.gov-card:hover { background: #f7faff; }
 .status-pill.status-active { background: #dcfce7; color: #166534; }
 .status-pill.status-inactive { background: #f1f5f9; color: #64748b; }
 .green-dot { background: #22c55e; }
+
+/* Map page: panel posisi baru */
+.geofence-form-panel { max-height: 560px; overflow-y: auto; }
+.location-panel { max-height: none; }
+.location-panel .table-wrap { overflow-x: auto; }
