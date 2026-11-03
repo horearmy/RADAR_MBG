@@ -193,4 +193,83 @@ export const ISSUE_CATEGORIES: Array<{ value: string; label: string }> = [
   { value: "OTHER", label: "Lainnya" },
 ];
 
+// ---------------------------------------------------------------------------
+// DevTools API (development only)
+// ---------------------------------------------------------------------------
+
+export type DevTrip = {
+  id: string;
+  status: string;
+  trackingStatus: string;
+  verificationStatus: string;
+  deliveryStatus: string;
+  plannedQuantity: number;
+  dispatchedQuantity: number | null;
+  plannedDepartureAt: string;
+  deliveryLocation: { name: string };
+  driver: { name: string } | null;
+};
+
+export type DevTripStatus =
+  | "DRAFT"
+  | "SCHEDULED"
+  | "READY_TO_DEPART"
+  | "IN_TRANSIT"
+  | "ARRIVAL_DETECTED"
+  | "ARRIVAL_VERIFIED"
+  | "DELIVERY_IN_PROGRESS"
+  | "DELIVERED"
+  | "COMPLETED"
+  | "CANCELLED"
+  | "EXCEPTION";
+
+export const DEV_TRIP_STATUSES: DevTripStatus[] = [
+  "DRAFT",
+  "SCHEDULED",
+  "READY_TO_DEPART",
+  "IN_TRANSIT",
+  "ARRIVAL_DETECTED",
+  "ARRIVAL_VERIFIED",
+  "DELIVERY_IN_PROGRESS",
+  "DELIVERED",
+  "COMPLETED",
+  "CANCELLED",
+  "EXCEPTION",
+];
+
+export const DEV_TRIP_STATUS_LABELS: Record<DevTripStatus, string> = {
+  DRAFT: "Draft",
+  SCHEDULED: "Ditugaskan",
+  READY_TO_DEPART: "Siap Berangkat",
+  IN_TRANSIT: "Dalam Perjalanan",
+  ARRIVAL_DETECTED: "Memeriksa Kedatangan",
+  ARRIVAL_VERIFIED: "Kendaraan Tiba",
+  DELIVERY_IN_PROGRESS: "Serah Terima Berjalan",
+  DELIVERED: "POD Terkirim",
+  COMPLETED: "Selesai",
+  CANCELLED: "Dibatalkan",
+  EXCEPTION: "Ada Masalah",
+};
+
+/** Cek apakah DevTools aktif (hanya di development). */
+export function isDevToolsAvailable(): boolean {
+  // NODE_ENV otomatis "development" saat `next dev` dan "production" saat build.
+  return process.env.NODE_ENV === "development";
+}
+
+export async function getDevTrips(): Promise<DevTrip[]> {
+  return toList<DevTrip>(await apiGet<unknown>("/dev/trips"));
+}
+
+export async function setDevTripStatus(
+  tripId: string,
+  status: DevTripStatus,
+): Promise<{ ok: boolean; error?: string; previousStatus?: string }> {
+  return apiMutate<{ ok: boolean; error?: string; previousStatus?: string }>(
+    `/dev/trips/${encodeURIComponent(tripId)}/status`,
+    "POST",
+    { status },
+  );
+}
+
 export { apiBaseUrl };

@@ -11,9 +11,10 @@ import { RecipientModule } from './recipient/recipient.module.js';
 import { TenantModule } from './tenant/tenant.module.js';
 import { RegistrationModule } from './registration/registration.module.js';
 import { PlatformModule } from './platform/platform.module.js';
+import { DevModule } from './dev/dev.module.js';
 
 @Module({
-  imports: [DatabaseModule, AuthModule, TripModule, AdminModule, ExceptionModule, AlertModule, TenantModule, RegistrationModule, PlatformModule, RecipientModule],
+  imports: [DatabaseModule, AuthModule, TripModule, AdminModule, ExceptionModule, AlertModule, TenantModule, RegistrationModule, PlatformModule, RecipientModule, DevModule],
   controllers: [AppController],
   providers: [AppService],
 })

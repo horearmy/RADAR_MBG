@@ -41,6 +41,7 @@ import {
 } from "@/components/field-ui";
 import { PodForm } from "./driver-pod-form";
 import { DriverNavigation } from "@/components/driver-navigation";
+import { DevTools } from "@/components/dev-tools";
 
 type LoadState = "loading" | "ready" | "forbidden" | "error";
 type Tab = "home" | "tasks" | "history" | "profile" | "navigasi";
@@ -613,6 +614,9 @@ export default function DriverClient() {
       )}
 
       <BottomNavigation items={navItems} current={tab} label="Navigasi driver" />
+
+      {/* DevTools (development only) */}
+      <DevTools onStatusChanged={() => void loadTrips(false)} />
 
       {/* Detail perjalanan */}
       {detailTrip && !podTripId && !confirm && (
