@@ -110,6 +110,7 @@ async createDeliveryLocation(tenantId: string, input: { code: string; name: stri
       data: {
         organizationId: sppg.organizationId,
         regionId: sppg.regionId,
+        tenantId,
         code: input.code.trim().toUpperCase(),
         name: input.name.trim(),
         address: input.address?.trim() ?? null,

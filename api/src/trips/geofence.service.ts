@@ -309,9 +309,31 @@ export class GeofenceService {
 
     const location = await tx.deliveryLocation.findUnique({
       where: { id: locationId },
-      select: { id: true, organizationId: true, regionId: true, active: true },
+      select: { id: true, organizationId: true, regionId: true, active: true, tenantId: true },
     });
     if (!location || !location.active) throw new NotFoundException({ code: 'LOCATION_NOT_FOUND' });
+
+    // Tenant users: check if the location belongs to their tenant or their tenant's SPPG scope.
+    if (principal.tenantRole && tenantContext?.tenantId) {
+      if (location.tenantId && location.tenantId === tenantContext.tenantId) {
+        return location;
+      }
+      const tenant = await tx.tenant.findUnique({
+        where: { id: tenantContext.tenantId },
+        select: { legacySppgId: true },
+      });
+      if (tenant?.legacySppgId) {
+        const sppg = await tx.sppg.findUnique({
+          where: { id: tenant.legacySppgId },
+          select: { organizationId: true, regionId: true },
+        });
+        if (sppg && sppg.organizationId === location.organizationId && sppg.regionId === location.regionId) {
+          return location;
+        }
+      }
+      throw new NotFoundException({ code: 'LOCATION_NOT_FOUND' });
+    }
+
     const sppgIds = [...new Set(principal.roles.flatMap((role) => role.sppgId ? [role.sppgId] : []))];
     const scopedSppgs = sppgIds.length
       ? await tx.sppg.findMany({
