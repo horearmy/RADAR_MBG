@@ -1735,6 +1735,18 @@ a.gov-card:hover { background: #f7faff; }
 .shape-pill.shape-circle { background: #eaf2ff; color: #0b4fb3; }
 .shape-pill.shape-polygon { background: #fef3c7; color: #92400e; }
 
+/* Map page: geofence view filter */
+.geofence-view-filter { display: flex; flex-direction: column; gap: 8px; padding: 0 14px 12px; border-bottom: 1px solid #eef2f7; margin-bottom: 12px; }
+.geofence-view-main { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.segmented-control { display: inline-flex; padding: 3px; border: 1px solid #dbe4ee; border-radius: 8px; background: #f4f7fb; }
+.segmented-item { padding: 5px 12px; border: 0; border-radius: 6px; background: transparent; color: #5b6b82; font-family: inherit; font-size: 10px; font-weight: 650; cursor: pointer; transition: all .15s; }
+.segmented-item:hover { color: #2e5f8c; }
+.segmented-item.active { background: #1677ff; color: #fff; box-shadow: 0 1px 3px rgb(22 119 255 / 30%); }
+.geofence-view-select { flex: 1; min-width: 180px; height: 32px; padding: 0 9px; border: 1px solid #dbe4ee; border-radius: 7px; background: #fbfdff; color: #354a63; font-family: inherit; font-size: 10px; cursor: pointer; }
+.geofence-view-select:focus { border-color: #a9c7e6; outline: 2px solid rgb(63 127 207 / 16%); outline-offset: 1px; }
+.geofence-view-info { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 6px; background: #ebf7f0; color: #16885f; font-size: 10px; font-weight: 650; }
+.geofence-view-hint { color: #8a9aac; font-size: 9px; }
+
 /* Map page: panel posisi baru */
 .geofence-form-panel { max-height: 560px; overflow-y: auto; }
 .location-panel { max-height: none; }

@@ -692,7 +692,14 @@ export default function TenantMapPage() {
                         </svg>
                         Tipe lokasi
                       </span>
-                      <select value={locationType} onChange={(e) => { setLocationType(e.target.value as GeofenceLocationType); setLocationId(sppgId ?? ""); }}>
+                      <select
+                        value={locationType}
+                        onChange={(e) => {
+                          const nextType = e.target.value as GeofenceLocationType;
+                          setLocationType(nextType);
+                          if (nextType === "SPPG") setLocationId(sppgId ?? "");
+                        }}
+                      >
                         <option value="SPPG">SPPG (Tenant)</option>
                         <option value="DELIVERY">Lokasi pengiriman</option>
                       </select>
@@ -1017,6 +1024,58 @@ export default function TenantMapPage() {
                 <div className="section-title-row"><h2>Geofence terdaftar</h2><span className="count-chip">{geofences.length}</span></div>
                 <p>Klik baris untuk menampilkan geofence pada peta.</p>
               </div>
+            </div>
+
+            {/* Filter tipe & lokasi geofence */}
+            <div className="geofence-view-filter">
+              <div className="geofence-view-main">
+                <div className="segmented-control" role="tablist" aria-label="Tipe geofence">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={locationType === "SPPG"}
+                    className={`segmented-item ${locationType === "SPPG" ? "active" : ""}`}
+                    onClick={() => { setLocationType("SPPG"); setLocationId(sppgId ?? ""); }}
+                  >
+                    SPPG
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={locationType === "DELIVERY"}
+                    className={`segmented-item ${locationType === "DELIVERY" ? "active" : ""}`}
+                    onClick={() => setLocationType("DELIVERY")}
+                  >
+                    Lokasi Pengiriman
+                  </button>
+                </div>
+                {locationType === "DELIVERY" ? (
+                  <select
+                    className="geofence-view-select"
+                    value={locationId}
+                    onChange={(e) => {
+                      setLocationId(e.target.value);
+                      setSelectedLocationId(e.target.value || null);
+                    }}
+                    aria-label="Pilih lokasi pengiriman"
+                  >
+                    <option value="">Pilih lokasi…</option>
+                    {deliveryLocations.map((l) => <option key={l.id} value={l.id}>{l.code} · {l.name}</option>)}
+                  </select>
+                ) : (
+                  <span className="geofence-view-info">
+                    <ShieldCheck size={12} />
+                    Geofence untuk SPPG tenant
+                  </span>
+                )}
+              </div>
+              <span className="geofence-view-hint">
+                {locationType === "SPPG"
+                  ? `Menampilkan ${geofences.length} geofence SPPG`
+                  : locationId
+                    ? `Menampilkan ${geofences.length} geofence lokasi`
+                    : "Pilih lokasi pengiriman untuk melihat geofence"}
+              </span>
             </div>
 
             <div className="panel-search">
