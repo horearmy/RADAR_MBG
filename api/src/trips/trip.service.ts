@@ -807,6 +807,8 @@ export class TripService {
         deviceTimestamp: input.deviceTimestamp ? deviceTimestamp : undefined,
       });
 
+      await this.createStatusNotification(tx, trip.id, TripStatus.IN_TRANSIT);
+
       return { trip: this.presentTrip({
         ...trip,
         status: TripStatus.IN_TRANSIT,
@@ -873,6 +875,8 @@ export class TripService {
         before: { status: trip.status, version: trip.version },
         after: { status: nextStatus, version: trip.version + 1 },
       });
+
+      await this.createStatusNotification(tx, trip.id, nextStatus);
 
       return {
         trip: this.presentTrip({ ...trip, status: nextStatus, version: trip.version + 1 }),
@@ -1144,5 +1148,37 @@ export class TripService {
         requestId: input.requestId,
       },
     });
+  }
+
+  /** Buat notifikasi untuk recipient saat status trip berubah. */
+  private async createStatusNotification(tx: Prisma.TransactionClient, tripId: string, status: string) {
+    const stops = await tx.deliveryStop.findMany({
+      where: { tripId },
+      include: { site: { include: { memberships: { where: { status: 'ACTIVE' } } } } },
+    });
+    if (stops.length === 0) return;
+    const tripRef = `TRP-${tripId.slice(0, 8).toUpperCase()}`;
+    const titleMap: Record<string, string> = {
+      IN_TRANSIT: 'Kendaraan dalam perjalanan',
+      ARRIVAL_DETECTED: 'Kendaraan mendekati lokasi',
+      ARRIVAL_VERIFIED: 'Kendaraan tiba di lokasi',
+      DELIVERED: 'POD telah dikirim',
+      COMPLETED: 'Pengiriman selesai',
+    };
+    const title = titleMap[status] ?? `Status perjalanan: ${status}`;
+    const notifications = stops.flatMap((stop) =>
+      stop.site.memberships.map((m) => ({
+        userId: m.userId,
+        type: status === 'DELIVERED' ? 'POD_SUBMITTED' : 'SCHEDULE_CHANGED',
+        title,
+        body: `Perjalanan ${tripRef} · ${stop.site.name}`,
+        status: 'QUEUED',
+        stopId: stop.id,
+        tripId,
+      })),
+    );
+    if (notifications.length > 0) {
+      await tx.notificationEvent.createMany({ data: notifications });
+    }
   }
 }

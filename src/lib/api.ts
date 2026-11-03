@@ -320,8 +320,9 @@ export type PlatformDashboardSummary = {
 
 const configuredBaseUrl = process.env.NEXT_PUBLIC_RADAR_API_URL;
 const isBrowser = typeof window !== "undefined";
+const serverApiBase = process.env.RADAR_API_INTERNAL_URL ?? "http://localhost:4000";
 export const apiBaseUrl =
-  configuredBaseUrl ?? (isBrowser ? "/api/v1" : "http://localhost:4000/api/v1");
+  configuredBaseUrl ?? (isBrowser ? "/api/v1" : `${serverApiBase}/api/v1`);
 
 export async function apiGet<T>(path: string): Promise<T> {
   if (!apiBaseUrl) throw new Error('API_NOT_CONFIGURED');

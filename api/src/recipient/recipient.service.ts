@@ -202,9 +202,41 @@ export class RecipientService {
       body: n.body,
       createdAt: n.createdAt.toISOString(),
       readAt: n.readAt?.toISOString() ?? null,
-      tripReference: null,
-      stopId: null,
+      tripReference: n.tripId ? `TRP-${n.tripId.slice(0, 8).toUpperCase()}` : null,
+      stopId: n.stopId,
     }));
+  }
+
+  /** Buat notifikasi saat status trip berubah (untuk recipient). */
+  async notifyTripStatusChange(tripId: string, status: string) {
+    const stops = await this.prisma.db.deliveryStop.findMany({
+      where: { tripId },
+      include: { site: { include: { memberships: { where: { status: 'ACTIVE' } } } } },
+    });
+    const trip = await this.prisma.db.trip.findUnique({ where: { id: tripId } });
+    const tripRef = `TRP-${tripId.slice(0, 8).toUpperCase()}`;
+    const titleMap: Record<string, string> = {
+      IN_TRANSIT: 'Kendaraan dalam perjalanan',
+      ARRIVAL_DETECTED: 'Kendaraan mendekati lokasi',
+      ARRIVAL_VERIFIED: 'Kendaraan tiba di lokasi',
+      DELIVERED: 'POD telah dikirim',
+      COMPLETED: 'Pengiriman selesai',
+    };
+    const title = titleMap[status] ?? `Status perjalanan: ${status}`;
+    const notifications = stops.flatMap((stop) =>
+      stop.site.memberships.map((m) => ({
+        userId: m.userId,
+        type: status === 'DELIVERED' ? 'POD_SUBMITTED' : 'SCHEDULE_CHANGED',
+        title,
+        body: `Perjalanan ${tripRef} · ${stop.site.name}`,
+        status: 'QUEUED',
+        stopId: stop.id,
+        tripId,
+      })),
+    );
+    if (notifications.length > 0) {
+      await this.prisma.db.notificationEvent.createMany({ data: notifications });
+    }
   }
 
   async markRead(userId: string, id: string) {

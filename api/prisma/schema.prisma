@@ -1145,6 +1145,8 @@ model NotificationEvent {
   status    String   @default("QUEUED") @db.VarChar(16)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   readAt    DateTime? @map("read_at") @db.Timestamptz(6)
+  stopId    String?  @map("stop_id") @db.Uuid
+  tripId    String?  @map("trip_id") @db.Uuid
 
   user User @relation(fields: [userId], references: [id])
 

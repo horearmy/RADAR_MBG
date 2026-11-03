@@ -111,7 +111,8 @@ export function DriverNavigation({ origin, destination, onStartLiveGps, liveGpsA
       setLoadingRoute(true);
       setRouteError(null);
       try {
-        const url = `https://router.project-osrm.org/route/v1/driving/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?overview=full&geometries=geojson`;
+        const osrmUrl = process.env.NEXT_PUBLIC_OSRM_URL ?? "https://router.project-osrm.org";
+        const url = `${osrmUrl}/route/v1/driving/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?overview=full&geometries=geojson`;
         const res = await fetch(url);
         const data = await res.json();
 
