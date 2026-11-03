@@ -35,6 +35,7 @@ export function DriverNavigation({ origin, destination, onStartLiveGps, liveGpsA
   const markerRef = useRef<MapLibreMarker | null>(null);
   const destinationMarkerRef = useRef<MapLibreMarker | null>(null);
   const routeRequestIdRef = useRef(0);
+  const routeCacheRef = useRef<{ key: string; data: RouteData } | null>(null);
   const [route, setRoute] = useState<RouteData | null>(null);
   const [loadingRoute, setLoadingRoute] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
@@ -110,6 +111,15 @@ export function DriverNavigation({ origin, destination, onStartLiveGps, liveGpsA
     const fetchRoute = async () => {
       setLoadingRoute(true);
       setRouteError(null);
+
+      // Check cache first (only refetch if origin moved > 100m or > 5 min)
+      const cacheKey = `${origin.longitude.toFixed(4)},${origin.latitude.toFixed(4)}`;
+      if (routeCacheRef.current && routeCacheRef.current.key === cacheKey) {
+        setRoute(routeCacheRef.current.data);
+        setLoadingRoute(false);
+        return;
+      }
+
       try {
         const osrmUrl = process.env.NEXT_PUBLIC_OSRM_URL ?? "https://router.project-osrm.org";
         const url = `${osrmUrl}/route/v1/driving/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?overview=full&geometries=geojson`;
@@ -120,11 +130,13 @@ export function DriverNavigation({ origin, destination, onStartLiveGps, liveGpsA
 
         if (data.routes && data.routes.length > 0) {
           const routeData = data.routes[0];
-          setRoute({
+          const cached = {
             distance: routeData.distance,
             duration: routeData.duration,
             geometry: routeData.geometry,
-          });
+          };
+          setRoute(cached);
+          routeCacheRef.current = { key: cacheKey, data: cached };
 
           const map = mapRef.current;
           if (!map) return;
