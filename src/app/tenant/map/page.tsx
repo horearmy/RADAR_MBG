@@ -84,8 +84,16 @@ export default function TenantMapPage() {
   }, [selectedLocationId, deliveryLocations]);
 
   const selectedDeliveryLocation = deliveryLocations.find((l) => l.id === selectedLocationId) ?? null;
-  // Fokus mengikuti aksi terakhir: pencarian mengalahkan lokasi terpilih.
-  const focusPoint = searchMarker ?? originMarker;
+  // Fokus mengikuti aksi terakhir: pencarian > lokasi di form geofence > lokasi terpilih di panel.
+  const geofenceLocation = useMemo(() => {
+    if (locationType !== "DELIVERY") return null;
+    return deliveryLocations.find((l) => l.id === locationId) ?? null;
+  }, [locationType, locationId, deliveryLocations]);
+  const geofenceFocus = useMemo(() => {
+    if (!geofenceLocation?.latitude || !geofenceLocation?.longitude) return null;
+    return { longitude: Number(geofenceLocation.longitude), latitude: Number(geofenceLocation.latitude) };
+  }, [geofenceLocation]);
+  const focusPoint = searchMarker ?? geofenceFocus ?? originMarker;
 
   const locationStats = useMemo(() => {
     const active = deliveryLocations.filter((l) => l.active).length;
@@ -222,10 +230,12 @@ export default function TenantMapPage() {
 
   const handleSelectLocation = (loc: DeliveryLocationOption) => {
     if (loc.latitude && loc.longitude) {
-      setCenterLatitude(String(loc.latitude));
-      setCenterLongitude(String(loc.longitude));
+      setCenterLatitude(Number(loc.latitude).toFixed(6).toString());
+      setCenterLongitude(Number(loc.longitude).toFixed(6).toString());
     }
     setSelectedLocationId(loc.id);
+    setLocationType("DELIVERY");
+    setLocationId(loc.id);
     // Aksi ini mengalahkan fokus pencarian sebelumnya.
     setSearchMarker(null);
   };
@@ -667,7 +677,15 @@ export default function TenantMapPage() {
                           </svg>
                           Lokasi pengiriman
                         </span>
-                        <select value={locationId} onChange={(e) => setLocationId(e.target.value)} required>
+                        <select
+                          value={locationId}
+                          onChange={(e) => {
+                            setLocationId(e.target.value);
+                            setSelectedLocationId(e.target.value || null);
+                            setSearchMarker(null);
+                          }}
+                          required
+                        >
                           <option value="">Pilih lokasi</option>
                           {deliveryLocations.map((l) => <option key={l.id} value={l.id}>{l.code} · {l.name}</option>)}
                         </select>
