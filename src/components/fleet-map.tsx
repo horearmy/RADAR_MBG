@@ -554,6 +554,23 @@ export function FleetMap({
         map.on("error", () => {
           if (!cancelled) setError(true);
         });
+        // Handle WebGL context lost
+        const canvas = map.getCanvas();
+        canvas.addEventListener("webglcontextlost", (e) => {
+          e.preventDefault();
+          console.warn("WebGL context lost, attempting to restore...");
+          setTimeout(() => {
+            if (!cancelled) {
+              map.resize();
+            }
+          }, 100);
+        });
+        canvas.addEventListener("webglcontextrestored", () => {
+          console.log("WebGL context restored");
+          if (!cancelled) {
+            map.resize();
+          }
+        });
         loadTimeout = window.setTimeout(() => {
           if (cancelled || styleLoaded) return;
           setError(true);

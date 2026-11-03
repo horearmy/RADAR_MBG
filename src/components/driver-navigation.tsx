@@ -79,6 +79,16 @@ export function DriverNavigation({ origin, destination, onStartLiveGps, liveGpsA
         });
         map.addControl(geolocate, "top-right");
 
+        // Handle WebGL context lost
+        const canvas = map.getCanvas();
+        canvas.addEventListener("webglcontextlost", (e) => {
+          e.preventDefault();
+          console.warn("WebGL context lost, attempting to restore...");
+        });
+        canvas.addEventListener("webglcontextrestored", () => {
+          console.log("WebGL context restored");
+        });
+
         map.on("load", () => {
           setMapReady(true);
         });
