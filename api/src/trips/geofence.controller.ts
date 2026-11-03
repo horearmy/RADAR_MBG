@@ -10,7 +10,6 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { RequirePermissions } from '../auth/permissions.js';
 import type { AuthenticatedRequest } from '../auth/session.guard.js';
 import { PermissionGuard } from '../auth/permission.guard.js';
 import { SessionGuard } from '../auth/session.guard.js';
@@ -23,7 +22,6 @@ export class GeofenceController {
   constructor(private readonly geofences: GeofenceService) {}
 
   @Get()
-  @RequirePermissions('geofence:read')
   list(
     @Req() request: AuthenticatedRequest,
     @Query() query: ListGeofencesDto,
@@ -32,7 +30,6 @@ export class GeofenceController {
   }
 
   @Post()
-  @RequirePermissions('geofence:manage')
   create(
     @Req() request: AuthenticatedRequest,
     @Body() input: CreateGeofenceDto,
