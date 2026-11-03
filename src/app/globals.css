@@ -1690,3 +1690,37 @@ a.gov-card:hover { background: #f7faff; }
 .map-search-result { padding: 8px 10px; border: 0; border-bottom: 1px solid #eef2f7; background: transparent; color: #354a63; font-family: inherit; font-size: 10px; text-align: left; cursor: pointer; }
 .map-search-result:last-child { border-bottom: 0; }
 .map-search-result:hover { background: #f4f9fd; }
+
+/* Map page: collapsible form section */
+.form-section-collapsible { padding: 0; background: #fafcfe; }
+.form-section-toggle { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border: 0; background: transparent; cursor: pointer; }
+.form-section-toggle:hover { background: #f4f9fd; }
+.form-section-toggle-hint { display: inline-flex; align-items: center; gap: 4px; color: #6f8bb0; font-size: 9px; font-weight: 650; }
+.form-section-toggle-hint svg { transition: transform .2s; }
+.form-section-toggle-hint svg.rotate-90 { transform: rotate(90deg); }
+.form-section-collapsible > .trip-form-grid { padding: 0 14px 14px; }
+
+/* Map page: panel search & empty */
+.panel-search { display: flex; align-items: center; gap: 6px; margin: 0 14px 12px; padding: 0 9px; border: 1px solid #dbe4ee; border-radius: 7px; background: #fbfdff; color: #8a9aac; }
+.panel-search:focus-within { border-color: #a9c7e6; outline: 2px solid rgb(63 127 207 / 16%); outline-offset: 1px; }
+.panel-search input { flex: 1; height: 32px; min-width: 0; border: 0; background: transparent; color: #354a63; font-family: inherit; font-size: 10px; }
+.panel-search input:focus { outline: none; }
+.panel-search input::placeholder { color: #9aa7b6; }
+.panel-search-clear { display: grid; width: 22px; height: 22px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 5px; background: #eef2f7; color: #6b7d94; cursor: pointer; }
+.panel-search-clear:hover { background: #e2e9f1; color: #40566f; }
+.panel-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 24px 16px; color: #98a4b2; text-align: center; }
+.panel-empty svg { color: #c3cedb; margin-bottom: 2px; }
+.panel-empty strong { color: #536980; font-size: 11px; font-weight: 650; }
+.panel-empty span { font-size: 9px; line-height: 1.5; }
+
+/* Map page: location table & status pill */
+.location-table td > strong { display: block; color: #2e5f8c; font-size: 10px; font-weight: 650; }
+.location-table td > small { display: block; margin-top: 2px; color: #8a9aac; font-size: 8px; line-height: 1.4; }
+.location-table code { padding: 2px 5px; border-radius: 4px; background: #eef2f7; color: #4b6c8c; font-size: 8px; font-weight: 650; }
+.location-table tbody tr { cursor: pointer; transition: background .15s; }
+.location-table tbody tr:hover { background: #f4f9fd; }
+.location-table tbody tr.row-selected { background: #eaf2ff; }
+.status-pill { display: inline-flex; padding: 2px 7px; border-radius: 10px; font-size: 8px; font-weight: 650; }
+.status-pill.status-active { background: #dcfce7; color: #166534; }
+.status-pill.status-inactive { background: #f1f5f9; color: #64748b; }
+.green-dot { background: #22c55e; }

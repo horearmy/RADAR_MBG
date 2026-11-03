@@ -66,6 +66,8 @@ export default function TenantMapPage() {
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
   const [locationSearch, setLocationSearch] = useState("");
   const [locationSearchResults, setLocationSearchResults] = useState<SearchResult[]>([]);
+  const [locationFilter, setLocationFilter] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -84,6 +86,30 @@ export default function TenantMapPage() {
   const selectedDeliveryLocation = deliveryLocations.find((l) => l.id === selectedLocationId) ?? null;
   // Fokus mengikuti aksi terakhir: pencarian mengalahkan lokasi terpilih.
   const focusPoint = searchMarker ?? originMarker;
+
+  const locationStats = useMemo(() => {
+    const active = deliveryLocations.filter((l) => l.active).length;
+    const withCoords = deliveryLocations.filter((l) => l.latitude && l.longitude).length;
+    return { total: deliveryLocations.length, active, withCoords };
+  }, [deliveryLocations]);
+
+  const geofenceStats = useMemo(() => {
+    const active = geofences.filter((g) => g.active).length;
+    const circles = geofences.filter((g) => g.shapeType === "CIRCLE").length;
+    const polygons = geofences.filter((g) => g.shapeType === "POLYGON").length;
+    return { total: geofences.length, active, circles, polygons };
+  }, [geofences]);
+
+  const filteredLocations = useMemo(() => {
+    const q = locationFilter.trim().toLowerCase();
+    if (!q) return deliveryLocations;
+    return deliveryLocations.filter(
+      (l) =>
+        l.name.toLowerCase().includes(q) ||
+        l.code.toLowerCase().includes(q) ||
+        (l.address ?? "").toLowerCase().includes(q),
+    );
+  }, [deliveryLocations, locationFilter]);
 
   const loadGeofences = useCallback(async (type: GeofenceLocationType, id: string) => {
     if (!id) return;
@@ -339,6 +365,46 @@ export default function TenantMapPage() {
             </div>
           </div>
 
+          {/* KPI Ringkas */}
+          <section className="kpi-grid kpi-grid-4" aria-label="Ringkasan peta & geofence">
+            <article className="kpi-card">
+              <div className="kpi-top">
+                <span className="kpi-icon icon-navy"><MapPinned size={17} /></span>
+                <span className="kpi-trend trend-neutral">Master</span>
+              </div>
+              <p className="kpi-label">Lokasi penerima</p>
+              <div className="kpi-value">{locationStats.total} <span>lokasi</span></div>
+              <div className="kpi-foot"><span className="kpi-dot blue-dot" />{locationStats.active} aktif <span className="kpi-separator">·</span> {locationStats.withCoords} berkoodinat</div>
+            </article>
+            <article className="kpi-card">
+              <div className="kpi-top">
+                <span className="kpi-icon icon-green"><ShieldCheck size={17} /></span>
+                <span className="kpi-trend trend-neutral">Area</span>
+              </div>
+              <p className="kpi-label">Geofence terdaftar</p>
+              <div className="kpi-value">{geofenceStats.total} <span>geofence</span></div>
+              <div className="kpi-foot"><span className="kpi-dot green-dot" />{geofenceStats.active} aktif <span className="kpi-separator">·</span> {geofenceStats.total - geofenceStats.active} nonaktif</div>
+            </article>
+            <article className="kpi-card">
+              <div className="kpi-top">
+                <span className="kpi-icon icon-blue"><CircleDot size={17} /></span>
+                <span className="kpi-trend trend-neutral">Bentuk</span>
+              </div>
+              <p className="kpi-label">Geofence lingkaran</p>
+              <div className="kpi-value">{geofenceStats.circles} <span>lingkaran</span></div>
+              <div className="kpi-foot">Area radius tertentu</div>
+            </article>
+            <article className="kpi-card">
+              <div className="kpi-top">
+                <span className="kpi-icon icon-amber"><MapPinned size={17} /></span>
+                <span className="kpi-trend trend-neutral">Bentuk</span>
+              </div>
+              <p className="kpi-label">Geofence poligon</p>
+              <div className="kpi-value">{geofenceStats.polygons} <span>poligon</span></div>
+              <div className="kpi-foot">Area titik bebas</div>
+            </article>
+          </section>
+
           {/* Search Bar */}
           <div className="search-bar" style={{ marginBottom: "1rem", position: "relative" }}>
             <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
@@ -565,35 +631,69 @@ export default function TenantMapPage() {
               <div className="panel-heading">
                 <div>
                   <div className="section-title-row"><h2>Lokasi penerima</h2><span className="count-chip">{deliveryLocations.length}</span></div>
-                  <p>Klik baris untuk melihat detail.</p>
+                  <p>Klik baris untuk melihat detail dan memilih target geofence.</p>
                 </div>
               </div>
+
+              <div className="panel-search">
+                <Search size={14} />
+                <input
+                  type="text"
+                  value={locationFilter}
+                  onChange={(e) => setLocationFilter(e.target.value)}
+                  placeholder="Cari kode, nama, atau alamat..."
+                  aria-label="Cari lokasi penerima"
+                />
+                {locationFilter && (
+                  <button type="button" className="panel-search-clear" onClick={() => setLocationFilter("")} aria-label="Hapus pencarian">
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+
               {deliveryLocations.length === 0 ? (
-                <p className="table-empty">Belum ada lokasi penerima.</p>
+                <div className="panel-empty">
+                  <MapPinned size={22} />
+                  <strong>Belum ada lokasi penerima</strong>
+                  <span>Tambahkan lokasi penerima untuk mulai membuat geofence.</span>
+                </div>
+              ) : filteredLocations.length === 0 ? (
+                <div className="panel-empty">
+                  <Search size={22} />
+                  <strong>Tidak ditemukan</strong>
+                  <span>Tidak ada lokasi yang cocok dengan pencarian "{locationFilter}".</span>
+                </div>
               ) : (
                 <div className="table-wrap">
-                  <table>
+                  <table className="location-table">
                     <thead>
-                      <tr><th>KODE</th><th>NAMA</th><th>KOORDINAT</th><th></th></tr>
+                      <tr><th>KODE</th><th>NAMA</th><th>KOORDINAT</th><th>STATUS</th><th></th></tr>
                     </thead>
                     <tbody>
-                      {deliveryLocations.map((loc) => (
+                      {filteredLocations.map((loc) => (
                         <tr
                           key={loc.id}
                           onClick={() => handleSelectLocation(loc)}
-                          style={{ cursor: "pointer" }}
                           className={selectedLocationId === loc.id ? "row-selected" : ""}
                         >
-                          <td>{loc.code}</td>
-                          <td>{loc.name}</td>
+                          <td><code>{loc.code}</code></td>
+                          <td>
+                            <strong>{loc.name}</strong>
+                            {loc.address && <small>{loc.address}</small>}
+                          </td>
                           <td>{loc.latitude && loc.longitude ? `${Number(loc.latitude).toFixed(4)}, ${Number(loc.longitude).toFixed(4)}` : "—"}</td>
+                          <td>
+                            <span className={`status-pill ${loc.active ? "status-active" : "status-inactive"}`}>
+                              {loc.active ? "Aktif" : "Nonaktif"}
+                            </span>
+                          </td>
                           <td>
                             <button
                               type="button"
                               className="row-detail-link"
                               onClick={(e) => { e.stopPropagation(); handleSelectLocation(loc); }}
                             >
-                              Detail
+                              Pilih
                             </button>
                           </td>
                         </tr>
@@ -602,18 +702,22 @@ export default function TenantMapPage() {
                   </table>
                 </div>
               )}
+
               {selectedDeliveryLocation && (
-                <div className="map-selection-panel" style={{ marginTop: "0.5rem", padding: "0.75rem" }}>
+                <div className="map-selection-panel">
                   <div className="map-selection-heading">
                     <div>
-                      <span className="map-selection-eyebrow">DETAIL LOKASI TERPILIH</span>
+                      <span className="map-selection-eyebrow">LOKASI TERPILIH</span>
                       <strong>{selectedDeliveryLocation.code} · {selectedDeliveryLocation.name}</strong>
                       <small>{selectedDeliveryLocation.address ?? "Alamat tidak tersedia"}</small>
                     </div>
+                    <span className={`status-pill ${selectedDeliveryLocation.active ? "status-active" : "status-inactive"}`}>
+                      {selectedDeliveryLocation.active ? "Aktif" : "Nonaktif"}
+                    </span>
                   </div>
                   <div className="map-selection-meta">
                     <span><strong>Koordinat WGS84</strong><small>{selectedDeliveryLocation.latitude && selectedDeliveryLocation.longitude ? `${Number(selectedDeliveryLocation.latitude).toFixed(5)}, ${Number(selectedDeliveryLocation.longitude).toFixed(5)}` : "Tidak tersedia"}</small></span>
-                    <span><strong>Status</strong><small>{selectedDeliveryLocation.active ? "Aktif" : "Nonaktif"}</small></span>
+                    <span><strong>ID Lokasi</strong><small>{selectedDeliveryLocation.id.slice(0, 8).toUpperCase()}</small></span>
                   </div>
                 </div>
               )}
@@ -624,7 +728,7 @@ export default function TenantMapPage() {
             <div className="panel-heading">
               <div>
                 <div className="section-title-row"><h2>Buat geofence</h2></div>
-                <p>Isi data geofence baru untuk lokasi terpilih.</p>
+                <p>Pilih lokasi, gambar bentuk, dan atur deteksi — cepat dan mudah.</p>
               </div>
             </div>
             <form onSubmit={handleSubmitGeofence} className="trip-create-form">
@@ -767,64 +871,74 @@ export default function TenantMapPage() {
                 )}
               </div>
 
-              {/* Bagian: Deteksi */}
-              <div className="form-section">
-                <h3 className="form-section-title">
-                  <ShieldCheck size={13} />
-                  Pengaturan Deteksi
-                </h3>
-                <div className="trip-form-grid">
-                  <div className="trip-form-field">
-                    <span>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-                      </svg>
-                      Min akurasi GPS (m)
-                    </span>
-                    <input type="number" value={minGpsAccuracyMeters} onChange={(e) => setMinGpsAccuracyMeters(e.target.value)} min="1" />
-                    <small>Semakin kecil, semakin ketat</small>
-                  </div>
-                  <div className="trip-form-field">
-                    <span>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
-                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                      </svg>
-                      Konfirmasi fix
-                    </span>
-                    <input type="number" value={confirmationFixes} onChange={(e) => setConfirmationFixes(e.target.value)} min="1" />
-                    <small>Jumlah fix GPS berturut-turut</small>
-                  </div>
-                  <div className="trip-form-field">
-                    <span>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <polyline points="12 6 12 12 16 14"></polyline>
-                      </svg>
-                      Durasi konfirmasi (detik)
-                    </span>
-                    <input type="number" value={confirmationDurationSeconds} onChange={(e) => setConfirmationDurationSeconds(e.target.value)} min="0" />
-                    <small>Jendela waktu untuk fix berturut</small>
-                  </div>
-                </div>
-              </div>
-
-              {/* Bagian: Audit */}
-              <div className="form-section">
-                <h3 className="form-section-title">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={13} height={13}>
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                    <polyline points="14 2 14 8 20 8"></polyline>
-                    <line x1="16" y1="13" x2="8" y2="13"></line>
-                    <line x1="16" y1="17" x2="8" y2="17"></line>
-                  </svg>
-                  Audit
-                </h3>
-                <div className="trip-form-field">
-                  <span>Alasan pembuatan</span>
-                  <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Alasan pembuatan geofence" />
-                  <small>Dihitung di log audit</small>
-                </div>
+              {/* Bagian: Lanjutan (opsional) */}
+              <div className="form-section form-section-collapsible">
+                <button
+                  type="button"
+                  className="form-section-toggle"
+                  onClick={() => setShowAdvanced((v) => !v)}
+                  aria-expanded={showAdvanced}
+                >
+                  <span className="form-section-title" style={{ margin: 0 }}>
+                    <ShieldCheck size={13} />
+                    Pengaturan lanjutan & audit
+                  </span>
+                  <span className="form-section-toggle-hint">
+                    {showAdvanced ? "Tutup" : "Buka"}
+                    <ChevronRight size={14} className={showAdvanced ? "rotate-90" : ""} />
+                  </span>
+                </button>
+                {showAdvanced && (
+                  <>
+                    <div className="trip-form-grid">
+                      <div className="trip-form-field">
+                        <span>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                          </svg>
+                          Min akurasi GPS (m)
+                        </span>
+                        <input type="number" value={minGpsAccuracyMeters} onChange={(e) => setMinGpsAccuracyMeters(e.target.value)} min="1" />
+                        <small>Semakin kecil, semakin ketat. Default 50 m.</small>
+                      </div>
+                      <div className="trip-form-field">
+                        <span>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                          </svg>
+                          Konfirmasi fix
+                        </span>
+                        <input type="number" value={confirmationFixes} onChange={(e) => setConfirmationFixes(e.target.value)} min="1" />
+                        <small>Jumlah fix GPS berturut-turut. Default 2.</small>
+                      </div>
+                      <div className="trip-form-field">
+                        <span>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                          </svg>
+                          Durasi konfirmasi (detik)
+                        </span>
+                        <input type="number" value={confirmationDurationSeconds} onChange={(e) => setConfirmationDurationSeconds(e.target.value)} min="0" />
+                        <small>Jendela waktu untuk fix berturut. Default 10 s.</small>
+                      </div>
+                      <div className="trip-form-field">
+                        <span>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                            <line x1="16" y1="17" x2="8" y2="17"></line>
+                          </svg>
+                          Alasan pembuatan
+                        </span>
+                        <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Alasan pembuatan geofence" />
+                        <small>Dihitung di log audit. Opsional.</small>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               {error && (
