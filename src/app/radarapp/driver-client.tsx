@@ -8,13 +8,12 @@ import {
   getTripDetail,
   getTrips,
   startTrip,
-  readyTrip,
   startTripDelivery,
   type SessionUser,
   type TripDetail,
   type TripSummary,
 } from "@/lib/api";
-import { clearFieldCaches, logoutField, resolveWorkspaces, WORKSPACE_HOME } from "@/lib/field-api";
+import { clearFieldCaches, logoutField, resolveWorkspaces } from "@/lib/field-api";
 import {
   DRIVER_ACTIVE_STATUSES,
   TRACKING_STATUSES,
@@ -767,6 +766,7 @@ export default function DriverClient() {
                 void loadTrips(false);
                 void loadDetail(podTrip.id);
               }}
+              onUnauthenticated={sessionExpired}
             />
           </>
         </FieldDialog>

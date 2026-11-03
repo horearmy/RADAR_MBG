@@ -14,7 +14,7 @@ const EMPTY_DRAFT: Draft = { received: "", damaged: "0", receiver: "", reason: "
 
 function loadDraft(tripId: string): Draft {
   try {
-    const raw = window.sessionStorage.getItem(`${FIELD_STORAGE_PREFIX}pod_draft_${tripId}`);
+    const raw = window.localStorage.getItem(`${FIELD_STORAGE_PREFIX}pod_draft_${tripId}`);
     return raw ? { ...EMPTY_DRAFT, ...(JSON.parse(raw) as Partial<Draft>) } : EMPTY_DRAFT;
   } catch {
     return EMPTY_DRAFT;
@@ -27,12 +27,14 @@ export function PodForm({
   online,
   onClose,
   onSubmitted,
+  onUnauthenticated,
 }: {
   trip: TripSummary;
   detail: TripDetail | null;
   online: boolean;
   onClose: () => void;
   onSubmitted: () => void;
+  onUnauthenticated?: () => void;
 }) {
   const record = detail?.deliveryRecords?.[0] ?? null;
   const dispatched = record?.dispatchedQuantity ?? trip.dispatchedQuantity;
@@ -62,7 +64,7 @@ export function PodForm({
     setDraft(next);
     submitKey.current = null; // payload berubah → idempotency key baru
     try {
-      window.sessionStorage.setItem(`${FIELD_STORAGE_PREFIX}pod_draft_${trip.id}`, JSON.stringify(next));
+      window.localStorage.setItem(`${FIELD_STORAGE_PREFIX}pod_draft_${trip.id}`, JSON.stringify(next));
     } catch {
       // abaikan
     }
@@ -130,7 +132,7 @@ export function PodForm({
       setUploadFailed(false);
       setDone(true);
       try {
-        window.sessionStorage.removeItem(`${FIELD_STORAGE_PREFIX}pod_draft_${trip.id}`);
+        window.localStorage.removeItem(`${FIELD_STORAGE_PREFIX}pod_draft_${trip.id}`);
       } catch {
         // abaikan
       }
@@ -179,6 +181,10 @@ export function PodForm({
       setSubmitted(result);
       await doUpload(trip.id, file);
     } catch (error) {
+      if (error instanceof Error && error.message === "UNAUTHENTICATED") {
+        onUnauthenticated?.();
+        return;
+      }
       setStep(0);
       setFormError(safeErrorMessage(error));
     } finally {

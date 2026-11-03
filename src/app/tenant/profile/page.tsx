@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { Building2, ChevronRight, Pencil, RefreshCw, Save, X } from "lucide-react";
+import { Building2, ChevronRight, Pencil, RefreshCw, X } from "lucide-react";
 import { HeaderAccount } from "@/components/account-menu";
 import { TenantSidebar } from "@/components/tenant-sidebar";
 import { apiBaseUrl, getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";

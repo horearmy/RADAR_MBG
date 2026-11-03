@@ -9,16 +9,18 @@ export class TenantService {
   constructor(private readonly prisma: PrismaService, private readonly email: EmailService) {}
 
   async summary(tenantId: string) {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
+    // Hitung rentang hari ini berdasarkan WIB (UTC+7)
+    const now = new Date();
+    const wibOffsetMs = 7 * 60 * 60 * 1000;
+    const wibNow = new Date(now.getTime() + wibOffsetMs);
+    const start = new Date(Date.UTC(wibNow.getUTCFullYear(), wibNow.getUTCMonth(), wibNow.getUTCDate()) - wibOffsetMs);
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
     const [drivers, vehicles, tripsToday, tripsActive, tripsDone] = await Promise.all([
       this.prisma.db.driver.count({ where: { tenantId, status: 'ACTIVE' } }),
       this.prisma.db.vehicle.count({ where: { tenantId, status: 'ACTIVE' } }),
       this.prisma.db.trip.count({ where: { tenantId, plannedDepartureAt: { gte: start, lt: end } } }),
       this.prisma.db.trip.count({ where: { tenantId, status: { in: ['IN_TRANSIT', 'DELIVERY_IN_PROGRESS', 'ARRIVAL_DETECTED', 'ARRIVAL_VERIFIED'] } } }),
-      this.prisma.db.trip.count({ where: { tenantId, status: { in: ['DELIVERED', 'COMPLETED'] } } }),
+      this.prisma.db.trip.count({ where: { tenantId, status: 'COMPLETED' } }),
     ]);
     return { drivers, vehicles, tripsToday, tripsActive, tripsDone };
   }

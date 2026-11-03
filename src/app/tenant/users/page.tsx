@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { ChevronRight, KeyRound, Pencil, Plus, RefreshCw, Trash2, UserRound, X } from "lucide-react";
+import { ChevronRight, Pencil, Plus, RefreshCw, Trash2, UserRound, X } from "lucide-react";
 import { HeaderAccount } from "@/components/account-menu";
 import { TenantSidebar } from "@/components/tenant-sidebar";
 import { apiBaseUrl, getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
