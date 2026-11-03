@@ -115,6 +115,18 @@ export default function DriverClient() {
     [],
   );
 
+  // DevTools: dengar event "preview-pod" untuk buka form POD langsung (development only).
+  useEffect(() => {
+    function handlePreviewPod(event: Event) {
+      const detail = (event as CustomEvent<{ tripId?: string }>).detail;
+      if (detail?.tripId) {
+        setPodTripId(detail.tripId);
+      }
+    }
+    window.addEventListener("devtools:preview-pod", handlePreviewPod);
+    return () => window.removeEventListener("devtools:preview-pod", handlePreviewPod);
+  }, []);
+
   const loadTrips = useCallback(
     async (initial: boolean) => {
       const requestId = ++tripsRequestIdRef.current;
@@ -402,6 +414,8 @@ export default function DriverClient() {
   const renderTripCard = (trip: TripSummary) => {
     const label = primaryActionLabel(trip.status, false);
     const actionable = label !== null && trip.status !== "DELIVERED";
+    const canPod = trip.status === "DELIVERY_IN_PROGRESS";
+    const showPrimary = actionable && !canPod;
     return (
       <article key={trip.id} className="field-card field-stack" aria-label={`Perjalanan ${tripReference(trip.id)}`}>
         <div className="field-trip-head">
@@ -431,7 +445,17 @@ export default function DriverClient() {
               <Navigation size={16} aria-hidden="true" /> Navigasi
             </button>
           )}
-          {actionable && (
+          <button
+            type="button"
+            className="field-btn"
+            data-variant={canPod ? "primary" : undefined}
+            onClick={() => canPod && runPrimary(trip)}
+            disabled={!canPod}
+            title={canPod ? "Buat POD" : "POD tersedia saat status Serah Terima Berjalan"}
+          >
+            Buat POD
+          </button>
+          {showPrimary && (
             <button type="button" className="field-btn" data-variant="primary" onClick={() => runPrimary(trip)}>
               {label}
             </button>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { RefreshCw, Settings2, X } from "lucide-react";
+import { Eye, RefreshCw, Settings2, X } from "lucide-react";
 import {
   DEV_TRIP_STATUSES,
   DEV_TRIP_STATUS_LABELS,
@@ -54,6 +54,10 @@ export function DevTools({ onStatusChanged }: DevToolsProps) {
     } finally {
       setBusyTripId(null);
     }
+  }
+
+  function previewPod(tripId: string) {
+    window.dispatchEvent(new CustomEvent("devtools:preview-pod", { detail: { tripId } }));
   }
 
   // Hanya tampil di development — hooks di atas sudah dipanggil dengan urutan yang sama.
@@ -119,6 +123,15 @@ export function DevTools({ onStatusChanged }: DevToolsProps) {
                         {DEV_TRIP_STATUS_LABELS[status]}
                       </button>
                     ))}
+                    <button
+                      type="button"
+                      className="dev-tools-status-btn dev-tools-preview-pod"
+                      onClick={() => previewPod(trip.id)}
+                      disabled={busyTripId === trip.id}
+                      title="Buka form POD (preview)"
+                    >
+                      <Eye size={11} /> Preview POD
+                    </button>
                   </div>
                 </div>
               ))

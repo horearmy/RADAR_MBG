@@ -84,7 +84,14 @@ export class DevController {
     const userId = request.principal!.id;
     const trip = await this.prisma.db.trip.findUnique({
       where: { id },
-      select: { id: true, status: true, driver: { select: { userId: true } }, version: true },
+      select: {
+        id: true,
+        status: true,
+        plannedQuantity: true,
+        dispatchedQuantity: true,
+        driver: { select: { userId: true } },
+        version: true,
+      },
     });
     if (!trip) return { ok: false, error: 'TRIP_NOT_FOUND' };
     if (trip.driver?.userId !== userId) {
@@ -103,6 +110,10 @@ export class DevController {
       if (status === 'DELIVERY_IN_PROGRESS') {
         data.deliveryStatus = DeliveryStatus.IN_PROGRESS;
         data.deliveryStartedAt = now;
+        // Pastikan dispatchedQuantity terisi untuk form POD.
+        if (trip.dispatchedQuantity === null || trip.dispatchedQuantity === undefined) {
+          data.dispatchedQuantity = trip.plannedQuantity;
+        }
       }
       if (status === 'ARRIVAL_VERIFIED' || status === 'DELIVERY_IN_PROGRESS') {
         data.verificationStatus = ArrivalVerificationStatus.VERIFIED;

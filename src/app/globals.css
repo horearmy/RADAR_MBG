@@ -1653,6 +1653,8 @@ a.gov-card:hover { background: #f7faff; }
 .dev-tools-status-btn:hover:not(:disabled) { border-color: #1677ff; color: #1677ff; }
 .dev-tools-status-btn.active { border-color: #1677ff; background: #1677ff; color: #fff; }
 .dev-tools-status-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.dev-tools-preview-pod { display: inline-flex; align-items: center; gap: 4px; border-color: #7c3aed; color: #7c3aed; font-weight: 700; }
+.dev-tools-preview-pod:hover:not(:disabled) { border-color: #7c3aed; background: #f5f3ff; color: #6d28d9; }
 .dev-tools-refresh { display: flex; align-items: center; gap: 6px; width: 100%; margin-top: 12px; padding: 8px; border: 1px solid #dce5f0; border-radius: 8px; background: #f4f7fb; color: #5b6b82; font-size: 12px; font-weight: 600; cursor: pointer; }
 .dev-tools-refresh:hover { background: #e8eef5; }
 .dev-tools-refresh .spin { animation: dev-tools-spin 1s linear infinite; }
