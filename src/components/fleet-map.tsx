@@ -123,6 +123,7 @@ export function FleetMap({
   onRoutePointPick,
   originMarker = null,
   destinationMarker = null,
+  searchMarker = null,
   routes = [],
   selectedRouteId = null,
   onSelectRoute,
@@ -148,6 +149,7 @@ export function FleetMap({
   onRoutePointPick?: (longitude: number, latitude: number) => void;
   originMarker?: { longitude: number; latitude: number } | null;
   destinationMarker?: { longitude: number; latitude: number } | null;
+  searchMarker?: { longitude: number; latitude: number } | null;
   routes?: Array<{ id: string; name: string; coordinates: Array<{ latitude: number; longitude: number }>; active: boolean }>;
   selectedRouteId?: string | null;
   onSelectRoute?: (id: string) => void;
@@ -302,9 +304,27 @@ export function FleetMap({
         const marker = new ml.Marker({ element: el, anchor: "center" }).setLngLat([destinationMarker.longitude, destinationMarker.latitude]).addTo(map);
         markers.push(marker);
       }
+      if (searchMarker) {
+        const el = document.createElement("div");
+        el.style.background = "#7c3aed";
+        el.style.border = "3px solid #fff";
+        el.style.width = "20px";
+        el.style.height = "20px";
+        el.style.borderRadius = "50%";
+        el.style.boxShadow = "0 0 0 4px rgba(124,58,237,0.3), 0 2px 6px rgba(0,0,0,0.3)";
+        el.style.display = "flex";
+        el.style.alignItems = "center";
+        el.style.justifyContent = "center";
+        el.style.color = "#fff";
+        el.style.fontSize = "11px";
+        el.style.fontWeight = "700";
+        el.textContent = "S";
+        const marker = new ml.Marker({ element: el, anchor: "center" }).setLngLat([searchMarker.longitude, searchMarker.latitude]).addTo(map);
+        markers.push(marker);
+      }
       (map as unknown as { __odMarkers?: unknown[] }).__odMarkers = markers;
     });
-  }, [originMarker, destinationMarker, ready]);
+  }, [originMarker, destinationMarker, searchMarker, ready]);
 
   useEffect(() => {
     if (!ready || !mapRef.current) return;

@@ -64,6 +64,8 @@ export default function TenantMapPage() {
   const [locationError, setLocationError] = useState<string | null>(null);
   const [pickLocation, setPickLocation] = useState(false);
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
+  const [locationSearch, setLocationSearch] = useState("");
+  const [locationSearchResults, setLocationSearchResults] = useState<SearchResult[]>([]);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -80,7 +82,8 @@ export default function TenantMapPage() {
   }, [selectedLocationId, deliveryLocations]);
 
   const selectedDeliveryLocation = deliveryLocations.find((l) => l.id === selectedLocationId) ?? null;
-  const focusPoint = originMarker ?? searchMarker;
+  // Fokus mengikuti aksi terakhir: pencarian mengalahkan lokasi terpilih.
+  const focusPoint = searchMarker ?? originMarker;
 
   const loadGeofences = useCallback(async (type: GeofenceLocationType, id: string) => {
     if (!id) return;
@@ -163,6 +166,26 @@ export default function TenantMapPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  // Debounced search untuk form tambah lokasi
+  useEffect(() => {
+    if (!showAddLocation || !locationSearch.trim()) {
+      setLocationSearchResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationSearch)}&limit=5`, {
+          headers: { "Accept-Language": "id" },
+        });
+        const data = await res.json();
+        setLocationSearchResults(Array.isArray(data) ? data : []);
+      } catch {
+        setLocationSearchResults([]);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [locationSearch, showAddLocation]);
+
   const handleSearchSelect = (result: SearchResult) => {
     const lat = Number(result.lat);
     const lon = Number(result.lon);
@@ -177,7 +200,14 @@ export default function TenantMapPage() {
       setCenterLongitude(String(loc.longitude));
     }
     setSelectedLocationId(loc.id);
+    // Aksi ini mengalahkan fokus pencarian sebelumnya.
+    setSearchMarker(null);
   };
+
+  function cancelPickMode() {
+    setPickLocation(false);
+    setPickCenter(false);
+  }
 
   const handleAddLocation = async (e: FormEvent) => {
     e.preventDefault();
@@ -206,6 +236,9 @@ export default function TenantMapPage() {
         throw new Error(data.message || data.code || `REQUEST_FAILED_${res.status}`);
       }
       setLocationForm({ code: "", name: "", address: "", latitude: "", longitude: "" });
+      setLocationSearch("");
+      setLocationSearchResults([]);
+      setPickLocation(false);
       setShowAddLocation(false);
       await loadDeliveryLocations();
     } catch (err) {
@@ -294,6 +327,9 @@ export default function TenantMapPage() {
                 <button className="trip-create-trigger" onClick={() => {
                   const code = `DL-${Date.now().toString(36).toUpperCase()}`;
                   setLocationForm({ code, name: "", address: "", latitude: "", longitude: "" });
+                  setLocationSearch("");
+                  setLocationSearchResults([]);
+                  setPickLocation(false);
                   setShowAddLocation(true);
                 }}>
                   <Plus size={14} />
@@ -332,8 +368,8 @@ export default function TenantMapPage() {
             )}
           </div>
 
-          {/* Form Tambah Lokasi (modal) */}
-          {showAddLocation && (
+          {/* Form Tambah Lokasi (modal) — disembunyikan saat mode pilih peta */}
+          {showAddLocation && !pickLocation && (
             <div className="trip-modal-backdrop" onClick={() => !savingLocation && setShowAddLocation(false)}>
               <div className="trip-modal trip-create-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="add-location-title">
                 <button className="trip-modal-close" onClick={() => setShowAddLocation(false)} disabled={savingLocation} aria-label="Tutup">
@@ -345,10 +381,41 @@ export default function TenantMapPage() {
                   </div>
                   <div>
                     <h2 id="add-location-title">Tambah lokasi penerima</h2>
-                    <p>Isi data lokasi baru. Klik peta untuk set koordinat atau gunakan pencarian.</p>
+                    <p>Isi data lokasi baru. Gunakan pencarian atau pilih langsung dari peta.</p>
                   </div>
                 </div>
                 <form onSubmit={handleAddLocation} className="trip-create-form">
+                  <div className="trip-form-field" style={{ marginBottom: "0.75rem" }}>
+                    <span>
+                      <Search size={12} />
+                      Cari alamat
+                    </span>
+                    <input
+                      type="text"
+                      value={locationSearch}
+                      onChange={(e) => setLocationSearch(e.target.value)}
+                      placeholder="Cari alamat atau tempat..."
+                      autoComplete="off"
+                    />
+                    {locationSearchResults.length > 0 && (
+                      <div className="map-search-results">
+                        {locationSearchResults.map((r, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            className="map-search-result"
+                            onClick={() => {
+                              setLocationForm((f) => ({ ...f, latitude: r.lat, longitude: r.lon }));
+                              setLocationSearch("");
+                              setLocationSearchResults([]);
+                            }}
+                          >
+                            {r.display_name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <div className="trip-form-grid">
                     <div className="trip-form-field">
                       <span>
@@ -405,12 +472,6 @@ export default function TenantMapPage() {
                       <input type="number" step="any" value={locationForm.longitude} onChange={(e) => setLocationForm((f) => ({ ...f, longitude: e.target.value }))} placeholder="106.8" />
                     </div>
                   </div>
-                  {pickLocation && (
-                    <div className="trip-inline-state" role="status">
-                      <Crosshair size={14} />
-                      <span>Klik peta untuk set koordinat...</span>
-                    </div>
-                  )}
                   {locationError && (
                     <div className="trip-modal-error" role="alert">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={14} height={14}>
@@ -422,7 +483,7 @@ export default function TenantMapPage() {
                     </div>
                   )}
                   <div className="trip-action-buttons">
-                    <button type="button" className="trip-action-button muted" onClick={() => setPickLocation(true)} disabled={savingLocation}>
+                    <button type="button" className="trip-action-button muted" onClick={() => { setPickLocation(true); setPickCenter(false); }} disabled={savingLocation}>
                       <Crosshair size={12} />
                       Pilih dari peta
                     </button>
@@ -438,6 +499,22 @@ export default function TenantMapPage() {
             </div>
           )}
 
+          {/* Banner mode pilih lokasi dari peta */}
+          {showAddLocation && pickLocation && (
+            <div className="map-pick-banner" role="status">
+              <div className="map-pick-banner-icon">
+                <Crosshair size={18} />
+              </div>
+              <div className="map-pick-banner-text">
+                <strong>Mode pilih lokasi</strong>
+                <span>Klik pada peta untuk mengisi koordinat otomatis.</span>
+              </div>
+              <button type="button" className="trip-action-button muted" onClick={cancelPickMode}>
+                Batal
+              </button>
+            </div>
+          )}
+
           {/* Map + Lokasi side by side */}
           <div className="dashboard-main-grid" style={{ marginBottom: "1rem" }}>
             <section className="map-section" aria-label="Peta lokasi" style={{ minHeight: "400px" }}>
@@ -448,11 +525,26 @@ export default function TenantMapPage() {
                     selectedTripId={null}
                     onSelectTrip={() => {}}
                     expanded={false}
-                    pickGeofenceCenter={pickLocation}
+                    pickGeofenceCenter={pickLocation || pickCenter}
                     onPickGeofenceCenter={(lon, lat) => {
-                      setLocationForm((f) => ({ ...f, longitude: String(lon), latitude: String(lat) }));
-                      setPickLocation(false);
+                      if (pickLocation) {
+                        setLocationForm((f) => ({ ...f, longitude: String(lon), latitude: String(lat) }));
+                        setPickLocation(false);
+                      } else if (pickCenter) {
+                        setCenterLatitude(String(lat));
+                        setCenterLongitude(String(lon));
+                        setPickCenter(false);
+                      }
                     }}
+                    draftGeofence={
+                      shapeType === "CIRCLE" && centerLatitude && centerLongitude && radiusMeters
+                        ? {
+                            centerLatitude: Number(centerLatitude),
+                            centerLongitude: Number(centerLongitude),
+                            radiusMeters: Number(radiusMeters),
+                          }
+                        : null
+                    }
                     polygonPoints={polygonPoints}
                     onPolygonPointClick={(lon, lat) => {
                       if (drawPolygon) {
@@ -463,6 +555,7 @@ export default function TenantMapPage() {
                     routeCoordinates={searchRouteCoords}
                     focusPoint={focusPoint}
                     originMarker={originMarker}
+                    searchMarker={searchMarker}
                   />
                 </div>
               </div>
@@ -535,136 +628,205 @@ export default function TenantMapPage() {
               </div>
             </div>
             <form onSubmit={handleSubmitGeofence} className="trip-create-form">
-              <div className="trip-form-grid">
-                <div className="trip-form-field">
-                  <span>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
-                      <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
-                      <path d="M2 17l10 5 10-5"></path>
-                      <path d="M2 12l10 5 10-5"></path>
-                    </svg>
-                    Tipe lokasi
-                  </span>
-                  <select value={locationType} onChange={(e) => { setLocationType(e.target.value as GeofenceLocationType); setLocationId(sppgId ?? ""); }}>
-                    <option value="SPPG">SPPG (Tenant)</option>
-                    <option value="DELIVERY">Lokasi pengiriman</option>
-                  </select>
-                </div>
-                {locationType === "DELIVERY" && (
+              {/* Bagian: Lokasi & Bentuk */}
+              <div className="form-section">
+                <h3 className="form-section-title">
+                  <MapPinned size={13} />
+                  Lokasi & Bentuk
+                </h3>
+                <div className="trip-form-grid">
                   <div className="trip-form-field">
                     <span>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
-                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                        <circle cx="12" cy="10" r="3"></circle>
+                        <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                        <path d="M2 17l10 5 10-5"></path>
+                        <path d="M2 12l10 5 10-5"></path>
                       </svg>
-                      Lokasi pengiriman
+                      Tipe lokasi
                     </span>
-                    <select value={locationId} onChange={(e) => setLocationId(e.target.value)} required>
-                      <option value="">Pilih lokasi</option>
-                      {deliveryLocations.map((l) => <option key={l.id} value={l.id}>{l.code} · {l.name}</option>)}
+                    <select value={locationType} onChange={(e) => { setLocationType(e.target.value as GeofenceLocationType); setLocationId(sppgId ?? ""); }}>
+                      <option value="SPPG">SPPG (Tenant)</option>
+                      <option value="DELIVERY">Lokasi pengiriman</option>
                     </select>
                   </div>
-                )}
-                <div className="trip-form-field">
-                  <span>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
-                      <circle cx="12" cy="12" r="10"></circle>
-                      <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon>
-                    </svg>
-                    Bentuk
-                  </span>
-                  <select value={shapeType} onChange={(e) => setShapeType(e.target.value as "CIRCLE" | "POLYGON")}>
-                    <option value="CIRCLE">Lingkaran</option>
-                    <option value="POLYGON">Poligon</option>
-                  </select>
-                </div>
-                <div className="trip-form-field">
-                  <span>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
-                      <path d="M12 20h9"></path>
-                      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-                    </svg>
-                    Nama geofence
-                  </span>
-                  <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nama geofence" />
-                </div>
-                {shapeType === "CIRCLE" && (
-                  <>
+                  {locationType === "DELIVERY" && (
                     <div className="trip-form-field">
                       <span>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
-                          <circle cx="12" cy="12" r="10"></circle>
-                          <line x1="12" y1="2" x2="12" y2="22"></line>
-                          <line x1="2" y1="12" x2="22" y2="12"></line>
+                          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                          <circle cx="12" cy="10" r="3"></circle>
                         </svg>
-                        Latitude center
+                        Lokasi pengiriman
                       </span>
+                      <select value={locationId} onChange={(e) => setLocationId(e.target.value)} required>
+                        <option value="">Pilih lokasi</option>
+                        {deliveryLocations.map((l) => <option key={l.id} value={l.id}>{l.code} · {l.name}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  <div className="trip-form-field">
+                    <span>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon>
+                      </svg>
+                      Bentuk
+                    </span>
+                    <select value={shapeType} onChange={(e) => { setShapeType(e.target.value as "CIRCLE" | "POLYGON"); setPolygonPoints([]); }}>
+                      <option value="CIRCLE">Lingkaran</option>
+                      <option value="POLYGON">Poligon</option>
+                    </select>
+                  </div>
+                  <div className="trip-form-field">
+                    <span>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                        <path d="M12 20h9"></path>
+                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                      </svg>
+                      Nama geofence
+                    </span>
+                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nama geofence" />
+                    <small>Kosongkan untuk memakai nama otomatis</small>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bagian: Geometri */}
+              <div className="form-section">
+                <h3 className="form-section-title">
+                  <Crosshair size={13} />
+                  Geometri
+                </h3>
+                <div className="geofence-target">
+                  <div>
+                    <span className="geofence-target-label">TARGET GEOFENCE</span>
+                    <strong>{locationType === "SPPG" ? "SPPG Tenant" : selectedDeliveryLocation?.name ?? "Lokasi pengiriman"}</strong>
+                  </div>
+                  <span className={`geofence-target-status ${locationId ? "ok" : "warn"}`}>
+                    {locationId ? `ID ${locationId.slice(0, 8).toUpperCase()}` : "Belum memilih lokasi"}
+                  </span>
+                </div>
+
+                {shapeType === "CIRCLE" ? (
+                  <div className="trip-form-grid">
+                    <div className="trip-form-field">
+                      <span>Latitude center</span>
                       <input type="number" step="any" value={centerLatitude} onChange={(e) => setCenterLatitude(e.target.value)} placeholder="-6.2" />
                     </div>
                     <div className="trip-form-field">
-                      <span>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
-                          <circle cx="12" cy="12" r="10"></circle>
-                          <line x1="12" y1="2" x2="12" y2="22"></line>
-                          <line x1="2" y1="12" x2="22" y2="12"></line>
-                        </svg>
-                        Longitude center
-                      </span>
+                      <span>Longitude center</span>
                       <input type="number" step="any" value={centerLongitude} onChange={(e) => setCenterLongitude(e.target.value)} placeholder="106.8" />
                     </div>
                     <div className="trip-form-field">
-                      <span>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
-                          <circle cx="12" cy="12" r="10"></circle>
-                        </svg>
-                        Radius (meter)
-                      </span>
+                      <span>Radius (meter)</span>
                       <input type="number" value={radiusMeters} onChange={(e) => setRadiusMeters(e.target.value)} placeholder="500" min="1" />
                     </div>
-                  </>
+                  </div>
+                ) : (
+                  <div className="polygon-draft">
+                    <div className="polygon-draft-info">
+                      <strong>{polygonPoints.length} titik</strong>
+                      <span>{polygonPoints.length < 3 ? "Minimal 3 titik untuk membuat poligon" : "Poligon siap digambar"}</span>
+                    </div>
+                    {polygonPoints.length > 0 && (
+                      <div className="polygon-draft-points">
+                        {polygonPoints.map((p, i) => (
+                          <span key={i}>{i + 1}. {p.latitude.toFixed(4)}, {p.longitude.toFixed(4)}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
-                <div className="trip-form-field">
-                  <span>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
-                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-                    </svg>
-                    Min akurasi GPS (m)
-                  </span>
-                  <input type="number" value={minGpsAccuracyMeters} onChange={(e) => setMinGpsAccuracyMeters(e.target.value)} min="1" />
+
+                <div className="trip-action-buttons">
+                  {shapeType === "CIRCLE" && (
+                    <button type="button" className="trip-action-button muted" onClick={() => { setPickCenter(true); setPickLocation(false); }} disabled={saving}>
+                      <Crosshair size={12} />
+                      {pickCenter ? "Memilih center..." : "Pilih center dari peta"}
+                    </button>
+                  )}
+                  {shapeType === "POLYGON" && (
+                    <>
+                      <button type="button" className="trip-action-button muted" onClick={() => setDrawPolygon((v) => !v)} disabled={saving}>
+                        <MapPinned size={12} />
+                        {drawPolygon ? "Selesai menggambar" : "Gambar poligon di peta"}
+                      </button>
+                      {polygonPoints.length > 0 && (
+                        <button type="button" className="trip-action-button muted" onClick={() => setPolygonPoints([])} disabled={saving}>
+                          Hapus titik
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
-                <div className="trip-form-field">
-                  <span>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
-                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                      <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                    </svg>
-                    Konfirmasi fix
-                  </span>
-                  <input type="number" value={confirmationFixes} onChange={(e) => setConfirmationFixes(e.target.value)} min="1" />
-                </div>
-                <div className="trip-form-field">
-                  <span>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
-                      <circle cx="12" cy="12" r="10"></circle>
-                      <polyline points="12 6 12 12 16 14"></polyline>
-                    </svg>
-                    Durasi konfirmasi (detik)
-                  </span>
-                  <input type="number" value={confirmationDurationSeconds} onChange={(e) => setConfirmationDurationSeconds(e.target.value)} min="0" />
-                </div>
-                <div className="trip-form-field">
-                  <span>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                      <polyline points="14 2 14 8 20 8"></polyline>
-                      <line x1="16" y1="13" x2="8" y2="13"></line>
-                      <line x1="16" y1="17" x2="8" y2="17"></line>
-                    </svg>
-                    Alasan
-                  </span>
-                  <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Alasan pembuatan" />
+                {(pickCenter || drawPolygon) && (
+                  <div className="trip-inline-state" role="status">
+                    <Crosshair size={14} />
+                    <span>{pickCenter ? "Klik peta untuk set titik center lingkaran..." : "Klik peta untuk menambah titik poligon. Klik \"Selesai menggambar\" setelah 3 titik atau lebih."}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Bagian: Deteksi */}
+              <div className="form-section">
+                <h3 className="form-section-title">
+                  <ShieldCheck size={13} />
+                  Pengaturan Deteksi
+                </h3>
+                <div className="trip-form-grid">
+                  <div className="trip-form-field">
+                    <span>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                      </svg>
+                      Min akurasi GPS (m)
+                    </span>
+                    <input type="number" value={minGpsAccuracyMeters} onChange={(e) => setMinGpsAccuracyMeters(e.target.value)} min="1" />
+                    <small>Semakin kecil, semakin ketat</small>
+                  </div>
+                  <div className="trip-form-field">
+                    <span>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                      </svg>
+                      Konfirmasi fix
+                    </span>
+                    <input type="number" value={confirmationFixes} onChange={(e) => setConfirmationFixes(e.target.value)} min="1" />
+                    <small>Jumlah fix GPS berturut-turut</small>
+                  </div>
+                  <div className="trip-form-field">
+                    <span>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                      </svg>
+                      Durasi konfirmasi (detik)
+                    </span>
+                    <input type="number" value={confirmationDurationSeconds} onChange={(e) => setConfirmationDurationSeconds(e.target.value)} min="0" />
+                    <small>Jendela waktu untuk fix berturut</small>
+                  </div>
                 </div>
               </div>
+
+              {/* Bagian: Audit */}
+              <div className="form-section">
+                <h3 className="form-section-title">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={13} height={13}>
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                  </svg>
+                  Audit
+                </h3>
+                <div className="trip-form-field">
+                  <span>Alasan pembuatan</span>
+                  <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Alasan pembuatan geofence" />
+                  <small>Dihitung di log audit</small>
+                </div>
+              </div>
+
               {error && (
                 <div className="trip-modal-error" role="alert">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={14} height={14}>
@@ -676,7 +838,10 @@ export default function TenantMapPage() {
                 </div>
               )}
               <div className="trip-action-buttons">
-                <button type="submit" className="trip-action-button primary" disabled={saving || !locationId || (shapeType === "CIRCLE" && (!centerLatitude || !centerLongitude || !radiusMeters))}>
+                <button type="button" className="trip-action-button muted" onClick={() => { setPickCenter(false); setDrawPolygon(false); }} disabled={saving}>
+                  Reset mode peta
+                </button>
+                <button type="submit" className="trip-action-button primary" disabled={saving || !locationId || (shapeType === "CIRCLE" && (!centerLatitude || !centerLongitude || !radiusMeters)) || (shapeType === "POLYGON" && polygonPoints.length < 3)}>
                   {saving ? "Menyimpan..." : "Simpan geofence"}
                 </button>
               </div>
