@@ -3,6 +3,7 @@ export type SessionUser = {
   username: string;
   displayName: string;
   mfaEnabled?: boolean;
+  driverId?: string | null;
   tenantRole?: string | null;
   roles: Array<{
     code: string;
