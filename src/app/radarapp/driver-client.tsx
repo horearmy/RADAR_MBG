@@ -576,29 +576,32 @@ export default function DriverClient() {
           </>
         )}
 
-        {tab === "navigasi" && (
-          <>
-            <h1 className="field-page-title">Navigasi</h1>
-            {!navigationTrip ? (
-              <EmptyState
-                title="Belum ada perjalanan aktif"
-                description="Pilih perjalanan dari menu Beranda atau Tugas untuk memulai navigasi."
-              />
-            ) : !navigationDestination ? (
-              <EmptyState
-                title="Lokasi tujuan tidak tersedia"
-                description="Perjalanan ini tidak memiliki koordinat lokasi tujuan."
-              />
-            ) : (
-              <DriverNavigation
-                origin={currentPosition}
-                destination={navigationDestination}
-                onStartLiveGps={() => setNavigatingTripId(navigationTrip.id)}
-                liveGpsActive={Boolean(navigatingTripId) && Boolean(currentPosition)}
-              />
-            )}
-          </>
-        )}
+        <div
+          className="field-section"
+          style={{ display: tab === "navigasi" ? "block" : "none" }}
+          aria-hidden={tab !== "navigasi"}
+        >
+          <h1 className="field-page-title">Navigasi</h1>
+          {!navigationTrip ? (
+            <EmptyState
+              title="Belum ada perjalanan aktif"
+              description="Pilih perjalanan dari menu Beranda atau Tugas untuk memulai navigasi."
+            />
+          ) : !navigationDestination ? (
+            <EmptyState
+              title="Lokasi tujuan tidak tersedia"
+              description="Perjalanan ini tidak memiliki koordinat lokasi tujuan."
+            />
+          ) : (
+            <DriverNavigation
+              origin={currentPosition}
+              destination={navigationDestination}
+              onStartLiveGps={() => setNavigatingTripId(navigationTrip.id)}
+              liveGpsActive={Boolean(navigatingTripId) && Boolean(currentPosition)}
+              visible={tab === "navigasi"}
+            />
+          )}
+        </div>
 
         {tab === "profile" && profileSection}
       </div>

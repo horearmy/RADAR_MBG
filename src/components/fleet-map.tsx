@@ -538,6 +538,7 @@ export function FleetMap({
           center: JAKARTA_CENTER,
           zoom: 10.5,
           attributionControl: false,
+          trackResize: false,
         });
         map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
         map.addControl(new maplibregl.AttributionControl({ compact: true }));

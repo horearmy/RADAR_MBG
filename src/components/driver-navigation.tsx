@@ -9,6 +9,7 @@ type NavigationProps = {
   destination: { latitude: number; longitude: number; name: string };
   onStartLiveGps?: () => void;
   liveGpsActive?: boolean;
+  visible?: boolean;
 };
 
 type RouteData = {
@@ -29,7 +30,7 @@ function formatDuration(seconds: number): string {
   return `${minutes} menit`;
 }
 
-export function DriverNavigation({ origin, destination, onStartLiveGps, liveGpsActive = false }: NavigationProps) {
+export function DriverNavigation({ origin, destination, onStartLiveGps, liveGpsActive = false, visible = true }: NavigationProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const markerRef = useRef<MapLibreMarker | null>(null);
@@ -68,6 +69,7 @@ export function DriverNavigation({ origin, destination, onStartLiveGps, liveGpsA
           },
           center: [origin?.longitude ?? 106.8456, origin?.latitude ?? -6.2088],
           zoom: 13,
+          trackResize: false,
         });
 
         map.addControl(new ml.NavigationControl(), "top-right");
@@ -108,6 +110,17 @@ export function DriverNavigation({ origin, destination, onStartLiveGps, liveGpsA
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Resize map when visibility changes (e.g., switching tabs)
+  useEffect(() => {
+    if (visible && mapRef.current) {
+      // Small delay to ensure the container is visible
+      const timeout = setTimeout(() => {
+        mapRef.current?.resize();
+      }, 50);
+      return () => clearTimeout(timeout);
+    }
+  }, [visible]);
 
   // Fetch route when origin or destination changes
   useEffect(() => {
