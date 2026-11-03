@@ -19,12 +19,16 @@ export class PermissionGuard implements CanActivate {
     );
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
 
-    if (!required?.length || !request.principal) {
+    // Tanpa principal = tidak ada sesi yang valid.
+    if (!request.principal) {
       throw new ForbiddenException({
         code: 'PERMISSION_REQUIRED',
         message: 'Izin untuk tindakan ini tidak tersedia.',
       });
     }
+
+    // Endpoint tanpa @RequirePermissions tetap boleh diakses (mis. tenant/summary, tenant/me).
+    if (!required?.length) return true;
 
     const principal = request.principal;
     if (!required.every((permission) => hasPermission(principal, permission))) {
