@@ -4,9 +4,9 @@ import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ChevronDown, LogOut, ShieldCheck } from "lucide-react";
-import { getCurrentSession, getSessionRole, type SessionUser } from "@/lib/api";
+import { getCurrentSession, getSessionRole, apiBaseUrl, type SessionUser } from "@/lib/api";
 
-const apiBase = process.env.NEXT_PUBLIC_RADAR_API_URL ?? "http://localhost:4000/api/v1";
+const apiBase = apiBaseUrl;
 
 const roleLabels: Record<string, string> = {
   SUPERADMIN: "Superadmin",

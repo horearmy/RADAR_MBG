@@ -205,7 +205,8 @@ export default function TenantPage() {
         await loadSummary(false);
       } catch (error: unknown) {
         if (!active) return;
-        if (error instanceof Error && error.message === "UNAUTHENTICATED") {
+        const message = error instanceof Error ? error.message : "";
+        if (message === "UNAUTHENTICATED" || message === "REQUEST_FAILED_403") {
           router.replace("/login?expired=1");
           return;
         }

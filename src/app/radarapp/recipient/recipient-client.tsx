@@ -50,9 +50,9 @@ const FILTERS: Array<[Filter, string]> = [
 const jakartaDay = (value: string | number | Date) =>
   new Date(value).toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
 
-const IN_TRANSIT = new Set(["IN_PROGRESS", "IN_TRANSIT", "APPROACHING", "ARRIVAL_CANDIDATE", "ARRIVED", "ARRIVAL_DETECTED", "ARRIVAL_VERIFIED"]);
+const IN_TRANSIT = new Set(["PENDING", "IN_PROGRESS", "IN_TRANSIT", "APPROACHING", "ARRIVAL_CANDIDATE", "ARRIVED", "ARRIVAL_DETECTED", "ARRIVAL_VERIFIED"]);
 const AWAITING = new Set(["POD_SUBMITTED", "RECIPIENT_REVIEW", "DELIVERED"]);
-const DONE = new Set(["RECEIVED", "COMPLETED"]);
+const DONE = new Set(["CONFIRMED", "RECEIVED", "COMPLETED"]);
 const ISSUE = new Set(["ISSUE_REPORTED", "EXCEPTION"]);
 
 function matchFilter(d: RecipientDelivery, filter: Filter): boolean {
@@ -98,6 +98,7 @@ export default function RecipientClient() {
   const [notifError, setNotifError] = useState(false);
   const [lastSync, setLastSync] = useState<number | null>(null);
   const [errorText, setErrorText] = useState("");
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("today");
   const [siteId, setSiteId] = useState<string | null>(null);
 
@@ -152,12 +153,18 @@ export default function RecipientClient() {
           return;
         }
         if (isApiUnavailable(error)) {
-          setLoadState("unavailable");
+          if (initial) {
+            setLoadState("unavailable");
+          } else {
+            setRefreshError("Pembaruan gagal. Data terakhir tetap ditampilkan.");
+          }
           return;
         }
         if (initial) {
           setErrorText(safeErrorMessage(error));
           setLoadState("error");
+        } else {
+          setRefreshError("Pembaruan gagal. Data terakhir tetap ditampilkan.");
         }
       }
     },
@@ -343,6 +350,11 @@ export default function RecipientClient() {
       <FieldAppHeader title="RADAR MBG" subtitle={`Penerima · ${siteName}`} name={user?.displayName} onLogout={() => void doLogout()} />
       <div className="field-content">
         <OfflineSyncBanner online={online} lastSync={lastSync} />
+        {refreshError && (
+          <Banner tone="warning" title="Pembaruan gagal">
+            {refreshError}
+          </Banner>
+        )}
         {loadState === "error" ? (
           <ErrorState message={errorText} onRetry={() => { setLoadState("loading"); void load(true); }} />
         ) : (

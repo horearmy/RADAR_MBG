@@ -109,7 +109,7 @@ export function AppSidebar() {
           </Link>
         ) : null}
         {platformAdmin ? (
-          <Link className={`nav-item nav-link${isNavActive("/tenants", pathname) ? " nav-active" : ""}`} href="/tenants">
+          <Link className={`nav-item nav-link${isNavActive("/tenant", pathname) ? " nav-active" : ""}`} href="/tenant">
             <Building2 size={17} strokeWidth={1.8} /><span>Tenant</span>
           </Link>
         ) : null}

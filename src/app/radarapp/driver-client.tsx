@@ -41,13 +41,14 @@ import {
   type NavItem,
 } from "@/components/field-ui";
 import { PodForm } from "./driver-pod-form";
+import { DriverNavigation } from "@/components/driver-navigation";
 
 type LoadState = "loading" | "ready" | "forbidden" | "error";
-type Tab = "home" | "tasks" | "history" | "profile";
+type Tab = "home" | "tasks" | "history" | "profile" | "navigasi";
 type TaskFilter = "today" | "upcoming" | "done";
 type ConfirmKind = "start" | "delivery" | "complete";
 
-const TABS: Tab[] = ["home", "tasks", "history", "profile"];
+const TABS: Tab[] = ["home", "tasks", "history", "profile", "navigasi"];
 const HISTORY_PAGE = 10;
 const jakartaDay = (value: string | number | Date) =>
   new Date(value).toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
@@ -104,6 +105,8 @@ export default function DriverClient() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ tone: "success" | "danger" | "warning"; text: string } | null>(null);
   const noticeTimer = useRef<number | null>(null);
+  const detailRequestIdRef = useRef(0);
+  const tripsRequestIdRef = useRef(0);
 
   useEffect(
     () => () => {
@@ -114,6 +117,7 @@ export default function DriverClient() {
 
   const loadTrips = useCallback(
     async (initial: boolean) => {
+      const requestId = ++tripsRequestIdRef.current;
       try {
         if (initial) {
           const resolved = await resolveWorkspaces({ skipRecipientProbeForDriver: true });
@@ -129,11 +133,13 @@ export default function DriverClient() {
           setUser(resolved.user);
         }
         const result = await getTrips({ page: 1, pageSize: 100 });
+        if (requestId !== tripsRequestIdRef.current) return;
         setTrips(result.data);
         setLastSync(Date.now());
         setRefreshError(false);
         setLoadState("ready");
       } catch (error) {
+        if (requestId !== tripsRequestIdRef.current) return;
         const message = error instanceof Error ? error.message : "";
         if (message === "UNAUTHENTICATED" || message === "REQUEST_FAILED_403") {
           sessionExpired();
@@ -186,13 +192,69 @@ export default function DriverClient() {
   const todayDone = todayTrips.filter((t) => t.status === "COMPLETED").length;
   const todayRemaining = todayTrips.filter((t) => DRIVER_ACTIVE_STATUSES.has(t.status)).length;
 
+  // Current GPS position for navigation
+  const [currentPosition, setCurrentPosition] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [navigatingTripId, setNavigatingTripId] = useState<string | null>(null);
+
+  const navigationTrip = useMemo(
+    () => (navigatingTripId ? trips.find((t) => t.id === navigatingTripId) ?? null : currentTrip),
+    [navigatingTripId, trips, currentTrip],
+  );
+
+  const navigationDestination = useMemo(
+    () =>
+      navigationTrip?.deliveryLocation.latitude && navigationTrip?.deliveryLocation.longitude
+        ? {
+            latitude: Number(navigationTrip.deliveryLocation.latitude),
+            longitude: Number(navigationTrip.deliveryLocation.longitude),
+            name: navigationTrip.deliveryLocation.name ?? "Lokasi Tujuan",
+          }
+        : null,
+    [navigationTrip],
+  );
+
+  const navItems: NavItem[] = [
+    { key: "home", label: "Beranda", href: "/radarapp?tab=home" },
+    { key: "tasks", label: "Tugas", href: "/radarapp?tab=tasks" },
+    { key: "history", label: "Riwayat", href: "/radarapp?tab=history" },
+    { key: "navigasi", label: "Navigasi", href: "/radarapp?tab=navigasi", badge: navigatingTripId ? 1 : undefined },
+    { key: "profile", label: "Profil", href: "/radarapp?tab=profile" },
+  ];
+
+  // Track GPS position when navigating
+  useEffect(() => {
+    if (!navigatingTripId) return;
+    if (!navigator.geolocation) return;
+
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        setCurrentPosition({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+      },
+      (err) => console.error("GPS error:", err),
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 },
+    );
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [navigatingTripId]);
+
+  function startNavigation(trip: TripSummary) {
+    if (!trip.deliveryLocation.latitude || !trip.deliveryLocation.longitude) return;
+    setNavigatingTripId(trip.id);
+    setCurrentPosition(null);
+    // Switch to navigation tab
+    router.push("/radarapp?tab=navigasi");
+  }
+
   const loadDetail = useCallback(
     async (id: string) => {
+      const requestId = ++detailRequestIdRef.current;
       setDetailState("loading");
       try {
-        setDetail(await getTripDetail(id));
+        const result = await getTripDetail(id);
+        if (requestId !== detailRequestIdRef.current) return;
+        setDetail(result);
         setDetailState("idle");
       } catch (error) {
+        if (requestId !== detailRequestIdRef.current) return;
         if (error instanceof Error && error.message === "UNAUTHENTICATED") {
           sessionExpired();
           return;
@@ -306,13 +368,6 @@ export default function DriverClient() {
   // Render
   // -------------------------------------------------------------------------
 
-  const navItems: NavItem[] = [
-    { key: "home", label: "Beranda", href: "/radarapp?tab=home" },
-    { key: "tasks", label: "Tugas", href: "/radarapp?tab=tasks" },
-    { key: "history", label: "Riwayat", href: "/radarapp?tab=history" },
-    { key: "profile", label: "Profil", href: "/radarapp?tab=profile" },
-  ];
-
   if (loadState === "loading") {
     return (
       <main className="field-app">
@@ -371,6 +426,11 @@ export default function DriverClient() {
           <button type="button" className="field-btn" onClick={() => openDetail(trip)}>
             Lihat Detail
           </button>
+          {trip.deliveryLocation.latitude && trip.deliveryLocation.longitude && (
+            <button type="button" className="field-btn" onClick={() => startNavigation(trip)}>
+              <Navigation size={16} aria-hidden="true" /> Navigasi
+            </button>
+          )}
           {actionable && (
             <button type="button" className="field-btn" data-variant="primary" onClick={() => runPrimary(trip)}>
               {label}
@@ -432,17 +492,6 @@ export default function DriverClient() {
 
         {tab === "home" && (
           <>
-            <FieldAppHeader
-              title="RADAR MBG"
-              subtitle="Driver"
-              name={user?.displayName}
-              onLogout={() => void doLogout()}
-            />
-            <OfflineSyncBanner online={online} lastSync={lastSync} pending={tracker.pending} />
-            {loadState === "error" ? (
-              <ErrorState message={errorText} onRetry={() => { setLoadState("loading"); void loadTrips(true); }} />
-            ) : null}
-
             <section className="field-section" aria-label="Ringkasan hari ini">
               <h2 className="field-section-title">Halo, {user?.displayName?.split(" ")[0] ?? "Driver"}</h2>
               <div className="field-stats-grid">
@@ -524,6 +573,30 @@ export default function DriverClient() {
                   </button>
                 )}
               </>
+            )}
+          </>
+        )}
+
+        {tab === "navigasi" && (
+          <>
+            <h1 className="field-page-title">Navigasi</h1>
+            {!navigationTrip ? (
+              <EmptyState
+                title="Belum ada perjalanan aktif"
+                description="Pilih perjalanan dari menu Beranda atau Tugas untuk memulai navigasi."
+              />
+            ) : !navigationDestination ? (
+              <EmptyState
+                title="Lokasi tujuan tidak tersedia"
+                description="Perjalanan ini tidak memiliki koordinat lokasi tujuan."
+              />
+            ) : (
+              <DriverNavigation
+                origin={currentPosition}
+                destination={navigationDestination}
+                onStartLiveGps={() => setNavigatingTripId(navigationTrip.id)}
+                liveGpsActive={Boolean(navigatingTripId) && Boolean(currentPosition)}
+              />
             )}
           </>
         )}

@@ -155,7 +155,7 @@ async getDeliveryLocation(tenantId: string, id: string) {
     if (!sppg) return [];
     return this.prisma.db.deliveryLocation.findMany({
       where: { organizationId: sppg.organizationId, regionId: sppg.regionId },
-      select: { id: true, code: true, name: true },
+      select: { id: true, code: true, name: true, address: true, latitude: true, longitude: true, active: true },
       orderBy: { name: 'asc' },
     });
   }
@@ -181,21 +181,41 @@ async getDeliveryLocation(tenantId: string, id: string) {
     const deliveryLocation = await this.prisma.db.deliveryLocation.findFirst({ where: { id: input.deliveryLocationId, organizationId: sppg.organizationId } });
     if (!deliveryLocation) throw new Error('INVALID_DESTINATION');
 
-    const trip = await this.prisma.db.trip.create({
-      data: {
-        tenantId,
-        organizationId: sppg.organizationId,
-        sppgId,
-        createdBy: principal.id,
-        deliveryLocationId: input.deliveryLocationId,
-        vehicleId: input.vehicleId,
-        driverId: input.driverId,
-        plannedDepartureAt: new Date(input.plannedDepartureAt),
-        plannedArrivalAt: new Date(input.plannedArrivalAt),
-        plannedQuantity: input.plannedQuantity,
-        status: 'SCHEDULED',
-        version: 1,
-      },
+    const trip = await this.prisma.db.$transaction(async (tx) => {
+      const created = await tx.trip.create({
+        data: {
+          tenantId,
+          organizationId: sppg.organizationId,
+          sppgId,
+          createdBy: principal.id,
+          deliveryLocationId: input.deliveryLocationId,
+          vehicleId: input.vehicleId,
+          driverId: input.driverId,
+          plannedDepartureAt: new Date(input.plannedDepartureAt),
+          plannedArrivalAt: new Date(input.plannedArrivalAt),
+          plannedQuantity: input.plannedQuantity,
+          status: 'SCHEDULED',
+          version: 1,
+        },
+      });
+
+      // Buat DeliveryStop untuk recipient site yang terkait dengan delivery location
+      const recipientSite = await tx.recipientSite.findFirst({
+        where: { deliveryLocationId: input.deliveryLocationId, active: true },
+      });
+      if (recipientSite) {
+        await tx.deliveryStop.create({
+          data: {
+            tripId: created.id,
+            recipientSiteId: recipientSite.id,
+            sequenceNumber: 1,
+            plannedArrivalAt: new Date(input.plannedArrivalAt),
+            status: 'PENDING',
+          },
+        });
+      }
+
+      return created;
     });
 
     return trip;
@@ -241,11 +261,11 @@ async getDeliveryLocation(tenantId: string, id: string) {
       orderBy: { plannedDepartureAt: 'desc' },
       take: 50,
       select: {
-        id: true, status: true, plannedDepartureAt: true, plannedQuantity: true,
+        id: true, status: true, plannedDepartureAt: true, plannedArrivalAt: true, plannedQuantity: true,
         trackingStatus: true, verificationStatus: true,
         driver: { select: { name: true } },
         vehicle: { select: { plateNumber: true } },
-        deliveryLocation: { select: { name: true } },
+        deliveryLocation: { select: { name: true, address: true, latitude: true, longitude: true } },
         sppg: { select: { name: true } },
         positions: {
           select: { latitude: true, longitude: true, serverReceivedAt: true, accuracyMeters: true },
@@ -341,7 +361,7 @@ async getUser(tenantId: string, userId: string) {
   async listUsers(tenantId: string) {
     return this.prisma.db.tenantMembership.findMany({
       where: { tenantId },
-      include: { user: { select: { id: true, username: true, displayName: true, status: true } } },
+      include: { user: { select: { id: true, username: true, displayName: true, status: true, driver: { select: { id: true, code: true, name: true } } } } },
     });
   }
 

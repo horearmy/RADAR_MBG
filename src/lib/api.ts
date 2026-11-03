@@ -28,7 +28,7 @@ export type TripSummary = {
   receivedQuantity: number | null;
   version: number;
   sppg: { id: string; code: string; name: string };
-  deliveryLocation: { id: string; code: string; name: string };
+  deliveryLocation: { id: string; code: string; name: string; latitude?: string | number | null; longitude?: string | number | null };
   driver: { id: string; code: string; name: string };
   vehicle: { id: string; plateNumber: string };
   positions: Array<{
@@ -319,8 +319,9 @@ export type PlatformDashboardSummary = {
 };
 
 const configuredBaseUrl = process.env.NEXT_PUBLIC_RADAR_API_URL;
-export const apiBaseUrl = configuredBaseUrl ??
-  (process.env.NODE_ENV === 'development' ? 'http://localhost:4000/api/v1' : '');
+const isBrowser = typeof window !== "undefined";
+export const apiBaseUrl =
+  configuredBaseUrl ?? (isBrowser ? "/api/v1" : "http://localhost:4000/api/v1");
 
 export async function apiGet<T>(path: string): Promise<T> {
   if (!apiBaseUrl) throw new Error('API_NOT_CONFIGURED');
@@ -690,7 +691,7 @@ export function changeTripDestination(
 }
 
 const TENANT_ROLE_PERMISSIONS: Record<string, string[]> = {
-  TENANT_ADMIN: ['trip:read', 'trip:create', 'trip:schedule', 'trip:dispatch', 'trip:manage', 'trip:start', 'trip:location:update', 'trip:track:read', 'master:read', 'master:manage', 'sppg:read', 'sppg:manage', 'organization:read', 'geofence:read', 'geofence:manage', 'exception:read', 'report:read', 'tenant:read'],
+  TENANT_ADMIN: ['trip:read', 'trip:create', 'trip:schedule', 'trip:dispatch', 'trip:manage', 'trip:start', 'trip:location:update', 'trip:track:read', 'master:read', 'master:manage', 'sppg:read', 'sppg:manage', 'organization:read', 'geofence:read', 'geofence:manage', 'exception:read', 'report:read', 'tenant:read', 'tenant:manage', 'admin:manage_users'],
   TENANT_OPERATOR: ['trip:read', 'trip:create', 'trip:schedule', 'trip:dispatch', 'trip:manage', 'trip:track:read', 'master:read', 'sppg:read', 'geofence:read', 'exception:read', 'report:read', 'tenant:read'],
   TENANT_DRIVER: ['trip:read', 'trip:start', 'trip:location:update', 'trip:track:read'],
   TENANT_VIEWER: ['trip:read', 'trip:track:read', 'master:read', 'sppg:read', 'report:read', 'tenant:read'],

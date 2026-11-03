@@ -182,8 +182,13 @@ export default function TenantTripsPage() {
         setSessionUser(user);
         await loadTrips(false);
         await loadResources();
-      } catch {
+      } catch (error) {
         if (!active) return;
+        const message = error instanceof Error ? error.message : "";
+        if (message === "UNAUTHENTICATED" || message === "REQUEST_FAILED_403") {
+          window.location.href = "/login";
+          return;
+        }
         setSessionState("unavailable");
       }
     })();
@@ -222,7 +227,7 @@ export default function TenantTripsPage() {
   };
 
   if (sessionState === "checking") return <main className="session-state"><span className="session-spinner" /><p>Memuat perjalanan…</p></main>;
-  if (sessionState === "unavailable" || !sessionUser) return <main className="session-state"><span className="session-error-mark">!</span><h1>Layanan belum tersedia</h1><p>Pastikan API dan PostgreSQL aktif.</p><button className="session-retry" onClick={() => window.location.reload()}>Coba lagi</button></main>;
+  if (sessionState === "unavailable" || !sessionUser) return <main className="session-state"><span className="session-error-mark">!</span><h1>Sesi tidak dapat diverifikasi</h1><p>Silakan masuk kembali untuk mengakses halaman ini.</p><Link className="session-retry" href="/login">Masuk</Link></main>;
   if (sessionState === "data-error") return <main className="session-state"><span className="session-error-mark">!</span><h1>Data gagal dimuat</h1><p>Periksa koneksi API lalu coba lagi.</p><button className="session-retry" onClick={() => window.location.reload()}>Coba lagi</button></main>;
 
   const canReadTrips = hasPermission(sessionUser, "trip:read");
@@ -249,8 +254,8 @@ export default function TenantTripsPage() {
             </div>
             <div className="page-heading-actions">
               {canCreateTrip && (
-                <button className="export-button" onClick={() => setShowForm(true)}>
-                  <Plus size={15} />
+                <button className="trip-create-trigger" onClick={() => setShowForm(true)}>
+                  <Plus size={14} />
                   Buat perjalanan
                 </button>
               )}
@@ -292,57 +297,107 @@ export default function TenantTripsPage() {
           </section>
 
           {showForm && (
-            <section className="panel" aria-label="Buat perjalanan">
-              <div className="panel-heading">
-                <div>
-                  <div className="section-title-row"><h2>Buat perjalanan</h2></div>
-                  <p>Isi data perjalanan baru.</p>
+            <div className="trip-modal-backdrop" onClick={() => !submitting && setShowForm(false)}>
+              <div className="trip-modal trip-create-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="trip-create-title">
+                <button className="trip-modal-close" onClick={() => setShowForm(false)} disabled={submitting} aria-label="Tutup">
+                  <X size={16} />
+                </button>
+                <div className="trip-create-heading">
+                  <div className="trip-modal-icon primary">
+                    <Plus size={18} />
+                  </div>
+                  <div>
+                    <h2 id="trip-create-title">Buat perjalanan baru</h2>
+                    <p>Lengkapi data perjalanan operasional untuk tenant ini.</p>
+                  </div>
                 </div>
-                <button className="square-button" onClick={() => setShowForm(false)} aria-label="Tutup form"><X size={16} /></button>
+                <form onSubmit={handleSubmit} className="trip-create-form">
+                  <div className="trip-form-grid">
+                    <div className="trip-form-field">
+                      <span>
+                        <Truck size={12} />
+                        Kendaraan
+                      </span>
+                      <select value={form.vehicleId} onChange={(e) => setForm((f) => ({ ...f, vehicleId: e.target.value }))} required>
+                        <option value="">Pilih kendaraan</option>
+                        {vehicles.map((v) => <option key={v.id} value={v.id}>{v.plateNumber} {v.label ? `· ${v.label}` : ""}</option>)}
+                      </select>
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <UserRound size={12} />
+                        Pengemudi
+                      </span>
+                      <select value={form.driverId} onChange={(e) => setForm((f) => ({ ...f, driverId: e.target.value }))} required>
+                        <option value="">Pilih pengemudi</option>
+                        {drivers.map((d) => <option key={d.id} value={d.id}>{d.code} · {d.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <Navigation size={12} />
+                        Lokasi tujuan
+                      </span>
+                      <select value={form.deliveryLocationId} onChange={(e) => setForm((f) => ({ ...f, deliveryLocationId: e.target.value }))} required>
+                        <option value="">Pilih lokasi tujuan</option>
+                        {deliveryLocations.map((l) => <option key={l.id} value={l.id}>{l.code} · {l.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                          <line x1="16" y1="2" x2="16" y2="6"></line>
+                          <line x1="8" y1="2" x2="8" y2="6"></line>
+                          <line x1="3" y1="10" x2="21" y2="10"></line>
+                        </svg>
+                        Waktu berangkat
+                      </span>
+                      <input type="datetime-local" value={form.plannedDepartureAt} onChange={(e) => setForm((f) => ({ ...f, plannedDepartureAt: e.target.value }))} required />
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                        Waktu tiba (estimasi)
+                      </span>
+                      <input type="datetime-local" value={form.plannedArrivalAt} onChange={(e) => setForm((f) => ({ ...f, plannedArrivalAt: e.target.value }))} required />
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                          <path d="M2 17l10 5 10-5"></path>
+                          <path d="M2 12l10 5 10-5"></path>
+                        </svg>
+                        Jumlah porsi
+                      </span>
+                      <input type="number" value={form.plannedQuantity} onChange={(e) => setForm((f) => ({ ...f, plannedQuantity: e.target.value }))} placeholder="0" min="0" required />
+                    </div>
+                  </div>
+                  {formError && (
+                    <div className="trip-modal-error" role="alert">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={14} height={14}>
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="15" y1="9" x2="9" y2="15"></line>
+                        <line x1="9" y1="9" x2="15" y2="15"></line>
+                      </svg>
+                      <span>{formError}</span>
+                    </div>
+                  )}
+                  <div className="trip-action-buttons">
+                    <button type="button" className="trip-action-button muted" onClick={() => setShowForm(false)} disabled={submitting}>
+                      Batal
+                    </button>
+                    <button type="submit" className="trip-action-button primary" disabled={submitting}>
+                      {submitting ? "Menyimpan..." : "Simpan perjalanan"}
+                    </button>
+                  </div>
+                </form>
               </div>
-              <form onSubmit={handleSubmit} className="trip-form">
-                <div className="form-grid">
-                  <label>
-                    <span>Kendaraan</span>
-                    <select value={form.vehicleId} onChange={(e) => setForm((f) => ({ ...f, vehicleId: e.target.value }))} required>
-                      <option value="">Pilih kendaraan</option>
-                      {vehicles.map((v) => <option key={v.id} value={v.id}>{v.plateNumber} {v.label ? `· ${v.label}` : ""}</option>)}
-                    </select>
-                  </label>
-                  <label>
-                    <span>Pengemudi</span>
-                    <select value={form.driverId} onChange={(e) => setForm((f) => ({ ...f, driverId: e.target.value }))} required>
-                      <option value="">Pilih pengemudi</option>
-                      {drivers.map((d) => <option key={d.id} value={d.id}>{d.code} · {d.name}</option>)}
-                    </select>
-                  </label>
-                  <label>
-                    <span>Lokasi tujuan</span>
-                    <select value={form.deliveryLocationId} onChange={(e) => setForm((f) => ({ ...f, deliveryLocationId: e.target.value }))} required>
-                      <option value="">Pilih lokasi tujuan</option>
-                      {deliveryLocations.map((l) => <option key={l.id} value={l.id}>{l.code} · {l.name}</option>)}
-                    </select>
-                  </label>
-                  <label>
-                    <span>Waktu berangkat</span>
-                    <input type="datetime-local" value={form.plannedDepartureAt} onChange={(e) => setForm((f) => ({ ...f, plannedDepartureAt: e.target.value }))} required />
-                  </label>
-                  <label>
-                    <span>Waktu tiba (estimasi)</span>
-                    <input type="datetime-local" value={form.plannedArrivalAt} onChange={(e) => setForm((f) => ({ ...f, plannedArrivalAt: e.target.value }))} required />
-                  </label>
-                  <label>
-                    <span>Jumlah porsi</span>
-                    <input type="number" value={form.plannedQuantity} onChange={(e) => setForm((f) => ({ ...f, plannedQuantity: e.target.value }))} placeholder="0" min="0" />
-                  </label>
-                </div>
-                {formError && <p className="refresh-warning" role="alert">{formError}</p>}
-                <div className="page-heading-actions">
-                  <button type="button" className="export-button" onClick={() => setShowForm(false)} disabled={submitting}>Batal</button>
-                  <button type="submit" className="export-button" disabled={submitting}>{submitting ? "Menyimpan…" : "Simpan perjalanan"}</button>
-                </div>
-              </form>
-            </section>
+            </div>
           )}
 
           <section className="panel trips-panel" aria-label="Perjalanan terkini">

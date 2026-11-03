@@ -99,8 +99,13 @@ export default function TenantUsersPage() {
         setSessionUser(user);
         await loadUsers(false);
         await loadDrivers();
-      } catch {
+      } catch (error) {
         if (!active) return;
+        const message = error instanceof Error ? error.message : "";
+        if (message === "UNAUTHENTICATED" || message === "REQUEST_FAILED_403") {
+          window.location.href = "/login";
+          return;
+        }
         setSessionState("unavailable");
       }
     })();
@@ -255,8 +260,8 @@ export default function TenantUsersPage() {
             </div>
             <div className="page-heading-actions">
               {canManageUsers && (
-                <button className="export-button" onClick={() => setShowCreateForm(true)}>
-                  <Plus size={15} />
+                <button className="trip-create-trigger" onClick={() => setShowCreateForm(true)}>
+                  <Plus size={14} />
                   Buat akun
                 </button>
               )}
@@ -317,125 +322,235 @@ export default function TenantUsersPage() {
 
           {/* Create Form */}
           {showCreateForm && (
-            <section className="panel" aria-label="Buat akun" style={{ marginBottom: "1rem" }}>
-              <div className="panel-heading">
-                <div>
-                  <div className="section-title-row"><h2>Buat akun pengguna</h2></div>
-                  <p>Buat akun login untuk pengguna field app.</p>
+            <div className="trip-modal-backdrop" onClick={() => !submitting && setShowCreateForm(false)}>
+              <div className="trip-modal trip-create-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="create-user-title">
+                <button className="trip-modal-close" onClick={() => setShowCreateForm(false)} disabled={submitting} aria-label="Tutup">
+                  <X size={16} />
+                </button>
+                <div className="trip-create-heading">
+                  <div className="trip-modal-icon primary">
+                    <UserRound size={18} />
+                  </div>
+                  <div>
+                    <h2 id="create-user-title">Buat akun pengguna</h2>
+                    <p>Buat akun login untuk pengguna field app.</p>
+                  </div>
                 </div>
-                <button className="square-button" onClick={() => setShowCreateForm(false)} aria-label="Tutup form"><X size={16} /></button>
-              </div>
-              <form onSubmit={handleCreateUser} className="trip-form">
-                <div className="form-grid">
-                  <label>
-                    <span>Username</span>
-                    <input type="text" value={createForm.username} onChange={(e) => setCreateForm((f) => ({ ...f, username: e.target.value }))} placeholder="username" />
-                  </label>
-                  <label>
-                    <span>Nama tampilan</span>
-                    <input type="text" value={createForm.displayName} onChange={(e) => setCreateForm((f) => ({ ...f, displayName: e.target.value }))} placeholder="Nama lengkap" />
-                  </label>
-                  <label>
-                    <span>Password</span>
-                    <input type="password" value={createForm.password} onChange={(e) => setCreateForm((f) => ({ ...f, password: e.target.value }))} placeholder="Password (min 8 karakter)" required minLength={8} />
-                  </label>
-                  <label>
-                    <span>Role</span>
-                    <select value={createForm.role} onChange={(e) => setCreateForm((f) => ({ ...f, role: e.target.value, driverId: "" }))}>
-                      <option value="TENANT_ADMIN">Tenant Admin</option>
-                      <option value="TENANT_OPERATOR">Tenant Operator</option>
-                      <option value="TENANT_DRIVER">Tenant Driver</option>
-                      <option value="TENANT_VIEWER">Tenant Viewer</option>
-                    </select>
-                  </label>
-                  {createForm.role === "TENANT_DRIVER" && (
-                    <label>
-                      <span>Link ke Driver</span>
-                      <select value={createForm.driverId} onChange={(e) => setCreateForm((f) => ({ ...f, driverId: e.target.value }))}>
-                        <option value="">Tidak link ke driver</option>
-                        {drivers.map((d) => <option key={d.id} value={d.id}>{d.code} · {d.name}</option>)}
+                <form onSubmit={handleCreateUser} className="trip-create-form">
+                  <div className="trip-form-grid">
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                          <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                        Username
+                      </span>
+                      <input type="text" value={createForm.username} onChange={(e) => setCreateForm((f) => ({ ...f, username: e.target.value }))} placeholder="username" required />
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M12 20h9"></path>
+                          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                        </svg>
+                        Nama tampilan
+                      </span>
+                      <input type="text" value={createForm.displayName} onChange={(e) => setCreateForm((f) => ({ ...f, displayName: e.target.value }))} placeholder="Nama lengkap" />
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                        Password
+                      </span>
+                      <input type="password" value={createForm.password} onChange={(e) => setCreateForm((f) => ({ ...f, password: e.target.value }))} placeholder="Password (min 8 karakter)" required minLength={8} />
+                      <small>Minimal 8 karakter</small>
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                          <path d="M2 17l10 5 10-5"></path>
+                          <path d="M2 12l10 5 10-5"></path>
+                        </svg>
+                        Role
+                      </span>
+                      <select value={createForm.role} onChange={(e) => setCreateForm((f) => ({ ...f, role: e.target.value, driverId: "" }))}>
+                        <option value="TENANT_ADMIN">Tenant Admin</option>
+                        <option value="TENANT_OPERATOR">Tenant Operator</option>
+                        <option value="TENANT_DRIVER">Tenant Driver</option>
+                        <option value="TENANT_VIEWER">Tenant Viewer</option>
                       </select>
-                    </label>
+                    </div>
+                    {createForm.role === "TENANT_DRIVER" && (
+                      <div className="trip-form-field">
+                        <span>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                          </svg>
+                          Link ke Driver
+                        </span>
+                        <select value={createForm.driverId} onChange={(e) => setCreateForm((f) => ({ ...f, driverId: e.target.value }))}>
+                          <option value="">Tidak link ke driver</option>
+                          {drivers.map((d) => <option key={d.id} value={d.id}>{d.code} · {d.name}</option>)}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                  {formError && (
+                    <div className="trip-modal-error" role="alert">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={14} height={14}>
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="15" y1="9" x2="9" y2="15"></line>
+                        <line x1="9" y1="9" x2="15" y2="15"></line>
+                      </svg>
+                      <span>{formError}</span>
+                    </div>
                   )}
-                </div>
-                {formError && <p className="refresh-warning" role="alert">{formError}</p>}
-                <div className="page-heading-actions">
-                  <button type="button" className="export-button" onClick={() => setShowCreateForm(false)} disabled={submitting}>Batal</button>
-                  <button type="submit" className="export-button" disabled={submitting || !createForm.password}>
-                    {submitting ? "Membuat…" : "Buat akun"}
-                  </button>
-                </div>
-              </form>
-            </section>
+                  <div className="trip-action-buttons">
+                    <button type="button" className="trip-action-button muted" onClick={() => setShowCreateForm(false)} disabled={submitting}>
+                      Batal
+                    </button>
+                    <button type="submit" className="trip-action-button primary" disabled={submitting || !createForm.password}>
+                      {submitting ? "Membuat..." : "Buat akun"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
           )}
 
           {/* Edit Form */}
           {showEditForm && selectedUser && (
-            <section className="panel" aria-label="Edit pengguna" style={{ marginBottom: "1rem" }}>
-              <div className="panel-heading">
-                <div>
-                  <div className="section-title-row"><h2>Edit pengguna</h2></div>
-                  <p>Perbarui data {selectedUser.username}.</p>
+            <div className="trip-modal-backdrop" onClick={() => { if (!editSubmitting) { setShowEditForm(false); setSelectedUser(null); } }}>
+              <div className="trip-modal trip-create-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="edit-user-title">
+                <button className="trip-modal-close" onClick={() => { setShowEditForm(false); setSelectedUser(null); }} disabled={editSubmitting} aria-label="Tutup">
+                  <X size={16} />
+                </button>
+                <div className="trip-create-heading">
+                  <div className="trip-modal-icon primary">
+                    <Pencil size={18} />
+                  </div>
+                  <div>
+                    <h2 id="edit-user-title">Edit pengguna</h2>
+                    <p>Perbarui data {selectedUser.username}.</p>
+                  </div>
                 </div>
-                <button className="square-button" onClick={() => { setShowEditForm(false); setSelectedUser(null); }} aria-label="Tutup form"><X size={16} /></button>
+                <form onSubmit={handleUpdate} className="trip-create-form">
+                  <div className="trip-form-grid">
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                          <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                        Username
+                      </span>
+                      <input type="text" value={selectedUser.username} readOnly className="readonly-input" />
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M12 20h9"></path>
+                          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                        </svg>
+                        Nama tampilan
+                      </span>
+                      <input type="text" value={editForm.displayName} onChange={(e) => setEditForm((f) => ({ ...f, displayName: e.target.value }))} placeholder="Nama lengkap" />
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                          <path d="M2 17l10 5 10-5"></path>
+                          <path d="M2 12l10 5 10-5"></path>
+                        </svg>
+                        Role
+                      </span>
+                      <select value={editForm.role} onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value }))}>
+                        <option value="TENANT_ADMIN">Tenant Admin</option>
+                        <option value="TENANT_OPERATOR">Tenant Operator</option>
+                        <option value="TENANT_DRIVER">Tenant Driver</option>
+                        <option value="TENANT_VIEWER">Tenant Viewer</option>
+                      </select>
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                        </svg>
+                        Status
+                      </span>
+                      <select value={editForm.status} onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}>
+                        <option value="ACTIVE">Aktif</option>
+                        <option value="SUSPENDED">Suspend</option>
+                        <option value="INACTIVE">Nonaktif</option>
+                      </select>
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                        Password baru (opsional)
+                      </span>
+                      <input type="password" value={editForm.password} onChange={(e) => setEditForm((f) => ({ ...f, password: e.target.value }))} placeholder="Kosongkan jika tidak diubah" />
+                    </div>
+                  </div>
+                  {editError && (
+                    <div className="trip-modal-error" role="alert">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={14} height={14}>
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="15" y1="9" x2="9" y2="15"></line>
+                        <line x1="9" y1="9" x2="15" y2="15"></line>
+                      </svg>
+                      <span>{editError}</span>
+                    </div>
+                  )}
+                  <div className="trip-action-buttons">
+                    <button type="button" className="trip-action-button muted" onClick={() => { setShowEditForm(false); setSelectedUser(null); }} disabled={editSubmitting}>
+                      Batal
+                    </button>
+                    <button type="submit" className="trip-action-button primary" disabled={editSubmitting}>
+                      {editSubmitting ? "Menyimpan..." : "Simpan perubahan"}
+                    </button>
+                  </div>
+                </form>
               </div>
-              <form onSubmit={handleUpdate} className="trip-form">
-                <div className="form-grid">
-                  <label>
-                    <span>Username</span>
-                    <input type="text" value={selectedUser.username} readOnly className="readonly-input" />
-                  </label>
-                  <label>
-                    <span>Nama tampilan</span>
-                    <input type="text" value={editForm.displayName} onChange={(e) => setEditForm((f) => ({ ...f, displayName: e.target.value }))} placeholder="Nama lengkap" />
-                  </label>
-                  <label>
-                    <span>Role</span>
-                    <select value={editForm.role} onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value }))}>
-                      <option value="TENANT_ADMIN">Tenant Admin</option>
-                      <option value="TENANT_OPERATOR">Tenant Operator</option>
-                      <option value="TENANT_DRIVER">Tenant Driver</option>
-                      <option value="TENANT_VIEWER">Tenant Viewer</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>Status</span>
-                    <select value={editForm.status} onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}>
-                      <option value="ACTIVE">Aktif</option>
-                      <option value="SUSPENDED">Suspend</option>
-                      <option value="INACTIVE">Nonaktif</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>Password baru (opsional)</span>
-                    <input type="password" value={editForm.password} onChange={(e) => setEditForm((f) => ({ ...f, password: e.target.value }))} placeholder="Kosongkan jika tidak diubah" />
-                  </label>
-                </div>
-                {editError && <p className="refresh-warning" role="alert">{editError}</p>}
-                <div className="page-heading-actions">
-                  <button type="button" className="export-button" onClick={() => { setShowEditForm(false); setSelectedUser(null); }} disabled={editSubmitting}>Batal</button>
-                  <button type="submit" className="export-button" disabled={editSubmitting}>
-                    {editSubmitting ? "Menyimpan…" : "Simpan perubahan"}
-                  </button>
-                </div>
-              </form>
-            </section>
+            </div>
           )}
 
           {/* Delete Confirm */}
           {deleteConfirm && (
-            <section className="panel" aria-label="Konfirmasi hapus" style={{ marginBottom: "1rem", border: "2px solid #ef4444" }}>
-              <div className="panel-heading">
-                <div>
-                  <div className="section-title-row"><h2>Konfirmasi Nonaktifkan</h2></div>
-                  <p>Apakah Anda yakin ingin menonaktifkan pengguna ini?</p>
+            <div className="trip-modal-backdrop" onClick={() => setDeleteConfirm(null)}>
+              <div className="trip-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="delete-user-title" style={{ width: "min(100%, 420px)" }}>
+                <button className="trip-modal-close" onClick={() => setDeleteConfirm(null)} aria-label="Tutup">
+                  <X size={16} />
+                </button>
+                <div className="trip-create-heading">
+                  <div className="trip-modal-icon danger">
+                    <Trash2 size={18} />
+                  </div>
+                  <div>
+                    <h2 id="delete-user-title">Konfirmasi Nonaktifkan</h2>
+                    <p>Apakah Anda yakin ingin menonaktifkan pengguna ini? Tindakan ini dapat dibatalkan nanti.</p>
+                  </div>
+                </div>
+                <div className="trip-action-buttons">
+                  <button type="button" className="trip-action-button muted" onClick={() => setDeleteConfirm(null)}>
+                    Batal
+                  </button>
+                  <button type="button" className="trip-action-button danger" onClick={() => handleDelete(deleteConfirm)}>
+                    Nonaktifkan
+                  </button>
                 </div>
               </div>
-              <div className="page-heading-actions">
-                <button className="export-button" onClick={() => setDeleteConfirm(null)}>Batal</button>
-                <button className="export-button" style={{ background: "#ef4444", color: "#fff" }} onClick={() => handleDelete(deleteConfirm)}>Nonaktifkan</button>
-              </div>
-            </section>
+            </div>
           )}
 
           {/* Detail Panel */}

@@ -59,8 +59,13 @@ export default function TenantVehiclesPage() {
         if (!active) return;
         setSessionUser(user);
         await loadVehicles(false);
-      } catch {
+      } catch (error) {
         if (!active) return;
+        const message = error instanceof Error ? error.message : "";
+        if (message === "UNAUTHENTICATED" || message === "REQUEST_FAILED_403") {
+          window.location.href = "/login";
+          return;
+        }
         setSessionState("unavailable");
       }
     })();
@@ -133,8 +138,8 @@ export default function TenantVehiclesPage() {
             </div>
             <div className="page-heading-actions">
               {canCreateVehicle && (
-                <button className="export-button" onClick={() => setShowForm(true)}>
-                  <Plus size={15} />
+                <button className="trip-create-trigger" onClick={() => setShowForm(true)}>
+                  <Plus size={14} />
                   Tambah kendaraan
                 </button>
               )}
@@ -177,38 +182,79 @@ export default function TenantVehiclesPage() {
 
           {/* Add Vehicle Form */}
           {showForm && (
-            <section className="panel" aria-label="Tambah kendaraan">
-              <div className="panel-heading">
-                <div>
-                  <div className="section-title-row"><h2>Tambah kendaraan</h2></div>
-                  <p>Isi data kendaraan baru.</p>
+            <div className="trip-modal-backdrop" onClick={() => !submitting && setShowForm(false)}>
+              <div className="trip-modal trip-create-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="add-vehicle-title">
+                <button className="trip-modal-close" onClick={() => setShowForm(false)} disabled={submitting} aria-label="Tutup">
+                  <X size={16} />
+                </button>
+                <div className="trip-create-heading">
+                  <div className="trip-modal-icon primary">
+                    <Truck size={18} />
+                  </div>
+                  <div>
+                    <h2 id="add-vehicle-title">Tambah kendaraan baru</h2>
+                    <p>Isi data kendaraan operasional untuk tenant ini.</p>
+                  </div>
                 </div>
-                <button className="square-button" onClick={() => setShowForm(false)} aria-label="Tutup form"><X size={16} /></button>
+                <form onSubmit={handleSubmit} className="trip-create-form">
+                  <div className="trip-form-grid">
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"></path>
+                          <path d="M15 18H9"></path>
+                          <path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"></path>
+                          <circle cx="17" cy="18" r="2"></circle>
+                          <circle cx="7" cy="18" r="2"></circle>
+                        </svg>
+                        Plat nomor
+                      </span>
+                      <input type="text" value={form.plateNumber} onChange={(e) => setForm((f) => ({ ...f, plateNumber: e.target.value }))} placeholder="B 1234 ABC" required />
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M12 20h9"></path>
+                          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                        </svg>
+                        Label (opsional)
+                      </span>
+                      <input type="text" value={form.label} onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))} placeholder="Nama/label kendaraan" />
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                          <path d="M2 17l10 5 10-5"></path>
+                          <path d="M2 12l10 5 10-5"></path>
+                        </svg>
+                        Kapasitas (porsi)
+                      </span>
+                      <input type="number" value={form.capacity} onChange={(e) => setForm((f) => ({ ...f, capacity: e.target.value }))} placeholder="0" min="0" />
+                      <small>Kapasitas maksimal per perjalanan</small>
+                    </div>
+                  </div>
+                  {formError && (
+                    <div className="trip-modal-error" role="alert">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={14} height={14}>
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="15" y1="9" x2="9" y2="15"></line>
+                        <line x1="9" y1="9" x2="15" y2="15"></line>
+                      </svg>
+                      <span>{formError}</span>
+                    </div>
+                  )}
+                  <div className="trip-action-buttons">
+                    <button type="button" className="trip-action-button muted" onClick={() => setShowForm(false)} disabled={submitting}>
+                      Batal
+                    </button>
+                    <button type="submit" className="trip-action-button primary" disabled={submitting || !form.plateNumber}>
+                      {submitting ? "Menyimpan..." : "Simpan kendaraan"}
+                    </button>
+                  </div>
+                </form>
               </div>
-              <form onSubmit={handleSubmit} className="trip-form">
-                <div className="form-grid">
-                  <label>
-                    <span>Plat nomor</span>
-                    <input type="text" value={form.plateNumber} onChange={(e) => setForm((f) => ({ ...f, plateNumber: e.target.value }))} placeholder="B 1234 ABC" required />
-                  </label>
-                  <label>
-                    <span>Label (opsional)</span>
-                    <input type="text" value={form.label} onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))} placeholder="Nama/label kendaraan" />
-                  </label>
-                  <label>
-                    <span>Kapasitas (porsi)</span>
-                    <input type="number" value={form.capacity} onChange={(e) => setForm((f) => ({ ...f, capacity: e.target.value }))} placeholder="0" min="0" />
-                  </label>
-                </div>
-                {formError && <p className="refresh-warning" role="alert">{formError}</p>}
-                <div className="page-heading-actions">
-                  <button type="button" className="export-button" onClick={() => setShowForm(false)} disabled={submitting}>Batal</button>
-                  <button type="submit" className="export-button" disabled={submitting || !form.plateNumber}>
-                    {submitting ? "Menyimpan…" : "Simpan kendaraan"}
-                  </button>
-                </div>
-              </form>
-            </section>
+            </div>
           )}
 
           {/* Vehicles Table */}

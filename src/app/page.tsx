@@ -180,15 +180,6 @@ function StatusPill({ tone, children }: { tone: string; children: ReactNode }) {
   return <span className={`status-pill status-${tone}`}><span className="status-dot" />{children}</span>;
 }
 
-const mockUser: SessionUser = {
-  id: 'platform-admin',
-  username: 'platform-admin',
-  displayName: 'Platform Admin',
-  mfaEnabled: false,
-  tenantRole: null,
-  roles: [],
-};
-
 export default function Home() {
   const router = useRouter();
   const mapSectionRef = useRef<HTMLElement>(null);
@@ -241,18 +232,10 @@ export default function Home() {
       } catch (error: unknown) {
         if (!active) return;
         if (error instanceof Error && error.message === "UNAUTHENTICATED") {
-          // Cara 2: Gunakan mock user rather than redirect untuk testing
-          user = mockUser;
-          setSessionState("ready");
-          setSessionUser(user);
-          await loadDashboard(user, true);
+          router.replace("/login?expired=1");
           return;
         }
-        // Cara 2: Gunakan mock user jika session unavailable
-        user = mockUser;
-        setSessionState("ready");
-        setSessionUser(user);
-        await loadDashboard(user, true);
+        setSessionState("unavailable");
         return;
       }
 
@@ -272,7 +255,7 @@ export default function Home() {
     })();
 
     return () => { active = false; };
-  }, [router, loadDashboard, mockUser]);
+  }, [router, loadDashboard]);
 
   const handleRefresh = useCallback(async (silent = true) => {
     if (!sessionUser) return;
@@ -526,10 +509,10 @@ export default function Home() {
                   <div className="section-title-row"><h2>Tata kelola platform</h2><span className="count-chip">Superadmin</span></div>
                   <p>Status tenant, pendaftaran, dan persetujuan lintas organisasi.</p>
                 </div>
-                <Link className="text-link" href="/tenants">Kelola tenant<ArrowRight size={14} /></Link>
+                <Link className="text-link" href="/tenant">Kelola tenant<ArrowRight size={14} /></Link>
               </div>
               <div className="gov-grid">
-                <Link className="gov-card" href="/tenants">
+                <Link className="gov-card" href="/tenant">
                   <span className="gov-icon icon-navy"><Building2 size={17} /></span>
                   <span className="gov-copy"><small>Tenant aktif</small><strong>{platformSummary.tenants.active} <i>/ {platformSummary.tenants.total}</i></strong><span>{platformSummary.tenants.pendingActivation} menunggu aktivasi · {platformSummary.tenants.suspended} ditangguhkan</span></span>
                 </Link>
@@ -706,7 +689,7 @@ export default function Home() {
               </div>
             </div>
             <div className="app-link-row">
-              {platformAdmin && <Link href="/tenants" className="app-link-card"><Building2 size={20} /><span>Tenant</span></Link>}
+              {platformAdmin && <Link href="/tenant" className="app-link-card"><Building2 size={20} /><span>Tenant</span></Link>}
               <Link href="/sppg" className="app-link-card"><Utensils size={20} /><span>SPPG</span></Link>
               {canAccessApprovals && <Link href="/approvals" className="app-link-card"><ClipboardCheck size={20} /><span>Persetujuan</span></Link>}
               {canReadAudit && <Link href="/audit" className="app-link-card"><Activity size={20} /><span>Audit explorer</span></Link>}

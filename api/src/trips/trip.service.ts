@@ -93,7 +93,7 @@ export class TripService {
           receivedQuantity: true,
           version: true,
           sppg: { select: { id: true, code: true, name: true } },
-          deliveryLocation: { select: { id: true, code: true, name: true } },
+          deliveryLocation: { select: { id: true, code: true, name: true, address: true, latitude: true, longitude: true } },
           driver: { select: { id: true, code: true, name: true } },
           vehicle: { select: { id: true, plateNumber: true } },
           positions: {
@@ -148,7 +148,7 @@ export class TripService {
         receivedQuantity: true,
         version: true,
         sppg: { select: { id: true, code: true, name: true } },
-        deliveryLocation: { select: { id: true, code: true, name: true, address: true } },
+        deliveryLocation: { select: { id: true, code: true, name: true, address: true, latitude: true, longitude: true } },
         driver: { select: { id: true, code: true, name: true } },
         vehicle: { select: { id: true, plateNumber: true, label: true } },
         positions: {

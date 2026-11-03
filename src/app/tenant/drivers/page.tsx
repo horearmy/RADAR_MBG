@@ -72,8 +72,13 @@ export default function TenantDriversPage() {
         if (!active) return;
         setSessionUser(user);
         await loadDrivers(false);
-      } catch {
+      } catch (error) {
         if (!active) return;
+        const message = error instanceof Error ? error.message : "";
+        if (message === "UNAUTHENTICATED" || message === "REQUEST_FAILED_403") {
+          window.location.href = "/login";
+          return;
+        }
         setSessionState("unavailable");
       }
     })();
@@ -185,18 +190,18 @@ export default function TenantDriversPage() {
             </div>
             <div className="page-heading-actions">
               {canCreateDriver && (
-                <button className="export-button" onClick={() => {
+                <button className="trip-create-trigger" onClick={() => {
                   const code = `DRV-${Date.now().toString(36).toUpperCase()}`;
                   setForm({ code, name: "", phone: "" });
                   setShowForm(true);
                 }}>
-                  <Plus size={15} />
+                  <Plus size={14} />
                   Tambah driver
                 </button>
               )}
               {canInviteDriver && (
-                <button className="export-button" onClick={() => setShowInviteForm(true)}>
-                  <KeyRound size={15} />
+                <button className="trip-create-trigger" onClick={() => setShowInviteForm(true)}>
+                  <KeyRound size={14} />
                   Buat akun login
                 </button>
               )}
@@ -265,77 +270,151 @@ export default function TenantDriversPage() {
 
           {/* Invite Driver Form */}
           {showInviteForm && (
-            <section className="panel" aria-label="Buat akun login driver">
-              <div className="panel-heading">
-                <div>
-                  <div className="section-title-row"><h2>Buat akun login driver</h2></div>
-                  <p>Buat akun untuk driver agar bisa masuk ke field app.</p>
+            <div className="trip-modal-backdrop" onClick={() => !inviteSubmitting && setShowInviteForm(false)}>
+              <div className="trip-modal trip-create-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="invite-driver-title">
+                <button className="trip-modal-close" onClick={() => setShowInviteForm(false)} disabled={inviteSubmitting} aria-label="Tutup">
+                  <X size={16} />
+                </button>
+                <div className="trip-create-heading">
+                  <div className="trip-modal-icon primary">
+                    <KeyRound size={18} />
+                  </div>
+                  <div>
+                    <h2 id="invite-driver-title">Buat akun login driver</h2>
+                    <p>Buat akun untuk driver agar bisa masuk ke field app.</p>
+                  </div>
                 </div>
-                <button className="square-button" onClick={() => setShowInviteForm(false)} aria-label="Tutup form"><X size={16} /></button>
+                <form onSubmit={handleInviteDriver} className="trip-create-form">
+                  <div className="trip-form-grid">
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                          <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                        Username
+                      </span>
+                      <input type="text" value={inviteForm.username} onChange={(e) => setInviteForm((f) => ({ ...f, username: e.target.value }))} placeholder="username driver" required />
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M12 20h9"></path>
+                          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                        </svg>
+                        Nama tampilan
+                      </span>
+                      <input type="text" value={inviteForm.displayName} onChange={(e) => setInviteForm((f) => ({ ...f, displayName: e.target.value }))} placeholder="Nama driver" />
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                        </svg>
+                        Link ke Driver (opsional)
+                      </span>
+                      <select value={inviteForm.driverId} onChange={(e) => setInviteForm((f) => ({ ...f, driverId: e.target.value }))}>
+                        <option value="">Tidak link ke driver</option>
+                        {drivers.map((d) => <option key={d.id} value={d.id}>{d.code} · {d.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  {inviteError && (
+                    <div className="trip-modal-error" role="alert">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={14} height={14}>
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="15" y1="9" x2="9" y2="15"></line>
+                        <line x1="9" y1="9" x2="15" y2="15"></line>
+                      </svg>
+                      <span>{inviteError}</span>
+                    </div>
+                  )}
+                  <div className="trip-action-buttons">
+                    <button type="button" className="trip-action-button muted" onClick={() => setShowInviteForm(false)} disabled={inviteSubmitting}>
+                      Batal
+                    </button>
+                    <button type="submit" className="trip-action-button primary" disabled={inviteSubmitting || !inviteForm.username}>
+                      {inviteSubmitting ? "Mengundang..." : "Buat akun login"}
+                    </button>
+                  </div>
+                </form>
               </div>
-              <form onSubmit={handleInviteDriver} className="trip-form">
-                <div className="form-grid">
-                  <label>
-                    <span>Username</span>
-                    <input type="text" value={inviteForm.username} onChange={(e) => setInviteForm((f) => ({ ...f, username: e.target.value }))} placeholder="username driver" required />
-                  </label>
-                  <label>
-                    <span>Nama tampilan</span>
-                    <input type="text" value={inviteForm.displayName} onChange={(e) => setInviteForm((f) => ({ ...f, displayName: e.target.value }))} placeholder="Nama driver" />
-                  </label>
-                  <label>
-                    <span>Link ke Driver (opsional)</span>
-                    <select value={inviteForm.driverId} onChange={(e) => setInviteForm((f) => ({ ...f, driverId: e.target.value }))}>
-                      <option value="">Tidak link ke driver</option>
-                      {drivers.map((d) => <option key={d.id} value={d.id}>{d.code} · {d.name}</option>)}
-                    </select>
-                  </label>
-                </div>
-                {inviteError && <p className="refresh-warning" role="alert">{inviteError}</p>}
-                <div className="page-heading-actions">
-                  <button type="button" className="export-button" onClick={() => setShowInviteForm(false)} disabled={inviteSubmitting}>Batal</button>
-                  <button type="submit" className="export-button" disabled={inviteSubmitting || !inviteForm.username}>
-                    {inviteSubmitting ? "Mengundang…" : "Buat akun login"}
-                  </button>
-                </div>
-              </form>
-            </section>
+            </div>
           )}
 
           {/* Add Driver Form */}
           {showForm && (
-            <section className="panel" aria-label="Tambah driver">
-              <div className="panel-heading">
-                <div>
-                  <div className="section-title-row"><h2>Tambah driver</h2></div>
-                  <p>Isi data pengemudi baru.</p>
+            <div className="trip-modal-backdrop" onClick={() => !submitting && setShowForm(false)}>
+              <div className="trip-modal trip-create-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="add-driver-title">
+                <button className="trip-modal-close" onClick={() => setShowForm(false)} disabled={submitting} aria-label="Tutup">
+                  <X size={16} />
+                </button>
+                <div className="trip-create-heading">
+                  <div className="trip-modal-icon primary">
+                    <UserRound size={18} />
+                  </div>
+                  <div>
+                    <h2 id="add-driver-title">Tambah driver baru</h2>
+                    <p>Isi data pengemudi operasional untuk tenant ini.</p>
+                  </div>
                 </div>
-                <button className="square-button" onClick={() => setShowForm(false)} aria-label="Tutup form"><X size={16} /></button>
+                <form onSubmit={handleSubmit} className="trip-create-form">
+                  <div className="trip-form-grid">
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                          <path d="M2 17l10 5 10-5"></path>
+                          <path d="M2 12l10 5 10-5"></path>
+                        </svg>
+                        Kode driver
+                      </span>
+                      <input type="text" value={form.code} readOnly className="readonly-input" />
+                      <small>Kode dibuat otomatis</small>
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                          <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                        Nama driver
+                      </span>
+                      <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Nama lengkap pengemudi" required />
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                        </svg>
+                        Telepon
+                      </span>
+                      <input type="text" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="08xxxxxxxxxx" />
+                      <small>Format: 08xxxxxxxxxx</small>
+                    </div>
+                  </div>
+                  {formError && (
+                    <div className="trip-modal-error" role="alert">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={14} height={14}>
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="15" y1="9" x2="9" y2="15"></line>
+                        <line x1="9" y1="9" x2="15" y2="15"></line>
+                      </svg>
+                      <span>{formError}</span>
+                    </div>
+                  )}
+                  <div className="trip-action-buttons">
+                    <button type="button" className="trip-action-button muted" onClick={() => setShowForm(false)} disabled={submitting}>
+                      Batal
+                    </button>
+                    <button type="submit" className="trip-action-button primary" disabled={submitting || !form.code || !form.name}>
+                      {submitting ? "Menyimpan..." : "Simpan driver"}
+                    </button>
+                  </div>
+                </form>
               </div>
-              <form onSubmit={handleSubmit} className="trip-form">
-                <div className="form-grid">
-                  <label>
-                    <span>Kode driver</span>
-                    <input type="text" value={form.code} readOnly className="readonly-input" />
-                  </label>
-                  <label>
-                    <span>Nama driver</span>
-                    <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Nama lengkap pengemudi" required />
-                  </label>
-                  <label>
-                    <span>Telepon</span>
-                    <input type="text" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="08xxxxxxxxxx" />
-                  </label>
-                </div>
-                {formError && <p className="refresh-warning" role="alert">{formError}</p>}
-                <div className="page-heading-actions">
-                  <button type="button" className="export-button" onClick={() => setShowForm(false)} disabled={submitting}>Batal</button>
-                  <button type="submit" className="export-button" disabled={submitting || !form.code || !form.name}>
-                    {submitting ? "Menyimpan…" : "Simpan driver"}
-                  </button>
-                </div>
-              </form>
-            </section>
+            </div>
           )}
 
           {/* Drivers Table */}

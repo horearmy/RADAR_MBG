@@ -18,6 +18,11 @@ export class PlatformController {
     return this.service.summary(query);
   }
 
+  @Get('dashboard-summary')
+  dashboardSummary() {
+    return this.service.dashboardSummary();
+  }
+
   @Get('geofences')
   geofences(@Query() query: { tenantId?: string }) {
     return this.service.listGeofences(query.tenantId);

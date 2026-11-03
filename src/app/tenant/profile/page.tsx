@@ -71,8 +71,13 @@ export default function TenantProfilePage() {
         if (!active) return;
         setSessionUser(user);
         await loadProfile(false);
-      } catch {
+      } catch (error) {
         if (!active) return;
+        const message = error instanceof Error ? error.message : "";
+        if (message === "UNAUTHENTICATED" || message === "REQUEST_FAILED_403") {
+          window.location.href = "/login";
+          return;
+        }
         setSessionState("unavailable");
       }
     })();
@@ -159,8 +164,8 @@ export default function TenantProfilePage() {
             </div>
             <div className="page-heading-actions">
               {canEdit && me?.profile && (
-                <button className="export-button" onClick={startEdit}>
-                  <Pencil size={15} />
+                <button className="trip-create-trigger" onClick={startEdit}>
+                  <Pencil size={14} />
                   Edit profil
                 </button>
               )}
@@ -205,55 +210,117 @@ export default function TenantProfilePage() {
 
           {/* Edit Form */}
           {showEdit && (
-            <section className="panel" aria-label="Edit profil" style={{ marginBottom: "1rem" }}>
-              <div className="panel-heading">
-                <div>
-                  <div className="section-title-row"><h2>Edit profil SPPG</h2></div>
-                  <p>Perbarui informasi SPPG.</p>
+            <div className="trip-modal-backdrop" onClick={() => !submitting && setShowEdit(false)}>
+              <div className="trip-modal trip-create-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="edit-profile-title">
+                <button className="trip-modal-close" onClick={() => setShowEdit(false)} disabled={submitting} aria-label="Tutup">
+                  <X size={16} />
+                </button>
+                <div className="trip-create-heading">
+                  <div className="trip-modal-icon primary">
+                    <Building2 size={18} />
+                  </div>
+                  <div>
+                    <h2 id="edit-profile-title">Edit profil SPPG</h2>
+                    <p>Perbarui informasi SPPG tenant.</p>
+                  </div>
                 </div>
-                <button className="square-button" onClick={() => setShowEdit(false)} aria-label="Tutup form"><X size={16} /></button>
+                <form onSubmit={handleUpdate} className="trip-create-form">
+                  <div className="trip-form-grid">
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M3 21h18"></path>
+                          <path d="M5 21V7l8-4v18"></path>
+                          <path d="M19 21V11l-6-4"></path>
+                        </svg>
+                        Nama SPPG
+                      </span>
+                      <input type="text" value={editForm.sppgName} onChange={(e) => setEditForm((f) => ({ ...f, sppgName: e.target.value }))} placeholder="Nama SPPG" />
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                          <circle cx="12" cy="10" r="3"></circle>
+                        </svg>
+                        Alamat lengkap
+                      </span>
+                      <input type="text" value={editForm.fullAddress} onChange={(e) => setEditForm((f) => ({ ...f, fullAddress: e.target.value }))} placeholder="Alamat" />
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                        </svg>
+                        Telepon
+                      </span>
+                      <input type="text" value={editForm.contactPhone} onChange={(e) => setEditForm((f) => ({ ...f, contactPhone: e.target.value }))} placeholder="08xxxxxxxxxx" />
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                          <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                        Penanggung jawab
+                      </span>
+                      <input type="text" value={editForm.personInCharge} onChange={(e) => setEditForm((f) => ({ ...f, personInCharge: e.target.value }))} placeholder="Nama penanggung jawab" />
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                        Jam operasional
+                      </span>
+                      <input type="text" value={editForm.operationalHours} onChange={(e) => setEditForm((f) => ({ ...f, operationalHours: e.target.value }))} placeholder="08:00 - 17:00" />
+                    </div>
+                    <div className="trip-form-field">
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                          <path d="M2 17l10 5 10-5"></path>
+                          <path d="M2 12l10 5 10-5"></path>
+                        </svg>
+                        Kapasitas (porsi/hari)
+                      </span>
+                      <input type="number" value={editForm.capacity} onChange={(e) => setEditForm((f) => ({ ...f, capacity: e.target.value }))} placeholder="0" min="0" />
+                    </div>
+                    <div className="trip-form-field" style={{ gridColumn: "1 / -1" }}>
+                      <span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                          <polyline points="14 2 14 8 20 8"></polyline>
+                          <line x1="16" y1="13" x2="8" y2="13"></line>
+                          <line x1="16" y1="17" x2="8" y2="17"></line>
+                        </svg>
+                        Catatan
+                      </span>
+                      <textarea value={editForm.notes} onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Catatan tambahan" rows={3} style={{ width: "100%", padding: "9px 10px", border: "1px solid #dbe4ee", borderRadius: "7px", fontSize: "10px", fontFamily: "inherit", resize: "vertical", minHeight: "80px" }} />
+                    </div>
+                  </div>
+                  {formError && (
+                    <div className="trip-modal-error" role="alert">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={14} height={14}>
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="15" y1="9" x2="9" y2="15"></line>
+                        <line x1="9" y1="9" x2="15" y2="15"></line>
+                      </svg>
+                      <span>{formError}</span>
+                    </div>
+                  )}
+                  <div className="trip-action-buttons">
+                    <button type="button" className="trip-action-button muted" onClick={() => setShowEdit(false)} disabled={submitting}>
+                      Batal
+                    </button>
+                    <button type="submit" className="trip-action-button primary" disabled={submitting}>
+                      {submitting ? "Menyimpan..." : "Simpan perubahan"}
+                    </button>
+                  </div>
+                </form>
               </div>
-              <form onSubmit={handleUpdate} className="trip-form">
-                <div className="form-grid">
-                  <label>
-                    <span>Nama SPPG</span>
-                    <input type="text" value={editForm.sppgName} onChange={(e) => setEditForm((f) => ({ ...f, sppgName: e.target.value }))} placeholder="Nama SPPG" />
-                  </label>
-                  <label>
-                    <span>Alamat lengkap</span>
-                    <input type="text" value={editForm.fullAddress} onChange={(e) => setEditForm((f) => ({ ...f, fullAddress: e.target.value }))} placeholder="Alamat" />
-                  </label>
-                  <label>
-                    <span>Telepon</span>
-                    <input type="text" value={editForm.contactPhone} onChange={(e) => setEditForm((f) => ({ ...f, contactPhone: e.target.value }))} placeholder="08xxxxxxxxxx" />
-                  </label>
-                  <label>
-                    <span>Penanggung jawab</span>
-                    <input type="text" value={editForm.personInCharge} onChange={(e) => setEditForm((f) => ({ ...f, personInCharge: e.target.value }))} placeholder="Nama penanggung jawab" />
-                  </label>
-                  <label>
-                    <span>Jam operasional</span>
-                    <input type="text" value={editForm.operationalHours} onChange={(e) => setEditForm((f) => ({ ...f, operationalHours: e.target.value }))} placeholder="08:00 - 17:00" />
-                  </label>
-                  <label>
-                    <span>Kapasitas (porsi/hari)</span>
-                    <input type="number" value={editForm.capacity} onChange={(e) => setEditForm((f) => ({ ...f, capacity: e.target.value }))} placeholder="0" min="0" />
-                  </label>
-                  <label style={{ gridColumn: "1 / -1" }}>
-                    <span>Catatan</span>
-                    <textarea value={editForm.notes} onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Catatan tambahan" rows={3} style={{ width: "100%", padding: "0.5rem", border: "1px solid #ccc", borderRadius: "6px" }} />
-                  </label>
-                </div>
-                {formError && <p className="refresh-warning" role="alert">{formError}</p>}
-                <div className="page-heading-actions">
-                  <button type="button" className="export-button" onClick={() => setShowEdit(false)} disabled={submitting}>Batal</button>
-                  <button type="submit" className="export-button" disabled={submitting}>
-                    <Save size={15} />
-                    {submitting ? "Menyimpan…" : "Simpan perubahan"}
-                  </button>
-                </div>
-              </form>
-            </section>
+            </div>
           )}
 
           {/* Profile Detail Card */}
@@ -265,45 +332,47 @@ export default function TenantProfilePage() {
                   <p>Informasi lengkap SPPG tenant.</p>
                 </div>
               </div>
-              <div style={{ padding: "1rem", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "1rem" }}>
-                <div className="profile-field">
-                  <span className="profile-label">Kode Tenant</span>
-                  <span className="profile-value">{me.tenantCode}</span>
-                </div>
-                <div className="profile-field">
-                  <span className="profile-label">Status</span>
-                  <span className="profile-value">{me.status}</span>
-                </div>
-                <div className="profile-field">
-                  <span className="profile-label">Nama SPPG</span>
-                  <span className="profile-value">{me.profile?.sppgName ?? "—"}</span>
-                </div>
-                <div className="profile-field">
-                  <span className="profile-label">Penanggung Jawab</span>
-                  <span className="profile-value">{me.profile?.personInCharge ?? "—"}</span>
-                </div>
-                <div className="profile-field">
-                  <span className="profile-label">Telepon</span>
-                  <span className="profile-value">{me.profile?.contactPhone ?? "—"}</span>
-                </div>
-                <div className="profile-field">
-                  <span className="profile-label">Jam Operasional</span>
-                  <span className="profile-value">{me.profile?.operationalHours ?? "—"}</span>
-                </div>
-                <div className="profile-field">
-                  <span className="profile-label">Kapasitas</span>
-                  <span className="profile-value">{me.profile?.capacity ? `${me.profile.capacity} porsi/hari` : "—"}</span>
-                </div>
-                <div className="profile-field" style={{ gridColumn: "1 / -1" }}>
-                  <span className="profile-label">Alamat</span>
-                  <span className="profile-value">{me.profile?.fullAddress ?? "—"}</span>
-                </div>
-                {me.profile?.notes && (
-                  <div className="profile-field" style={{ gridColumn: "1 / -1" }}>
-                    <span className="profile-label">Catatan</span>
-                    <span className="profile-value">{me.profile.notes}</span>
+              <div style={{ padding: "16px" }}>
+                <dl className="detail-list" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "16px", margin: 0 }}>
+                  <div>
+                    <dt>Kode Tenant</dt>
+                    <dd>{me.tenantCode}</dd>
                   </div>
-                )}
+                  <div>
+                    <dt>Status</dt>
+                    <dd>{me.status}</dd>
+                  </div>
+                  <div>
+                    <dt>Nama SPPG</dt>
+                    <dd>{me.profile?.sppgName ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>Penanggung Jawab</dt>
+                    <dd>{me.profile?.personInCharge ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>Telepon</dt>
+                    <dd>{me.profile?.contactPhone ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>Jam Operasional</dt>
+                    <dd>{me.profile?.operationalHours ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>Kapasitas</dt>
+                    <dd>{me.profile?.capacity ? `${me.profile.capacity} porsi/hari` : "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>Alamat</dt>
+                    <dd>{me.profile?.fullAddress ?? "—"}</dd>
+                  </div>
+                  {me.profile?.notes && (
+                    <div>
+                      <dt>Catatan</dt>
+                      <dd>{me.profile.notes}</dd>
+                    </div>
+                  )}
+                </dl>
               </div>
             </section>
           )}
