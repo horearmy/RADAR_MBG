@@ -1273,6 +1273,9 @@ a.gov-card:hover { background: #f7faff; }
 .legend-stale-count { color: #b47a2c; font-size: 11px; font-weight: 600; }
 .legend-freshness.is-stale { color: #b47a2c; }
 .legend-freshness.is-stale .freshness-dot { background: #f59e0b; }
+.legend-geofence-toggle { display: flex; align-items: center; gap: 6px; color: #536980; font-size: 9px; font-weight: 600; }
+.legend-geofence-dot { width: 7px; height: 7px; border-radius: 50%; background: #1677ff; box-shadow: 0 0 0 2px #dcfce7; margin-right: 4px; vertical-align: middle; }
+.legend-geofence-filter-text { color: #8a9aac; font-size: 8px; margin-left: 12px; }
 
 /* Map controls that previously had no styling. */
 .fleet-map-search {

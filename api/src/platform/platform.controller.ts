@@ -27,4 +27,10 @@ export class PlatformController {
   geofences(@Query() query: { tenantId?: string }) {
     return this.service.listGeofences(query.tenantId);
   }
+
+  @Get('geofences/platform')
+  platformGeofences(@Query() query: { tenantId?: string; active?: string }) {
+    const active = query.active === 'true';
+    return this.service.listPlatformGeofences(query.tenantId, active);
+  }
 }

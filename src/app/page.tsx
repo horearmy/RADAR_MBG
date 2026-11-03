@@ -35,6 +35,8 @@ import {
   getCurrentSession,
   getDashboardData,
   getPlatformDashboardSummary,
+  getPlatformGeofences,
+  getPlatformTenants,
   getSessionRole,
   hasPermission,
   hasPlatformPermission,
@@ -42,7 +44,9 @@ import {
   type DashboardData,
   type ExceptionSummary,
   type PlatformDashboardSummary,
+  type PlatformGeofence,
   type SessionUser,
+  type TenantSummary,
   type TripSummary,
 } from "@/lib/api";
 
@@ -191,6 +195,10 @@ export default function Home() {
   const [sessionState, setSessionState] = useState<"checking" | "ready" | "unavailable" | "data-error" | "forbidden">("checking");
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [platformSummary, setPlatformSummary] = useState<PlatformDashboardSummary | null>(null);
+  const [platformGeofences, setPlatformGeofences] = useState<PlatformGeofence[]>([]);
+  const [platformTenants, setPlatformTenants] = useState<TenantSummary[]>([]);
+  const [activeFilter, setActiveFilter] = useState<boolean | undefined>(undefined);
+  const [tenantFilter, setTenantFilter] = useState<string | undefined>(undefined);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
 
@@ -272,6 +280,23 @@ export default function Home() {
     const interval = window.setInterval(() => { void handleRefresh(true); }, 60_000);
     return () => window.clearInterval(interval);
   }, [sessionUser, sessionState, handleRefresh]);
+
+  // Fetch platform geofences when session is ready
+  useEffect(() => {
+    if (!sessionUser || sessionState !== "ready") return;
+    if (!hasPlatformPermission(sessionUser, "geofence:read")) return;
+    (async () => {
+      try {
+        const tenantId = sessionUser.roles[0]?.organizationId ?? undefined;
+        const geofences = await getPlatformGeofences(tenantId, true);
+        setPlatformGeofences(geofences);
+        const tenants = await getPlatformTenants();
+        setPlatformTenants(tenants);
+      } catch (error) {
+        // Silently ignore fetch errors - geofences are supplementary
+      }
+    })();
+  }, [sessionUser, sessionUser && sessionUser.roles[0]?.organizationId, sessionState, hasPlatformPermission]);
 
   useEffect(() => {
     if (!mapExpanded) return;
@@ -561,6 +586,7 @@ export default function Home() {
                     onSelectTrip={(trip) => setSelectedMapTripId(trip.id)}
                     emptyMessage={locatedTrips.length && mapFilter !== "all" ? "Tidak ada perjalanan sesuai filter peta." : undefined}
                     expanded={mapExpanded}
+                    geofenceCircles={platformGeofences}
                   />
                   <div className="map-top-label">
                     <span className="map-live-icon"><Radio size={14} /></span>
@@ -588,6 +614,34 @@ export default function Home() {
                   <div className={`legend-freshness ${freshnessStale ? "is-stale" : ""}`}>
                     <span className="freshness-dot" />{freshnessStale ? "GPS terakhir > 10 menit" : `Terakhir diterima ${latestPositionAt ? relativeTime(latestPositionAt) : "belum tersedia"}`}
                   </div>
+                  {/* Geofence filter controls */}
+                  {platformGeofences.length > 0 && (
+                    <>
+                      <span className="legend-geofence-toggle">
+                        <input
+                          type="checkbox"
+                          checked={mapFilter !== "stale"}
+                          onChange={() => setMapFilter((prev) => (prev === "stale" ? "all" : prev))}
+                          id="geofence-legend-toggle"
+                          aria-label="Tampilkan geofence di peta"
+                        />
+                        <label htmlFor="geofence-legend-toggle">
+                          <span className="legend-geofence-dot" />
+                          Geofence
+                        </label>
+                      </span>
+                      {activeFilter !== undefined && (
+                        <span className="legend-geofence-filter-text">
+                          Aktif: {activeFilter ? "ya" : "tidak"}
+                        </span>
+                      )}
+                      {tenantFilter && (
+                        <span className="legend-geofence-filter-text">
+                          {platformTenants.find((t) => t.id === tenantFilter)?.tenantCode ?? "Semua tenant"}
+                        </span>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
               {selectedMapTrip && selectedPosition && (

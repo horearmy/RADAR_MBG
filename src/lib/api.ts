@@ -319,6 +319,33 @@ export type PlatformDashboardSummary = {
   refreshedAt: string;
 };
 
+export type PlatformGeofence = {
+  id: string;
+  tenantId: string | null;
+  type: string;
+  shapeType: "CIRCLE" | "POLYGON";
+  name: string;
+  centerLatitude: number | null;
+  centerLongitude: number | null;
+  radiusMeters: number | null;
+  minGpsAccuracyMeters: number;
+  confirmationFixes: number;
+  confirmationDurationSeconds: number;
+  active: boolean;
+  createdAt: string;
+  tenant: { tenantCode: string; name: string } | null;
+  sppg: { code: string; name: string } | null;
+  deliveryLocation: { code: string; name: string } | null;
+};
+
+export type TenantSummary = {
+  id: string;
+  tenantCode: string;
+  name: string;
+  status: string;
+  createdAt: string;
+};
+
 const configuredBaseUrl = process.env.NEXT_PUBLIC_RADAR_API_URL;
 const isBrowser = typeof window !== "undefined";
 const serverApiBase = process.env.RADAR_API_INTERNAL_URL ?? "http://localhost:4000";
@@ -770,6 +797,20 @@ export async function getDashboardData(user: SessionUser): Promise<DashboardData
 
 export async function getPlatformDashboardSummary(): Promise<PlatformDashboardSummary> {
   return apiGet<PlatformDashboardSummary>('/platform/dashboard-summary');
+}
+
+export async function getPlatformGeofences(
+  tenantId?: string,
+  activeOnly?: boolean,
+): Promise<PlatformGeofence[]> {
+  const params = new URLSearchParams();
+  if (tenantId) params.set('tenantId', tenantId);
+  if (activeOnly !== undefined) params.set('active', activeOnly ? 'true' : 'false');
+  return apiGet<PlatformGeofence[]>(`/platform/geofences?${params.toString()}`);
+}
+
+export async function getPlatformTenants(): Promise<TenantSummary[]> {
+  return apiGet<TenantSummary[]>('/platform/tenants');
 }
 
 export async function getTrips(query: { status?: string; q?: string; page?: number; pageSize?: number } = {}): Promise<Paginated<TripSummary>> {
