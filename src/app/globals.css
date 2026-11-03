@@ -1725,6 +1725,16 @@ a.gov-card:hover { background: #f7faff; }
 .status-pill.status-inactive { background: #f1f5f9; color: #64748b; }
 .green-dot { background: #22c55e; }
 
+/* Map page: geofence table & shape pill */
+.geofence-table td > strong { display: block; color: #2e5f8c; font-size: 10px; font-weight: 650; }
+.geofence-table td > small { display: block; margin-top: 2px; color: #7c3aed; font-size: 8px; font-weight: 650; }
+.geofence-table tbody tr { cursor: pointer; transition: background .15s; }
+.geofence-table tbody tr:hover { background: #f4f9fd; }
+.geofence-table tbody tr.row-selected { background: #f5f3ff; }
+.shape-pill { display: inline-flex; padding: 2px 7px; border-radius: 10px; font-size: 8px; font-weight: 650; }
+.shape-pill.shape-circle { background: #eaf2ff; color: #0b4fb3; }
+.shape-pill.shape-polygon { background: #fef3c7; color: #92400e; }
+
 /* Map page: panel posisi baru */
 .geofence-form-panel { max-height: 560px; overflow-y: auto; }
 .location-panel { max-height: none; }

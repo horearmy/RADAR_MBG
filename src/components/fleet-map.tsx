@@ -19,6 +19,7 @@ export type GeofenceOverlay = {
   radiusMeters?: number | string | null;
   polygonCoordinates?: Array<{ latitude: number; longitude: number }> | null;
   active: boolean;
+  selected?: boolean;
 };
 
 export type GeofenceCircleDraft = {
@@ -438,7 +439,7 @@ export function FleetMap({
       const shapeType = geofence.shapeType ?? "CIRCLE";
       if (shapeType === "POLYGON" && geofence.polygonCoordinates && geofence.polygonCoordinates.length >= 3) {
         const coords = geofence.polygonCoordinates.map((p) => [Number(p.longitude), Number(p.latitude)]);
-        const properties = { id: geofence.id, name: geofence.name, active: geofence.active, kind: "saved" };
+        const properties = { id: geofence.id, name: geofence.name, active: geofence.active, kind: "saved", selected: geofence.selected ?? false };
         features.push({
           type: "Feature",
           properties,
@@ -450,7 +451,7 @@ export function FleetMap({
       const latitude = Number(geofence.centerLatitude);
       const radiusMeters = Number(geofence.radiusMeters);
       if (![longitude, latitude, radiusMeters].every(Number.isFinite) || radiusMeters <= 0) continue;
-      const properties = { id: geofence.id, name: geofence.name, active: geofence.active, kind: "saved" };
+      const properties = { id: geofence.id, name: geofence.name, active: geofence.active, kind: "saved", selected: geofence.selected ?? false };
       features.push({
         type: "Feature",
         properties,
@@ -505,7 +506,9 @@ export function FleetMap({
       const primary = tokens.getPropertyValue("--color-primary").trim() || "#1677ff";
       const warning = tokens.getPropertyValue("--color-warning").trim() || "#f59e0b";
       const muted = tokens.getPropertyValue("--color-content-muted").trim() || "#92a0b1";
-      const color = ["case", ["==", ["get", "kind"], "draft"], warning, ["==", ["get", "active"], true], primary, muted] as unknown as string;
+      const color = ["case", ["==", ["get", "kind"], "draft"], warning, ["==", ["get", "selected"], true], "#7c3aed", ["==", ["get", "active"], true], primary, muted] as unknown as string;
+      const lineWidth = ["case", ["==", ["get", "selected"], true], 3.5, 2] as unknown as number;
+      const fillOpacity = ["case", ["==", ["get", "selected"], true], 0.2, 0.12] as unknown as number;
       map.addLayer({
         id: "operational-geofences-fill",
         type: "fill",
@@ -513,7 +516,7 @@ export function FleetMap({
         filter: ["==", ["geometry-type"], "Polygon"],
         paint: {
           "fill-color": color,
-          "fill-opacity": 0.12,
+          "fill-opacity": fillOpacity,
         },
       } as Parameters<MapLibreMap["addLayer"]>[0]);
       map.addLayer({
@@ -523,7 +526,7 @@ export function FleetMap({
         filter: ["==", ["geometry-type"], "Polygon"],
         paint: {
           "line-color": color,
-          "line-width": 2,
+          "line-width": lineWidth,
           "line-dasharray": [2, 1.5],
         },
       } as Parameters<MapLibreMap["addLayer"]>[0]);

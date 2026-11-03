@@ -68,6 +68,8 @@ export default function TenantMapPage() {
   const [locationSearchResults, setLocationSearchResults] = useState<SearchResult[]>([]);
   const [locationFilter, setLocationFilter] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [selectedGeofenceId, setSelectedGeofenceId] = useState<string | null>(null);
+  const [geofenceFilter, setGeofenceFilter] = useState("");
 
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -93,7 +95,15 @@ export default function TenantMapPage() {
     if (!geofenceLocation?.latitude || !geofenceLocation?.longitude) return null;
     return { longitude: Number(geofenceLocation.longitude), latitude: Number(geofenceLocation.latitude) };
   }, [geofenceLocation]);
-  const focusPoint = searchMarker ?? geofenceFocus ?? originMarker;
+  const selectedGeofence = geofences.find((g) => g.id === selectedGeofenceId) ?? null;
+  const selectedGeofenceFocus = useMemo(() => {
+    if (!selectedGeofence) return null;
+    const lng = Number(selectedGeofence.centerLongitude);
+    const lat = Number(selectedGeofence.centerLatitude);
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
+    return { longitude: lng, latitude: lat };
+  }, [selectedGeofence]);
+  const focusPoint = searchMarker ?? selectedGeofenceFocus ?? geofenceFocus ?? originMarker;
 
   const locationStats = useMemo(() => {
     const active = deliveryLocations.filter((l) => l.active).length;
@@ -118,6 +128,24 @@ export default function TenantMapPage() {
         (l.address ?? "").toLowerCase().includes(q),
     );
   }, [deliveryLocations, locationFilter]);
+
+  const filteredGeofences = useMemo(() => {
+    const q = geofenceFilter.trim().toLowerCase();
+    if (!q) return geofences;
+    return geofences.filter((g) => g.name.toLowerCase().includes(q));
+  }, [geofences, geofenceFilter]);
+
+  const geofenceCircles = useMemo(() => geofences.map((g) => ({
+    id: g.id,
+    name: g.name,
+    shapeType: g.shapeType,
+    centerLatitude: g.centerLatitude,
+    centerLongitude: g.centerLongitude,
+    radiusMeters: g.radiusMeters,
+    polygonCoordinates: g.polygonCoordinates,
+    active: g.active,
+    selected: g.id === selectedGeofenceId,
+  })), [geofences, selectedGeofenceId]);
 
   const loadGeofences = useCallback(async (type: GeofenceLocationType, id: string) => {
     if (!id) return;
@@ -603,6 +631,7 @@ export default function TenantMapPage() {
                     selectedTripId={null}
                     onSelectTrip={() => {}}
                     expanded={false}
+                    geofenceCircles={geofenceCircles}
                     pickGeofenceCenter={pickLocation || pickCenter}
                     onPickGeofenceCenter={(lon, lat) => {
                       if (pickLocation) {
@@ -986,31 +1015,108 @@ export default function TenantMapPage() {
             <div className="panel-heading">
               <div>
                 <div className="section-title-row"><h2>Geofence terdaftar</h2><span className="count-chip">{geofences.length}</span></div>
-                <p>Geofence untuk lokasi terpilih.</p>
+                <p>Klik baris untuk menampilkan geofence pada peta.</p>
               </div>
             </div>
+
+            <div className="panel-search">
+              <Search size={14} />
+              <input
+                type="text"
+                value={geofenceFilter}
+                onChange={(e) => setGeofenceFilter(e.target.value)}
+                placeholder="Cari nama geofence..."
+                aria-label="Cari geofence"
+              />
+              {geofenceFilter && (
+                <button type="button" className="panel-search-clear" onClick={() => setGeofenceFilter("")} aria-label="Hapus pencarian">
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+
             {geofencesLoading ? (
-              <p className="table-empty">Memuat geofence…</p>
+              <div className="panel-empty">
+                <span className="session-spinner" style={{ width: 20, height: 20 }} />
+                <strong>Memuat geofence…</strong>
+              </div>
             ) : geofences.length === 0 ? (
-              <p className="table-empty">Belum ada geofence untuk lokasi ini.</p>
+              <div className="panel-empty">
+                <ShieldCheck size={22} />
+                <strong>Belum ada geofence</strong>
+                <span>Belum ada geofence untuk lokasi ini. Buat geofence baru di form sisi kanan.</span>
+              </div>
+            ) : filteredGeofences.length === 0 ? (
+              <div className="panel-empty">
+                <Search size={22} />
+                <strong>Tidak ditemukan</strong>
+                <span>Tidak ada geofence yang cocok dengan pencarian "{geofenceFilter}".</span>
+              </div>
             ) : (
               <div className="table-wrap">
-                <table>
+                <table className="geofence-table">
                   <thead>
-                    <tr><th>NAMA</th><th>BENTUK</th><th>RADIUS</th><th>AKTIF</th><th>DIBUAT</th></tr>
+                    <tr><th>NAMA</th><th>BENTUK</th><th>RADIUS</th><th>AKTIF</th><th>DIBUAT</th><th></th></tr>
                   </thead>
                   <tbody>
-                    {geofences.map((g) => (
-                      <tr key={g.id}>
-                        <td>{g.name}</td>
-                        <td>{g.shapeType}</td>
+                    {filteredGeofences.map((g) => (
+                      <tr
+                        key={g.id}
+                        onClick={() => setSelectedGeofenceId(g.id === selectedGeofenceId ? null : g.id)}
+                        className={selectedGeofenceId === g.id ? "row-selected" : ""}
+                      >
+                        <td>
+                          <strong>{g.name}</strong>
+                          {selectedGeofenceId === g.id && <small> Ditampilkan di peta</small>}
+                        </td>
+                        <td>
+                          <span className={`shape-pill shape-${(g.shapeType ?? "CIRCLE").toLowerCase()}`}>
+                            {g.shapeType === "POLYGON" ? "Poligon" : "Lingkaran"}
+                          </span>
+                        </td>
                         <td>{g.radiusMeters ? `${g.radiusMeters} m` : "—"}</td>
-                        <td>{g.active ? "Ya" : "Tidak"}</td>
+                        <td>
+                          <span className={`status-pill ${g.active ? "status-active" : "status-inactive"}`}>
+                            {g.active ? "Aktif" : "Nonaktif"}
+                          </span>
+                        </td>
                         <td>{new Date(g.createdAt).toLocaleDateString("id-ID")}</td>
+                        <td>
+                          <button
+                            type="button"
+                            className="row-detail-link"
+                            onClick={(e) => { e.stopPropagation(); setSelectedGeofenceId(g.id); }}
+                          >
+                            Lihat
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {selectedGeofence && (
+              <div className="map-selection-panel">
+                <div className="map-selection-heading">
+                  <div>
+                    <span className="map-selection-eyebrow">GEOFENCE TERPILIH</span>
+                    <strong>{selectedGeofence.name}</strong>
+                    <small>
+                      {selectedGeofence.shapeType === "POLYGON" ? "Poligon" : "Lingkaran"}
+                      {selectedGeofence.radiusMeters ? ` · radius ${selectedGeofence.radiusMeters} m` : ""}
+                    </small>
+                  </div>
+                  <span className={`status-pill ${selectedGeofence.active ? "status-active" : "status-inactive"}`}>
+                    {selectedGeofence.active ? "Aktif" : "Nonaktif"}
+                  </span>
+                </div>
+                <div className="map-selection-meta">
+                  <span><strong>Koordinat center</strong><small>{selectedGeofence.centerLatitude && selectedGeofence.centerLongitude ? `${Number(selectedGeofence.centerLatitude).toFixed(5)}, ${Number(selectedGeofence.centerLongitude).toFixed(5)}` : "Tidak tersedia"}</small></span>
+                  <span><strong>Akurasi min</strong><small>{selectedGeofence.minGpsAccuracyMeters} m</small></span>
+                  <span><strong>Konfirmasi</strong><small>{selectedGeofence.confirmationFixes} fix / {selectedGeofence.confirmationDurationSeconds} s</small></span>
+                </div>
               </div>
             )}
           </section>
