@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, CircleDot, Crosshair, MapPinned, Plus, Save, Search, ShieldCheck, X } from "lucide-react";
+import { ChevronRight, CircleDot, Crosshair, MapPinned, Plus, RefreshCw, Save, Search, ShieldCheck, X } from "lucide-react";
 import { FleetMap } from "@/components/fleet-map";
 import { HeaderAccount } from "@/components/account-menu";
 import { TenantSidebar } from "@/components/tenant-sidebar";
@@ -1022,13 +1022,23 @@ export default function TenantMapPage() {
             <div className="panel-heading">
               <div>
                 <div className="section-title-row"><h2>Geofence terdaftar</h2><span className="count-chip">{geofences.length}</span></div>
-                <p>Klik baris untuk menampilkan geofence pada peta.</p>
+                <p>Kelola geofence dan lihat pada peta. Klik baris untuk menampilkan.</p>
               </div>
+              <button
+                type="button"
+                className="panel-icon-btn"
+                onClick={() => locationId && void loadGeofences(locationType, locationId)}
+                disabled={geofencesLoading || !locationId}
+                aria-label="Muat ulang geofence"
+                title="Muat ulang"
+              >
+                <RefreshCw size={14} className={geofencesLoading ? "spin" : ""} />
+              </button>
             </div>
 
-            {/* Filter tipe & lokasi geofence */}
-            <div className="geofence-view-filter">
-              <div className="geofence-view-main">
+            {/* Toolbar: filter tipe + lokasi + pencarian */}
+            <div className="geofence-toolbar">
+              <div className="geofence-toolbar-row">
                 <div className="segmented-control" role="tablist" aria-label="Tipe geofence">
                   <button
                     type="button"
@@ -1049,7 +1059,8 @@ export default function TenantMapPage() {
                     Lokasi Pengiriman
                   </button>
                 </div>
-                {locationType === "DELIVERY" ? (
+
+                {locationType === "DELIVERY" && (
                   <select
                     className="geofence-view-select"
                     value={locationId}
@@ -1062,52 +1073,65 @@ export default function TenantMapPage() {
                     <option value="">Pilih lokasi…</option>
                     {deliveryLocations.map((l) => <option key={l.id} value={l.id}>{l.code} · {l.name}</option>)}
                   </select>
-                ) : (
-                  <span className="geofence-view-info">
-                    <ShieldCheck size={12} />
-                    Geofence untuk SPPG tenant
-                  </span>
                 )}
-              </div>
-              <span className="geofence-view-hint">
-                {locationType === "SPPG"
-                  ? `Menampilkan ${geofences.length} geofence SPPG`
-                  : locationId
-                    ? `Menampilkan ${geofences.length} geofence lokasi`
-                    : "Pilih lokasi pengiriman untuk melihat geofence"}
-              </span>
-            </div>
 
-            <div className="panel-search">
-              <Search size={14} />
-              <input
-                type="text"
-                value={geofenceFilter}
-                onChange={(e) => setGeofenceFilter(e.target.value)}
-                placeholder="Cari nama geofence..."
-                aria-label="Cari geofence"
-              />
-              {geofenceFilter && (
-                <button type="button" className="panel-search-clear" onClick={() => setGeofenceFilter("")} aria-label="Hapus pencarian">
-                  <X size={13} />
-                </button>
-              )}
+                <div className="panel-search">
+                  <Search size={14} />
+                  <input
+                    type="text"
+                    value={geofenceFilter}
+                    onChange={(e) => setGeofenceFilter(e.target.value)}
+                    placeholder="Cari nama geofence…"
+                    aria-label="Cari geofence"
+                  />
+                  {geofenceFilter && (
+                    <button type="button" className="panel-search-clear" onClick={() => setGeofenceFilter("")} aria-label="Hapus pencarian">
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Status ringkas */}
+              <div className="geofence-statusbar">
+                <span className="geofence-statusbar-item">
+                  <span className="status-dot status-dot-active" />
+                  {geofences.filter((g) => g.active).length} aktif
+                </span>
+                <span className="geofence-statusbar-item">
+                  <span className="status-dot status-dot-inactive" />
+                  {geofences.filter((g) => !g.active).length} nonaktif
+                </span>
+                <span className="geofence-statusbar-divider" />
+                <span className="geofence-statusbar-item geofence-statusbar-muted">
+                  {locationType === "SPPG" ? "SPPG Tenant" : selectedDeliveryLocation?.name ?? "Pilih lokasi pengiriman"}
+                </span>
+              </div>
             </div>
 
             {geofencesLoading ? (
               <div className="panel-empty">
                 <span className="session-spinner" style={{ width: 20, height: 20 }} />
                 <strong>Memuat geofence…</strong>
+                <span>Mengambil data geofence dari server.</span>
               </div>
             ) : geofences.length === 0 ? (
               <div className="panel-empty">
-                <ShieldCheck size={22} />
+                <div className="panel-empty-icon">
+                  <ShieldCheck size={22} />
+                </div>
                 <strong>Belum ada geofence</strong>
-                <span>Belum ada geofence untuk lokasi ini. Buat geofence baru di form sisi kanan.</span>
+                <span>
+                  {locationType === "SPPG"
+                    ? "Belum ada geofence untuk SPPG ini. Buat geofence baru di form sisi kanan."
+                    : "Belum ada geofence untuk lokasi ini. Buat geofence baru di form sisi kanan."}
+                </span>
               </div>
             ) : filteredGeofences.length === 0 ? (
               <div className="panel-empty">
-                <Search size={22} />
+                <div className="panel-empty-icon">
+                  <Search size={22} />
+                </div>
                 <strong>Tidak ditemukan</strong>
                 <span>Tidak ada geofence yang cocok dengan pencarian "{geofenceFilter}".</span>
               </div>
@@ -1115,7 +1139,14 @@ export default function TenantMapPage() {
               <div className="table-wrap">
                 <table className="geofence-table">
                   <thead>
-                    <tr><th>NAMA</th><th>BENTUK</th><th>RADIUS</th><th>AKTIF</th><th>DIBUAT</th><th></th></tr>
+                    <tr>
+                      <th className="col-name">NAMA</th>
+                      <th className="col-shape">BENTUK</th>
+                      <th className="col-radius">RADIUS</th>
+                      <th className="col-status">STATUS</th>
+                      <th className="col-date">DIBUAT</th>
+                      <th className="col-action"></th>
+                    </tr>
                   </thead>
                   <tbody>
                     {filteredGeofences.map((g) => (
@@ -1124,23 +1155,23 @@ export default function TenantMapPage() {
                         onClick={() => setSelectedGeofenceId(g.id === selectedGeofenceId ? null : g.id)}
                         className={selectedGeofenceId === g.id ? "row-selected" : ""}
                       >
-                        <td>
+                        <td className="col-name">
                           <strong>{g.name}</strong>
-                          {selectedGeofenceId === g.id && <small> Ditampilkan di peta</small>}
+                          {selectedGeofenceId === g.id && <small>Di tampilkan di peta</small>}
                         </td>
-                        <td>
+                        <td className="col-shape">
                           <span className={`shape-pill shape-${(g.shapeType ?? "CIRCLE").toLowerCase()}`}>
                             {g.shapeType === "POLYGON" ? "Poligon" : "Lingkaran"}
                           </span>
                         </td>
-                        <td>{g.radiusMeters ? `${g.radiusMeters} m` : "—"}</td>
-                        <td>
+                        <td className="col-radius">{g.radiusMeters ? `${g.radiusMeters} m` : "—"}</td>
+                        <td className="col-status">
                           <span className={`status-pill ${g.active ? "status-active" : "status-inactive"}`}>
                             {g.active ? "Aktif" : "Nonaktif"}
                           </span>
                         </td>
-                        <td>{new Date(g.createdAt).toLocaleDateString("id-ID")}</td>
-                        <td>
+                        <td className="col-date">{new Date(g.createdAt).toLocaleDateString("id-ID")}</td>
+                        <td className="col-action">
                           <button
                             type="button"
                             className="row-detail-link"
@@ -1157,10 +1188,13 @@ export default function TenantMapPage() {
             )}
 
             {selectedGeofence && (
-              <div className="map-selection-panel">
-                <div className="map-selection-heading">
-                  <div>
-                    <span className="map-selection-eyebrow">GEOFENCE TERPILIH</span>
+              <div className="geofence-detail">
+                <div className="geofence-detail-head">
+                  <div className="geofence-detail-icon">
+                    <ShieldCheck size={16} />
+                  </div>
+                  <div className="geofence-detail-info">
+                    <span className="geofence-detail-eyebrow">GEOFENCE TERPILIH</span>
                     <strong>{selectedGeofence.name}</strong>
                     <small>
                       {selectedGeofence.shapeType === "POLYGON" ? "Poligon" : "Lingkaran"}
@@ -1171,10 +1205,11 @@ export default function TenantMapPage() {
                     {selectedGeofence.active ? "Aktif" : "Nonaktif"}
                   </span>
                 </div>
-                <div className="map-selection-meta">
+                <div className="geofence-detail-grid">
                   <span><strong>Koordinat center</strong><small>{selectedGeofence.centerLatitude && selectedGeofence.centerLongitude ? `${Number(selectedGeofence.centerLatitude).toFixed(5)}, ${Number(selectedGeofence.centerLongitude).toFixed(5)}` : "Tidak tersedia"}</small></span>
-                  <span><strong>Akurasi min</strong><small>{selectedGeofence.minGpsAccuracyMeters} m</small></span>
-                  <span><strong>Konfirmasi</strong><small>{selectedGeofence.confirmationFixes} fix / {selectedGeofence.confirmationDurationSeconds} s</small></span>
+                  <span><strong>Akurasi minimum</strong><small>{selectedGeofence.minGpsAccuracyMeters} meter</small></span>
+                  <span><strong>Konfirmasi</strong><small>{selectedGeofence.confirmationFixes} fix / {selectedGeofence.confirmationDurationSeconds} detik</small></span>
+                  <span><strong>Dibuat</strong><small>{new Date(selectedGeofence.createdAt).toLocaleDateString("id-ID")}</small></span>
                 </div>
               </div>
             )}

@@ -1747,6 +1747,47 @@ a.gov-card:hover { background: #f7faff; }
 .geofence-view-info { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 6px; background: #ebf7f0; color: #16885f; font-size: 10px; font-weight: 650; }
 .geofence-view-hint { color: #8a9aac; font-size: 9px; }
 
+/* Map page: geofence toolbar & statusbar */
+.panel-icon-btn { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; border: 1px solid #dbe4ee; border-radius: 7px; background: #fbfdff; color: #5b6b82; cursor: pointer; transition: all .15s; }
+.panel-icon-btn:hover:not(:disabled) { border-color: #a9c7e6; background: #f4f9fd; color: #2e5f8c; }
+.panel-icon-btn:disabled { opacity: .5; cursor: not-allowed; }
+.panel-icon-btn .spin { animation: dev-tools-spin 1s linear infinite; }
+.geofence-toolbar { padding: 12px 14px; border-bottom: 1px solid #eef2f7; }
+.geofence-toolbar-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.geofence-toolbar-row .panel-search { flex: 1; min-width: 180px; margin: 0; }
+.geofence-statusbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.geofence-statusbar-item { display: inline-flex; align-items: center; gap: 5px; color: #536980; font-size: 9px; font-weight: 650; }
+.geofence-statusbar-muted { color: #8a9aac; font-weight: 500; }
+.geofence-statusbar-divider { width: 1px; height: 12px; background: #e3e9f0; }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; }
+.status-dot-active { background: #22c55e; box-shadow: 0 0 0 2px #dcfce7; }
+.status-dot-inactive { background: #cbd5e1; box-shadow: 0 0 0 2px #f1f5f9; }
+.panel-empty-icon { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 50%; background: #f1f5f9; color: #64748b; margin-bottom: 4px; }
+
+/* Map page: geofence detail */
+.geofence-detail { margin: 14px; padding: 14px; border: 1px solid #e7edf4; border-radius: 10px; background: #f8fafc; }
+.geofence-detail-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
+.geofence-detail-icon { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border-radius: 8px; background: #ede9fe; color: #7c3aed; }
+.geofence-detail-info { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+.geofence-detail-eyebrow { color: #8a9aac; font-size: 8px; font-weight: 650; letter-spacing: .04em; }
+.geofence-detail-info strong { color: #172b4d; font-size: 12px; font-weight: 650; }
+.geofence-detail-info small { color: #5b6b82; font-size: 9px; }
+.geofence-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.geofence-detail-grid span { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 7px; background: #fff; border: 1px solid #eef2f7; }
+.geofence-detail-grid strong { color: #8a9aac; font-size: 8px; font-weight: 650; text-transform: uppercase; letter-spacing: .03em; }
+.geofence-detail-grid small { color: #2e5f8c; font-size: 10px; font-weight: 600; }
+
+/* Map page: geofence table columns */
+.geofence-table .col-name { width: 32%; }
+.geofence-table .col-shape { width: 14%; }
+.geofence-table .col-radius { width: 12%; }
+.geofence-table .col-status { width: 14%; }
+.geofence-table .col-date { width: 14%; }
+.geofence-table .col-action { width: 8%; text-align: right; }
+.geofence-table tbody tr { border-left: 3px solid transparent; }
+.geofence-table tbody tr.row-selected { border-left-color: #7c3aed; }
+.geofence-table .col-action .row-detail-link { margin-left: auto; }
+
 /* Map page: panel posisi baru */
 .geofence-form-panel { max-height: 560px; overflow-y: auto; }
 .location-panel { max-height: none; }
