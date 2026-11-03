@@ -296,10 +296,12 @@ export default function TenantMapPage() {
           locationId,
           shapeType,
           name: name.trim() || `Geofence ${locationType}`,
-          centerLatitude: centerLatitude ? Number(centerLatitude) : undefined,
-          centerLongitude: centerLongitude ? Number(centerLongitude) : undefined,
-          radiusMeters: radiusMeters ? Number(radiusMeters) : undefined,
-          polygonCoordinates: polygonPoints.length >= 3 ? polygonPoints : undefined,
+          centerLatitude: centerLatitude ? Number(Number(centerLatitude).toFixed(6)) : undefined,
+          centerLongitude: centerLongitude ? Number(Number(centerLongitude).toFixed(6)) : undefined,
+          radiusMeters: radiusMeters ? Number(Number(radiusMeters).toFixed(2)) : undefined,
+          polygonCoordinates: polygonPoints.length >= 3
+            ? polygonPoints.map((p) => ({ longitude: Number(p.longitude.toFixed(6)), latitude: Number(p.latitude.toFixed(6)) }))
+            : undefined,
           minGpsAccuracyMeters: Number(minGpsAccuracyMeters) || 50,
           confirmationFixes: Number(confirmationFixes) || 2,
           confirmationDurationSeconds: Number(confirmationDurationSeconds) || 10,
@@ -471,7 +473,7 @@ export default function TenantMapPage() {
                             type="button"
                             className="map-search-result"
                             onClick={() => {
-                              setLocationForm((f) => ({ ...f, latitude: r.lat, longitude: r.lon }));
+                              setLocationForm((f) => ({ ...f, latitude: Number(Number(r.lat).toFixed(6)).toString(), longitude: Number(Number(r.lon).toFixed(6)).toString() }));
                               setLocationSearch("");
                               setLocationSearchResults([]);
                             }}
@@ -594,11 +596,11 @@ export default function TenantMapPage() {
                     pickGeofenceCenter={pickLocation || pickCenter}
                     onPickGeofenceCenter={(lon, lat) => {
                       if (pickLocation) {
-                        setLocationForm((f) => ({ ...f, longitude: String(lon), latitude: String(lat) }));
+                        setLocationForm((f) => ({ ...f, longitude: lon.toFixed(6), latitude: lat.toFixed(6) }));
                         setPickLocation(false);
                       } else if (pickCenter) {
-                        setCenterLatitude(String(lat));
-                        setCenterLongitude(String(lon));
+                        setCenterLatitude(lat.toFixed(6));
+                        setCenterLongitude(lon.toFixed(6));
                         setPickCenter(false);
                       }
                     }}
@@ -614,7 +616,7 @@ export default function TenantMapPage() {
                     polygonPoints={polygonPoints}
                     onPolygonPointClick={(lon, lat) => {
                       if (drawPolygon) {
-                        setPolygonPoints((prev) => [...prev, { longitude: lon, latitude: lat }]);
+                        setPolygonPoints((prev) => [...prev, { longitude: Number(lon.toFixed(6)), latitude: Number(lat.toFixed(6)) }]);
                       }
                     }}
                     drawPolygonMode={drawPolygon}
