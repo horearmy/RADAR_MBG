@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ChevronRight, Plus, RefreshCw, Truck, X } from "lucide-react";
 import { HeaderAccount } from "@/components/account-menu";
 import { TenantSidebar } from "@/components/tenant-sidebar";
-import { apiBaseUrl, getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
+import { apiBaseUrl, apiFetchUrl, getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
 
 type Vehicle = { id: string; plateNumber: string; label?: string; capacity?: number; status: string };
 
@@ -39,7 +39,7 @@ export default function TenantVehiclesPage() {
   const loadVehicles = async (silent: boolean) => {
     if (!silent) setSessionState("checking");
     try {
-      const res = await fetch(`${apiBaseUrl}/tenant/vehicles`, { credentials: "include" });
+      const res = await apiFetchUrl(`${apiBaseUrl}/tenant/vehicles`, { credentials: "include" });
       if (!res.ok) throw new Error("Gagal memuat kendaraan");
       const data = await res.json();
       setVehicles(Array.isArray(data) ? data : data.data ?? []);
@@ -82,9 +82,9 @@ export default function TenantVehiclesPage() {
     setSubmitting(true);
     setFormError(null);
     try {
-      const csrfRes = await fetch(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
+      const csrfRes = await apiFetchUrl(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
       const { csrfToken } = await csrfRes.json();
-      const res = await fetch(`${apiBaseUrl}/tenant/vehicles`, {
+      const res = await apiFetchUrl(`${apiBaseUrl}/tenant/vehicles`, {
         method: "POST",
         credentials: "include",
         headers: {

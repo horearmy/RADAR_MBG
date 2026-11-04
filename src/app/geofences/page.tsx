@@ -21,6 +21,7 @@ import {
   type GeofenceSummary,
   type SessionUser,
   type SppgSummary,
+  apiFetchUrl,
 } from "@/lib/api";
 
 type LocationOption = {
@@ -183,7 +184,7 @@ export default function GeofencesPage() {
         let tenantSppgId: string | null = null;
         if (isTenantUser) {
           try {
-            const meResponse = await fetch(`${apiBaseUrl}/tenant/me`, { credentials: "include" });
+            const meResponse = await apiFetchUrl(`${apiBaseUrl}/tenant/me`, { credentials: "include" });
             if (meResponse.ok) {
               const me = await meResponse.json() as { legacySppgId?: string | null };
               tenantSppgId = me.legacySppgId ?? null;

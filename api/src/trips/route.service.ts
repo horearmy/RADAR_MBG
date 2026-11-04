@@ -15,15 +15,18 @@ import { CreateRouteDto, ListRoutesDto } from './route.dto.js';
 export class RouteService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(principal: SessionPrincipal, query: ListRoutesDto) {
+  async list(principal: SessionPrincipal, query: ListRoutesDto, tenantContext?: { tenantId: string } | null) {
     const scope = await this.resolveScope(principal);
     const where: Prisma.RouteWhereInput = {
-      ...(scope.global ? {} : {
-        OR: [
-          ...(scope.sppgIds.length ? [{ sppgId: { in: scope.sppgIds } }] : []),
-          ...(scope.regionIds.length ? [{ sppg: { regionId: { in: scope.regionIds } } }] : []),
+      ...(tenantContext || !scope.global ? {
+        AND: [
+          ...(tenantContext ? [{ tenantId: tenantContext.tenantId }] : []),
+          ...(!scope.global && !tenantContext ? [{ OR: [
+            ...(scope.sppgIds.length ? [{ sppgId: { in: scope.sppgIds } }] : []),
+            ...(scope.regionIds.length ? [{ sppg: { regionId: { in: scope.regionIds } } }] : []),
+          ] }] : []),
         ],
-      }),
+      } : {}),
       ...(query.sppgId ? { sppgId: query.sppgId } : {}),
       ...(query.deliveryLocationId ? { deliveryLocationId: query.deliveryLocationId } : {}),
     };
@@ -53,7 +56,7 @@ export class RouteService {
     return { data, total, page: query.page, pageSize: query.pageSize, totalPages: Math.ceil(total / query.pageSize) };
   }
 
-  async create(input: CreateRouteDto, principal: SessionPrincipal, idempotencyKey: string, requestId: string) {
+  async create(input: CreateRouteDto, principal: SessionPrincipal, idempotencyKey: string, requestId: string, tenantContext?: { tenantId: string } | null) {
     this.assertIdempotencyKey(idempotencyKey);
     return this.prisma.db.$transaction(async (tx) => {
       const sppg = await tx.sppg.findUnique({
@@ -61,6 +64,9 @@ export class RouteService {
         select: { id: true, organizationId: true, regionId: true, status: true },
       });
       if (!sppg) throw new NotFoundException({ code: 'SPPG_NOT_FOUND' });
+      if (tenantContext && await tx.tenant.findFirst({ where: { id: tenantContext.tenantId, legacySppgId: sppg.id }, select: { id: true } }) === null) {
+        throw new NotFoundException({ code: 'SPPG_NOT_FOUND' });
+      }
       assertSppgAccess(principal, { organizationId: sppg.organizationId, regionId: sppg.regionId, sppgId: sppg.id });
       if (sppg.status !== 'ACTIVE') throw new ConflictException({ code: 'SPPG_NOT_ACTIVE' });
 
@@ -69,15 +75,18 @@ export class RouteService {
         select: { id: true, organizationId: true, regionId: true, active: true },
       });
       if (!location || !location.active) throw new NotFoundException({ code: 'LOCATION_NOT_FOUND' });
+      if (tenantContext && await tx.deliveryLocation.findFirst({ where: { id: location.id, tenantId: tenantContext.tenantId }, select: { id: true } }) === null) {
+        throw new NotFoundException({ code: 'LOCATION_NOT_FOUND' });
+      }
 
       const distanceMeters = this.computeDistance(input.coordinates);
       const current = await tx.route.findFirst({
-        where: { sppgId: input.sppgId, deliveryLocationId: input.deliveryLocationId, active: true },
+        where: { sppgId: input.sppgId, deliveryLocationId: input.deliveryLocationId, active: true, ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}) },
         orderBy: { version: 'desc' },
         select: { id: true, version: true },
       });
       await tx.route.updateMany({
-        where: { sppgId: input.sppgId, deliveryLocationId: input.deliveryLocationId, active: true },
+        where: { sppgId: input.sppgId, deliveryLocationId: input.deliveryLocationId, active: true, ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}) },
         data: { active: false },
       });
       const tenant = await tx.tenant.findUnique({ where: { legacySppgId: input.sppgId } });
@@ -127,22 +136,26 @@ export class RouteService {
     }
   }
 
-  async getById(id: string, principal: SessionPrincipal) {
-    const route = await this.prisma.db.route.findUnique({
-      where: { id },
+  async getById(id: string, principal: SessionPrincipal, tenantContext?: { tenantId: string } | null) {
+    const route = await this.prisma.db.route.findFirst({
+      where: {
+        id,
+        ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}),
+        ...(!tenantContext && !principal.roles.some((role) => role.isGlobal) ? { AND: [{ id: { in: [] } }] } : {}),
+      },
       include: { sppg: { select: { id: true, code: true, name: true } }, deliveryLocation: { select: { id: true, code: true, name: true } } },
     });
     if (!route) throw new NotFoundException({ code: 'ROUTE_NOT_FOUND' });
     return route;
   }
 
-  async archive(id: string, reason: string, principal: SessionPrincipal, idempotencyKey: string, requestId: string) {
+  async archive(id: string, reason: string, principal: SessionPrincipal, idempotencyKey: string, requestId: string, tenantContext?: { tenantId: string } | null) {
     this.assertIdempotencyKey(idempotencyKey);
     return this.prisma.db.$transaction(async (tx) => {
-      const route = await tx.route.findUnique({ where: { id } });
+      const route = await tx.route.findFirst({ where: { id, ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}), ...(!tenantContext && !principal.roles.some((role) => role.isGlobal) ? { AND: [{ id: { in: [] } }] } : {}) } });
       if (!route) throw new NotFoundException({ code: 'ROUTE_NOT_FOUND' });
       if (!route.active) return { route, replayed: true };
-      await tx.route.update({ where: { id }, data: { active: false } });
+      await tx.route.updateMany({ where: { id, ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}) }, data: { active: false } });
       await tx.auditLog.create({
         data: {
           actorUserId: principal.id,

@@ -28,12 +28,14 @@ export class DeliveryService {
     principal: SessionPrincipal,
     idempotencyKey: string,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
     this.assertIdempotencyKey(idempotencyKey);
 
     return this.prisma.db.$transaction(async (tx) => {
       const trip = await tx.trip.findUnique({ where: { id: tripId } });
       if (!trip) throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+      this.assertTenantTrip(trip.tenantId, tenantContext);
       await this.assertTripScope(trip, principal, tx);
 
       const replay = await this.findEventReplay(tx, tripId, idempotencyKey, 'TRIP.DELIVERY_STARTED');
@@ -72,6 +74,7 @@ export class DeliveryService {
     input: SubmitDeliveryDto,
     idempotencyKey: string,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
     this.assertIdempotencyKey(idempotencyKey);
     const requestHash = this.hash(JSON.stringify({
@@ -85,6 +88,7 @@ export class DeliveryService {
     return this.prisma.db.$transaction(async (tx) => {
       const trip = await tx.trip.findUnique({ where: { id: tripId } });
       if (!trip) throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+      this.assertTenantTrip(trip.tenantId, tenantContext);
       await this.assertTripScope(trip, principal, tx);
 
       const replay = await tx.deliveryRecord.findUnique({ where: { idempotencyKey } });
@@ -241,12 +245,14 @@ export class DeliveryService {
     input: ReviewDeliveryDto,
     idempotencyKey: string,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
     this.assertIdempotencyKey(idempotencyKey);
 
     return this.prisma.db.$transaction(async (tx) => {
       const trip = await tx.trip.findUnique({ where: { id: tripId } });
       if (!trip) throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+      this.assertTenantTrip(trip.tenantId, tenantContext);
       await this.assertTripScope(trip, principal, tx);
 
       const eventType = input.decision === 'ACCEPT' ? 'POD.REVIEW_ACCEPTED' : 'POD.REVIEW_REJECTED';
@@ -341,12 +347,14 @@ export class DeliveryService {
     principal: SessionPrincipal,
     idempotencyKey: string,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
     this.assertIdempotencyKey(idempotencyKey);
 
     return this.prisma.db.$transaction(async (tx) => {
       const trip = await tx.trip.findUnique({ where: { id: tripId } });
       if (!trip) throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+      this.assertTenantTrip(trip.tenantId, tenantContext);
       await this.assertTripScope(trip, principal, tx);
 
       const replay = await this.findEventReplay(tx, tripId, idempotencyKey, 'TRIP.COMPLETED');
@@ -421,6 +429,12 @@ export class DeliveryService {
       (requiresDriverScope && !principal.roles.some((role) => role.isGlobal) &&
         (!principal.driverId || principal.driverId !== trip.driverId))
     ) {
+      throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+    }
+  }
+
+  private assertTenantTrip(tripTenantId: string, tenantContext?: { tenantId: string } | null) {
+    if (tripTenantId !== (tenantContext?.tenantId ?? null)) {
       throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
     }
   }

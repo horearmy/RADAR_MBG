@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ChevronRight, KeyRound, Plus, RefreshCw, UserRound, X } from "lucide-react";
 import { HeaderAccount } from "@/components/account-menu";
 import { TenantSidebar } from "@/components/tenant-sidebar";
-import { apiBaseUrl, getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
+import { apiBaseUrl, apiFetchUrl, getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
 
 type Driver = { id: string; code: string; name: string; phone?: string; status: string };
 
@@ -52,7 +52,7 @@ export default function TenantDriversPage() {
   const loadDrivers = async (silent: boolean) => {
     if (!silent) setSessionState("checking");
     try {
-      const res = await fetch(`${apiBaseUrl}/tenant/drivers`, { credentials: "include" });
+      const res = await apiFetchUrl(`${apiBaseUrl}/tenant/drivers`, { credentials: "include" });
       if (!res.ok) throw new Error("Gagal memuat driver");
       const data = await res.json();
       setDrivers(Array.isArray(data) ? data : data.data ?? []);
@@ -95,9 +95,9 @@ export default function TenantDriversPage() {
     setSubmitting(true);
     setFormError(null);
     try {
-      const csrfRes = await fetch(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
+      const csrfRes = await apiFetchUrl(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
       const { csrfToken } = await csrfRes.json();
-      const res = await fetch(`${apiBaseUrl}/tenant/drivers`, {
+      const res = await apiFetchUrl(`${apiBaseUrl}/tenant/drivers`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -130,9 +130,9 @@ export default function TenantDriversPage() {
     setInviteError(null);
     setInviteResult(null);
     try {
-      const csrfRes = await fetch(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
+      const csrfRes = await apiFetchUrl(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
       const { csrfToken } = await csrfRes.json();
-      const res = await fetch(`${apiBaseUrl}/tenant/invitations`, {
+      const res = await apiFetchUrl(`${apiBaseUrl}/tenant/invitations`, {
         method: "POST",
         credentials: "include",
         headers: {

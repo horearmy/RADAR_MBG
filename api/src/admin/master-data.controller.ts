@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { RequirePermissions } from '../auth/permissions.js';
 import type { AuthenticatedRequest } from '../auth/session.guard.js';
 import { PermissionGuard } from '../auth/permission.guard.js';
+import { TenantGuard } from '../auth/tenant.guard.js';
 import { SessionGuard } from '../auth/session.guard.js';
 import {
   CreateAssignmentDto,
@@ -36,7 +37,7 @@ import {
 import { MasterDataService } from './master-data.service.js';
 
 @Controller('admin')
-@UseGuards(SessionGuard, PermissionGuard)
+@UseGuards(SessionGuard, TenantGuard, PermissionGuard)
 export class MasterDataController {
   constructor(private readonly masterData: MasterDataService) {}
 
@@ -100,7 +101,7 @@ export class MasterDataController {
     @Req() request: AuthenticatedRequest,
     @Query() query: MasterDataListDto,
   ) {
-    return this.masterData.listDeliveryLocations(request.principal!, query);
+    return this.masterData.listDeliveryLocations(request.principal!, query, request.tenantContext ?? null);
   }
 
   @Post('delivery-locations')
@@ -109,11 +110,7 @@ export class MasterDataController {
     @Req() request: AuthenticatedRequest,
     @Body() input: CreateDeliveryLocationDto,
   ) {
-    return this.masterData.createDeliveryLocation(
-      input,
-      request.principal!,
-      this.requestId(request),
-    );
+    return this.masterData.createDeliveryLocation(input, request.principal!, this.requestId(request), request.tenantContext ?? null);
   }
 
   @Get('vehicles')
@@ -131,7 +128,7 @@ export class MasterDataController {
     @Req() request: AuthenticatedRequest,
     @Body() input: CreateVehicleDto,
   ) {
-    return this.masterData.createVehicle(input, request.principal!, this.requestId(request));
+    return this.masterData.createVehicle(input, request.principal!, this.requestId(request), request.tenantContext ?? null);
   }
 
   @Get('drivers')
@@ -140,7 +137,21 @@ export class MasterDataController {
     @Req() request: AuthenticatedRequest,
     @Query() query: MasterDataListDto,
   ) {
-    return this.masterData.listDrivers(request.principal!, query, request.tenantContext ?? null);
+    const platformDirectory = request.principal!.roles.some((role) => role.isGlobal);
+    return this.masterData.listDrivers(request.principal!, query, request.tenantContext ?? null, platformDirectory);
+  }
+
+  @Post('drivers')
+  @RequirePermissions('master:manage')
+  createDriver(@Req() request: AuthenticatedRequest, @Body() input: CreateDriverDto) {
+    return this.masterData.createDriver(input, request.principal!, this.requestId(request), request.tenantContext ?? null);
+  }
+
+  @Get('drivers/summary')
+  @RequirePermissions('master:read')
+  driverSummary(@Req() request: AuthenticatedRequest) {
+    const platformDirectory = request.principal!.roles.some((role) => role.isGlobal);
+    return this.masterData.countDrivers(request.principal!, request.tenantContext ?? null, platformDirectory);
   }
 
   @Get('drivers/next-code')
@@ -217,7 +228,7 @@ export class MasterDataController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() input: UpdateDeliveryLocationDto,
   ) {
-    return this.masterData.updateDeliveryLocation(id, input, request.principal!, this.requestId(request));
+    return this.masterData.updateDeliveryLocation(id, input, request.principal!, this.requestId(request), request.tenantContext ?? null);
   }
 
   @Patch('vehicles/:id')
@@ -227,7 +238,7 @@ export class MasterDataController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() input: UpdateVehicleDto,
   ) {
-    return this.masterData.updateVehicle(id, input, request.principal!, this.requestId(request));
+    return this.masterData.updateVehicle(id, input, request.principal!, this.requestId(request), request.tenantContext ?? null);
   }
 
   @Patch('drivers/:id')
@@ -237,7 +248,14 @@ export class MasterDataController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() input: UpdateDriverDto,
   ) {
-    return this.masterData.updateDriver(id, input, request.principal!, this.requestId(request));
+    return this.masterData.updateDriver(id, input, request.principal!, this.requestId(request), request.tenantContext ?? null);
+  }
+
+  @Get('drivers/:id')
+  @RequirePermissions('master:read')
+  getDriver(@Req() request: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    const platformDirectory = request.principal!.roles.some((role) => role.isGlobal);
+    return this.masterData.getDriver(id, request.principal!, request.tenantContext ?? null, platformDirectory);
   }
 
   private requestId(request: AuthenticatedRequest): string {

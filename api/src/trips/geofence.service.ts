@@ -18,9 +18,12 @@ export class GeofenceService {
 
   async listForLocation(query: ListGeofencesDto, principal: SessionPrincipal, tenantContext?: { tenantId: string } | null) {
     await this.getScopedLocationWhere(query.locationType, query.locationId, principal, tenantContext);
-    const where = query.locationType === GeofenceLocationType.SPPG
-      ? { sppgId: query.locationId }
-      : { deliveryLocationId: query.locationId };
+    const where: Prisma.GeofenceWhereInput = {
+      ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}),
+      ...(query.locationType === GeofenceLocationType.SPPG
+        ? { sppgId: query.locationId }
+        : { deliveryLocationId: query.locationId }),
+    };
     return this.prisma.db.geofence.findMany({
       where,
       orderBy: [{ version: 'desc' }, { createdAt: 'desc' }],
@@ -289,7 +292,7 @@ export class GeofenceService {
       });
       if (!location) throw new NotFoundException({ code: 'LOCATION_NOT_FOUND' });
       // Tenant users: check if SPPG belongs to their tenant
-      if (principal.tenantRole && tenantContext?.tenantId) {
+      if (tenantContext) {
         const tenant = await tx.tenant.findUnique({
           where: { id: tenantContext.tenantId },
           select: { legacySppgId: true },
@@ -314,7 +317,7 @@ export class GeofenceService {
     if (!location || !location.active) throw new NotFoundException({ code: 'LOCATION_NOT_FOUND' });
 
     // Tenant users: check if the location belongs to their tenant or their tenant's SPPG scope.
-    if (principal.tenantRole && tenantContext?.tenantId) {
+    if (tenantContext) {
       if (location.tenantId && location.tenantId === tenantContext.tenantId) {
         return location;
       }

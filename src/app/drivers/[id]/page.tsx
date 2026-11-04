@@ -15,10 +15,10 @@ import {
   User,
   Users,
 } from "lucide-react";
-import { getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
+import { getCurrentSession, hasPermission, apiBaseUrl, apiFetchUrl, type SessionUser } from "@/lib/api";
 import { AssignmentModal } from "@/components/assignment-modal";
 
-const apiBase = process.env.NEXT_PUBLIC_RADAR_API_URL ?? "http://localhost:4000/api/v1";
+const apiBase = apiBaseUrl;
 
 type TabKey = "ringkasan" | "penugasan" | "riwayat" | "kendaraan" | "dokumen" | "riwayat-perubahan";
 
@@ -60,19 +60,16 @@ function DriverDetailContent() {
       const session = await getCurrentSession().catch(() => null);
       if (session) setUser(session);
       const [driverRes, assignRes, vehicleRes] = await Promise.all([
-        fetch(`${apiBase}/admin/drivers?page=1&pageSize=100`, { credentials: "include", cache: "no-store" }),
-        fetch(`${apiBase}/admin/assignments?page=1&pageSize=100`, { credentials: "include", cache: "no-store" }),
-        fetch(`${apiBase}/admin/vehicles?page=1&pageSize=100`, { credentials: "include", cache: "no-store" }),
+        apiFetchUrl(`${apiBase}/admin/drivers/${encodeURIComponent(params.id)}`, { credentials: "include", cache: "no-store" }),
+        apiFetchUrl(`${apiBase}/admin/assignments?page=1&pageSize=100&driverId=${encodeURIComponent(params.id)}`, { credentials: "include", cache: "no-store" }),
+        apiFetchUrl(`${apiBase}/admin/vehicles?page=1&pageSize=100`, { credentials: "include", cache: "no-store" }),
       ]);
       if (driverRes.ok) {
-        const json = await driverRes.json();
-        const found = (json.data ?? []).find((x: any) => x.id === params.id);
-        if (!found) throw new Error("Driver tidak ditemukan");
-        setDriver(found);
+        setDriver(await driverRes.json());
       } else throw new Error("Gagal memuat driver");
       if (assignRes.ok) {
         const json = await assignRes.json();
-        setAssignments((json.data ?? []).filter((a: any) => a.driverId === params.id));
+        setAssignments(json.data ?? []);
       }
       if (vehicleRes.ok) setVehicles((await vehicleRes.json()).data ?? []);
     } catch (err) {
@@ -98,9 +95,9 @@ function DriverDetailContent() {
     if (!reason || reason.trim().length < 3) return;
     setEnding(true);
     try {
-      const csrfRes = await fetch(`${apiBase}/auth/csrf`, { credentials: "include", cache: "no-store" });
+      const csrfRes = await apiFetchUrl(`${apiBase}/auth/csrf`, { credentials: "include", cache: "no-store" });
       const { csrfToken } = (await csrfRes.json()) as { csrfToken?: string };
-      const res = await fetch(`${apiBase}/admin/assignments/${activeAssignment.id}/end`, {
+      const res = await apiFetchUrl(`${apiBase}/admin/assignments/${activeAssignment.id}/end`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json", ...(csrfToken ? { "x-csrf-token": csrfToken } : {}) },

@@ -5,6 +5,13 @@ export type SessionUser = {
   mfaEnabled?: boolean;
   driverId?: string | null;
   tenantRole?: string | null;
+  tenantId?: string | null;
+  tenantMemberships?: Array<{
+    tenantId: string;
+    tenantCode: string;
+    tenantName: string;
+    role: string;
+  }>;
   roles: Array<{
     code: string;
     isGlobal: boolean;
@@ -282,6 +289,8 @@ export type AdminRoleSummary = {
   permissions: Array<{ permission: { code: string; description: string | null } }>;
 };
 
+export type AdminScopeOption = { id: string; code: string; name: string };
+
 export type IssuedAccountToken = {
   user: { id: string; username: string; email?: string | null; displayName?: string; status?: string };
   token: string;
@@ -350,6 +359,36 @@ export type TenantSummary = {
 const configuredBaseUrl = process.env.NEXT_PUBLIC_RADAR_API_URL?.trim();
 const serverApiBase = process.env.RADAR_API_INTERNAL_URL?.trim() || "http://localhost:4000";
 const isBrowser = typeof window !== "undefined";
+export const SELECTED_TENANT_STORAGE_KEY = "radar.selectedTenantId";
+
+export function getSelectedTenantId() {
+  if (!isBrowser) return null;
+  return window.localStorage.getItem(SELECTED_TENANT_STORAGE_KEY);
+}
+
+export function setSelectedTenantId(tenantId: string | null) {
+  if (!isBrowser) return;
+  if (tenantId) window.localStorage.setItem(SELECTED_TENANT_STORAGE_KEY, tenantId);
+  else window.localStorage.removeItem(SELECTED_TENANT_STORAGE_KEY);
+}
+
+function requestHeaders(headers?: HeadersInit) {
+  const result = new Headers(headers);
+  const tenantId = getSelectedTenantId();
+  if (tenantId) result.set("x-tenant-id", tenantId);
+  return result;
+}
+
+export function apiFetch(path: string, init: RequestInit = {}) {
+  return fetch(`${apiBaseUrl}${path}`, {
+    ...init,
+    headers: requestHeaders(init.headers),
+  });
+}
+
+export function apiFetchUrl(url: string, init: RequestInit = {}) {
+  return fetch(url, { ...init, headers: requestHeaders(init.headers) });
+}
 
 function withApiPrefix(baseUrl: string) {
   const trimmed = baseUrl.replace(/\/+$/, "");
@@ -367,7 +406,7 @@ export const apiBaseUrl = configuredBaseUrl
 export async function apiGet<T>(path: string): Promise<T> {
   if (!apiBaseUrl) throw new Error('API_NOT_CONFIGURED');
 
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const response = await apiFetch(path, {
     credentials: 'include',
     cache: 'no-store',
   });
@@ -398,7 +437,7 @@ export async function apiMutate<T>(
 
   const csrfToken = await getCsrfToken();
 
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const response = await apiFetch(path, {
     method,
     credentials: 'include',
     cache: 'no-store',
@@ -436,7 +475,7 @@ async function apiUpload<T>(
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const response = await apiFetch(path, {
     method: 'POST',
     credentials: 'include',
     cache: 'no-store',
@@ -732,9 +771,9 @@ export function changeTripDestination(
 }
 
 const TENANT_ROLE_PERMISSIONS: Record<string, string[]> = {
-  TENANT_ADMIN: ['trip:read', 'trip:create', 'trip:schedule', 'trip:dispatch', 'trip:manage', 'trip:start', 'trip:location:update', 'trip:track:read', 'master:read', 'master:manage', 'sppg:read', 'sppg:manage', 'organization:read', 'geofence:read', 'geofence:manage', 'exception:read', 'report:read', 'tenant:read', 'tenant:manage', 'admin:manage_users'],
-  TENANT_OPERATOR: ['trip:read', 'trip:create', 'trip:schedule', 'trip:dispatch', 'trip:manage', 'trip:track:read', 'master:read', 'sppg:read', 'geofence:read', 'exception:read', 'report:read', 'tenant:read'],
-  TENANT_DRIVER: ['trip:read', 'trip:start', 'trip:location:update', 'trip:track:read'],
+  TENANT_ADMIN: ['trip:read', 'trip:create', 'trip:schedule', 'trip:dispatch', 'trip:manage', 'trip:start', 'trip:location:update', 'trip:track:read', 'master:read', 'master:manage', 'sppg:read', 'sppg:manage', 'organization:read', 'geofence:read', 'geofence:manage', 'exception:read', 'report:read', 'tenant:read', 'tenant:manage', 'admin:manage_users', 'account:invitation:accept'],
+  TENANT_OPERATOR: ['trip:read', 'trip:create', 'trip:schedule', 'trip:dispatch', 'trip:manage', 'trip:track:read', 'master:read', 'sppg:read', 'geofence:read', 'exception:read', 'report:read', 'tenant:read', 'account:invitation:accept'],
+  TENANT_DRIVER: ['trip:read', 'trip:start', 'trip:location:update', 'trip:track:read', 'delivery:start', 'delivery:confirm', 'arrival:verify', 'delivery:proof:read'],
   TENANT_VIEWER: ['trip:read', 'trip:track:read', 'master:read', 'sppg:read', 'report:read', 'tenant:read'],
 };
 
@@ -750,6 +789,7 @@ export function isPlatformAdmin(user: SessionUser | null | undefined): boolean {
 
 export function hasPermission(user: SessionUser | null | undefined, permission: string): boolean {
   if (!user) return false;
+  if (isPlatformAdmin(user)) return true;
   if (user.roles?.some((role) => Array.isArray(role?.permissions) && role.permissions.includes(permission))) {
     return true;
   }
@@ -1156,6 +1196,11 @@ export async function getAdminUsers(query: {
     if (value !== undefined && value !== "") params.set(key, String(value));
   }
   return apiGet<Paginated<AdminUserSummary>>(`/admin/users?${params.toString()}`);
+}
+
+export async function getAdminScopeOptions(scope: 'organizations' | 'regions' | 'sppg') {
+  const payload = await apiGet<Paginated<AdminScopeOption>>(`/admin/${scope}?page=1&pageSize=100`);
+  return payload.data;
 }
 
 export function getAdminRoles() {

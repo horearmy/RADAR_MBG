@@ -37,6 +37,14 @@ export type SessionPrincipal = {
   mfaEnabled: boolean;
   driverId: string | null;
   tenantRole?: string | null;
+  tenantId?: string | null;
+  tenantMemberships?: Array<{
+    tenantId: string;
+    tenantCode: string;
+    tenantName: string;
+    role: string;
+  }>;
+  hasTenantMemberships?: boolean;
   features?: Record<string, boolean> | null;
   roles: Array<{
     code: string;
@@ -278,6 +286,10 @@ export class AuthService {
         user: {
           include: {
             driver: { select: { id: true } },
+            tenantMemberships: {
+              include: { tenant: { select: { id: true, tenantCode: true, name: true, status: true } } },
+              orderBy: { createdAt: 'asc' },
+            },
             roles: {
               where: {
                 effectiveFrom: { lte: new Date() },
@@ -311,6 +323,15 @@ export class AuthService {
       mfaEnabled: session.user.mfaEnabled,
       driverId: session.user.driver?.id ?? null,
       features: session.user.features as Record<string, boolean> | null,
+      hasTenantMemberships: session.user.tenantMemberships.length > 0,
+      tenantMemberships: session.user.tenantMemberships
+        .filter((membership) => membership.status === 'ACTIVE' && membership.tenant.status === 'ACTIVE')
+        .map((membership) => ({
+        tenantId: membership.tenant.id,
+        tenantCode: membership.tenant.tenantCode,
+        tenantName: membership.tenant.name,
+        role: membership.role,
+      })),
       roles: session.user.roles.map(({ role, organizationId, regionId, sppgId }) => ({
         code: role.code,
         isGlobal: role.isGlobal,

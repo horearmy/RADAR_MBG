@@ -11,6 +11,7 @@ import {
   getCurrentSession,
   hasPermission,
   type SessionUser,
+  apiFetchUrl,
 } from "@/lib/api";
 
 const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -137,7 +138,7 @@ export default function TenantTripsPage() {
   const loadTrips = async (silent: boolean) => {
     if (!silent) setSessionState("checking");
     try {
-      const res = await fetch(`${apiBaseUrl}/tenant/trips`, { credentials: "include" });
+      const res = await apiFetchUrl(`${apiBaseUrl}/tenant/trips`, { credentials: "include" });
       if (!res.ok) throw new Error("Gagal memuat perjalanan");
       const data = await res.json();
       setTrips(Array.isArray(data) ? data : data.data ?? []);
@@ -152,9 +153,9 @@ export default function TenantTripsPage() {
   const loadResources = async () => {
     try {
       const [driversRes, vehiclesRes, locsRes] = await Promise.all([
-        fetch(`${apiBaseUrl}/tenant/drivers`, { credentials: "include" }),
-        fetch(`${apiBaseUrl}/tenant/vehicles`, { credentials: "include" }),
-        fetch(`${apiBaseUrl}/tenant/delivery-locations`, { credentials: "include" }),
+        apiFetchUrl(`${apiBaseUrl}/tenant/drivers`, { credentials: "include" }),
+        apiFetchUrl(`${apiBaseUrl}/tenant/vehicles`, { credentials: "include" }),
+        apiFetchUrl(`${apiBaseUrl}/tenant/delivery-locations`, { credentials: "include" }),
       ]);
       if (driversRes.ok) {
         const d = await driversRes.json();

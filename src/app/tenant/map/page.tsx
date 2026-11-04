@@ -14,6 +14,7 @@ import {
   type GeofenceLocationType,
   type GeofenceSummary,
   type SessionUser,
+  apiFetchUrl,
 } from "@/lib/api";
 
 type SearchResult = { display_name: string; lat: string; lon: string };
@@ -146,7 +147,7 @@ export default function TenantMapPage() {
     setGeofenceError(null);
     try {
       const params = new URLSearchParams({ locationType: type, locationId: id });
-      const res = await fetch(`${apiBaseUrl}/geofences?${params.toString()}`, { credentials: "include" });
+      const res = await apiFetchUrl(`${apiBaseUrl}/geofences?${params.toString()}`, { credentials: "include" });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { code?: string; message?: string } | null;
         throw new Error(body?.code ?? `REQUEST_FAILED_${res.status}`);
@@ -168,7 +169,7 @@ export default function TenantMapPage() {
 
   const loadDeliveryLocations = useCallback(async () => {
     try {
-      const res = await fetch(`${apiBaseUrl}/tenant/delivery-locations`, { credentials: "include" });
+      const res = await apiFetchUrl(`${apiBaseUrl}/tenant/delivery-locations`, { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
         setDeliveryLocations(Array.isArray(data) ? data : data.data ?? []);
@@ -185,7 +186,7 @@ export default function TenantMapPage() {
         const u = await getCurrentSession();
         if (!active) return;
         setUser(u);
-        const meRes = await fetch(`${apiBaseUrl}/tenant/me`, { credentials: "include" });
+        const meRes = await apiFetchUrl(`${apiBaseUrl}/tenant/me`, { credentials: "include" });
         if (meRes.ok) {
           const me = await meRes.json();
           if (me?.legacySppgId) {
@@ -306,9 +307,9 @@ export default function TenantMapPage() {
     setSavingLocation(true);
     setLocationError(null);
     try {
-      const csrfRes = await fetch(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
+      const csrfRes = await apiFetchUrl(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
       const { csrfToken } = await csrfRes.json();
-      const res = await fetch(`${apiBaseUrl}/tenant/delivery-locations`, {
+      const res = await apiFetchUrl(`${apiBaseUrl}/tenant/delivery-locations`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -346,10 +347,10 @@ export default function TenantMapPage() {
     setSaving(true);
     setError(null);
     try {
-      const csrfRes = await fetch(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
+      const csrfRes = await apiFetchUrl(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
       const { csrfToken } = await csrfRes.json();
       const idempotencyKey = crypto.randomUUID();
-      const res = await fetch(`${apiBaseUrl}/geofences`, {
+      const res = await apiFetchUrl(`${apiBaseUrl}/geofences`, {
         method: "POST",
         credentials: "include",
         headers: {

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Building2, FileText, MapPin, RefreshCw, Save } from "lucide-react";
+import { AlertCircle, ArrowLeft, Building2, FileText, MapPin, RefreshCw, Save } from "lucide-react";
 import { LocationPicker } from "@/components/location-picker";
 import { apiBaseUrl, getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
 
@@ -242,16 +242,6 @@ export default function SppgNewPage() {
   // Mapping regencyId ke regionId UUID format
   // Saat ini menggunakan format UUID placeholder berdasarkan emsifa code
   // Backend akan menerima ini hingga database region data tersedia
-  const mapRegencyToRegionId = (regencyId: string | string[]): string => {
-    if (!regencyId) return "";
-    const id = typeof regencyId === "string" ? regencyId : regencyId[0];
-    // Generate UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
-    const randomPart = Math.random().toString(36).substring(2, 20);
-    // Insert version 4 and variant bits
-    const uuid = `${randomPart.substring(0, 8)}-${randomPart.substring(8, 12)}-4${randomPart.substring(12, 16)}-${randomPart.substring(16, 20)}-${Math.random().toString(36).substring(2, 20)}`;
-    return `region-${id}-${uuid}`;
-  };
-
   useEffect(() => {
     void load();
   }, [load]);
@@ -402,20 +392,21 @@ export default function SppgNewPage() {
           to { opacity: 1; transform: translateX(-50%) translateY(0); }
         }
       `}</style>
-      <main className="page">
+      <main className="page sppg-create-page">
       <header className="page-header">
         <div>
-          <p className="page-breadcrumb">Operasional &gt; SPPG &gt; Tambah</p>
+          <p className="page-breadcrumb"><span>Operasional</span><span aria-hidden="true">/</span><span>SPPG</span><span aria-hidden="true">/</span><span>Tambah</span></p>
           <h1 className="page-title">Tambah SPPG</h1>
-          <p className="page-subtitle">Tambahkan unit SPPG baru.</p>
+          <p className="page-subtitle">Lengkapi informasi unit, wilayah, dan titik lokasi untuk mendaftarkan SPPG baru.</p>
         </div>
         <div className="page-actions">
-          <button className="btn btn-ghost" onClick={() => router.push("/sppg")}><ArrowLeft size={16} /> Kembali</button>
+          <button className="btn btn-ghost" type="button" onClick={() => router.push("/sppg")}><ArrowLeft size={16} /> Kembali ke daftar</button>
         </div>
       </header>
 
-      <section className="panel">
-        {error && <p className="text-danger">{error}</p>}
+      <div className="sppg-create-layout">
+      <section className="panel sppg-create-form-panel">
+        {error && <div className="sppg-create-error" role="alert"><AlertCircle size={17} /><span>{error}</span></div>}
         <form className="form-grid" onSubmit={onSubmit}>
           <div className="form-section">
             <h2><Building2 size={16} /> Informasi dasar</h2>
@@ -541,7 +532,7 @@ export default function SppgNewPage() {
                 onLocationSelect={(lat, lng) => {
                   setForm((f) => ({ ...f, latitude: lat.toFixed(6), longitude: lng.toFixed(6) }));
                 }}
-                height="280px"
+                height="320px"
               />
               <small style={{ color: "#7b8a9d", fontSize: "11px", marginTop: "4px" }}>
                 Klik pada peta untuk memilih lokasi. Koordinat akan otomatis terisi.
@@ -625,7 +616,20 @@ export default function SppgNewPage() {
           </div>
         </form>
       </section>
-    </main>
+      <aside className="sppg-create-aside">
+        <section className="sppg-create-aside-card">
+          <span className="sppg-create-aside-icon"><MapPin size={17} /></span>
+          <h2>Pastikan titik lokasi akurat</h2>
+          <p>Pilih titik fasilitas pada peta atau cari alamat. Periksa kembali koordinat sebelum menyimpan.</p>
+          <dl>
+            <div><dt>Latitude</dt><dd>{form.latitude || "Belum ditentukan"}</dd></div>
+            <div><dt>Longitude</dt><dd>{form.longitude || "Belum ditentukan"}</dd></div>
+          </dl>
+        </section>
+        <p className="sppg-create-aside-note"><span aria-hidden="true">*</span> Field bertanda bintang wajib diisi. Data akan dicatat pada audit sistem.</p>
+      </aside>
+      </div>
+      </main>
     </>
   );
 }

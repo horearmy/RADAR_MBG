@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ChevronRight, Pencil, Plus, RefreshCw, Trash2, UserRound, X } from "lucide-react";
 import { HeaderAccount } from "@/components/account-menu";
 import { TenantSidebar } from "@/components/tenant-sidebar";
-import { apiBaseUrl, getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
+import { apiBaseUrl, apiFetchUrl, getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
 
 type TenantUser = {
   id: string;
@@ -58,7 +58,7 @@ export default function TenantUsersPage() {
   const loadUsers = async (silent: boolean) => {
     if (!silent) setSessionState("checking");
     try {
-      const res = await fetch(`${apiBaseUrl}/tenant/users`, { credentials: "include" });
+      const res = await apiFetchUrl(`${apiBaseUrl}/tenant/users`, { credentials: "include" });
       if (!res.ok) throw new Error("Gagal memuat pengguna");
       const data = await res.json();
       const raw = Array.isArray(data) ? data : data.data ?? [];
@@ -80,7 +80,7 @@ export default function TenantUsersPage() {
 
   const loadDrivers = async () => {
     try {
-      const res = await fetch(`${apiBaseUrl}/tenant/drivers`, { credentials: "include" });
+      const res = await apiFetchUrl(`${apiBaseUrl}/tenant/drivers`, { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
         setDrivers(Array.isArray(data) ? data : data.data ?? []);
@@ -123,9 +123,9 @@ export default function TenantUsersPage() {
     setFormError(null);
     setCreateResult(null);
     try {
-      const csrfRes = await fetch(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
+      const csrfRes = await apiFetchUrl(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
       const { csrfToken } = await csrfRes.json();
-      const res = await fetch(`${apiBaseUrl}/tenant/users`, {
+      const res = await apiFetchUrl(`${apiBaseUrl}/tenant/users`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json", "x-csrf-token": csrfToken },
@@ -155,7 +155,7 @@ export default function TenantUsersPage() {
 
   const handleSelectUser = async (user: TenantUser) => {
     try {
-      const res = await fetch(`${apiBaseUrl}/tenant/users/${user.id}`, { credentials: "include" });
+      const res = await apiFetchUrl(`${apiBaseUrl}/tenant/users/${user.id}`, { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
         setSelectedUser({ ...user, ...data, driver: data.driver ?? user.driver });
@@ -184,14 +184,14 @@ export default function TenantUsersPage() {
     setEditSubmitting(true);
     setEditError(null);
     try {
-      const csrfRes = await fetch(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
+      const csrfRes = await apiFetchUrl(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
       const { csrfToken } = await csrfRes.json();
       const body: any = {};
       if (editForm.displayName.trim()) body.displayName = editForm.displayName.trim();
       if (editForm.role) body.role = editForm.role;
       if (editForm.status) body.status = editForm.status;
       if (editForm.password.trim()) body.password = editForm.password.trim();
-      const res = await fetch(`${apiBaseUrl}/tenant/users/${selectedUser.id}`, {
+      const res = await apiFetchUrl(`${apiBaseUrl}/tenant/users/${selectedUser.id}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json", "x-csrf-token": csrfToken },
@@ -213,9 +213,9 @@ export default function TenantUsersPage() {
 
   const handleDelete = async (userId: string) => {
     try {
-      const csrfRes = await fetch(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
+      const csrfRes = await apiFetchUrl(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
       const { csrfToken } = await csrfRes.json();
-      const res = await fetch(`${apiBaseUrl}/tenant/users/${userId}`, {
+      const res = await apiFetchUrl(`${apiBaseUrl}/tenant/users/${userId}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json", "x-csrf-token": csrfToken },

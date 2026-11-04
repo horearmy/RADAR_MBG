@@ -743,6 +743,7 @@ model Tenant {
   activatedAt   DateTime?            @map("activated_at") @db.Timestamptz(6)
   suspendedAt   DateTime?            @map("suspended_at") @db.Timestamptz(6)
   legacySppgId  String?              @unique @map("legacy_sppg_id") @db.Uuid
+  features      Json?                @db.JsonB
   createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
   profile       SppgProfile?

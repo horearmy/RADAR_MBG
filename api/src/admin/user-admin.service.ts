@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { createHash, randomBytes } from 'node:crypto';
-import { AccountStatus, Prisma } from '@prisma/client';
+import { AccountStatus, MembershipStatus, Prisma } from '@prisma/client';
 import type { SessionPrincipal } from '../auth/auth.service.js';
 import { assertMfaEncryptionKey } from '../auth/auth.security.js';
 import { PrismaService } from '../database/prisma.service.js';
@@ -28,8 +28,9 @@ import {
 export class UserAdminService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listUsers(query: ListUsersDto) {
+  async listUsers(actor: SessionPrincipal, query: ListUsersDto) {
     const where: Prisma.UserWhereInput = {
+      ...(await this.userScopeWhere(actor)),
       ...(query.status ? { status: query.status } : {}),
       ...(query.search ? {
         OR: [
@@ -105,6 +106,17 @@ export class UserAdminService {
           select: { id: true, username: true, email: true, displayName: true, status: true },
         });
         const token = await this.issueAccountToken(tx, user.id, actor.id, 'INVITATION', rawToken, expiresAt);
+        if (actor.tenantId) {
+          await tx.tenantMembership.create({
+            data: {
+              tenantId: actor.tenantId,
+              userId: user.id,
+              role: 'TENANT_OPERATOR',
+              status: 'INVITED',
+              invitedByUserId: actor.id,
+            },
+          });
+        }
         await this.writeAudit(tx, actor.id, 'user.invitation.create', 'user', user.id, input.reason.trim(),
           null, { username: user.username, email: user.email, status: user.status, tokenId: token.id, expiresAt: expiresAt.toISOString() }, requestId);
         return { user, expiresAt };
@@ -124,8 +136,8 @@ export class UserAdminService {
     reason: string,
     requestId: string,
   ) {
-    const user = await this.prisma.db.user.findUnique({
-      where: { id: userId },
+    const user = await this.prisma.db.user.findFirst({
+      where: { id: userId, ...(await this.userScopeWhere(actor)) },
       select: { id: true, username: true, status: true },
     });
     if (!user) throw new NotFoundException({ code: 'USER_NOT_FOUND' });
@@ -135,6 +147,7 @@ export class UserAdminService {
     const rawToken = randomBytes(32).toString('base64url');
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
     const issued = await this.prisma.db.$transaction(async (tx) => {
+      await this.assertUserInScope(actor, userId, tx);
       const token = await this.issueAccountToken(tx, userId, actor.id, 'PASSWORD_RESET', rawToken, expiresAt);
       await this.writeAudit(tx, actor.id, 'user.password.reset.issue', 'user', userId, reason.trim(),
         null, { tokenId: token.id, expiresAt: expiresAt.toISOString() }, requestId);
@@ -155,8 +168,8 @@ export class UserAdminService {
     } catch {
       throw new ConflictException({ code: 'MFA_UNAVAILABLE' });
     }
-    const user = await this.prisma.db.user.findUnique({
-      where: { id: userId },
+    const user = await this.prisma.db.user.findFirst({
+      where: { id: userId, ...(await this.userScopeWhere(actor)) },
       select: { id: true, username: true, status: true, mfaEnabled: true },
     });
     if (!user) throw new NotFoundException({ code: 'USER_NOT_FOUND' });
@@ -166,6 +179,7 @@ export class UserAdminService {
     const rawToken = randomBytes(32).toString('base64url');
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
     await this.prisma.db.$transaction(async (tx) => {
+      await this.assertUserInScope(actor, userId, tx);
       const updated = await tx.user.updateMany({
         where: { id: userId, status: AccountStatus.ACTIVE, mfaEnabled: true },
         data: {
@@ -194,8 +208,8 @@ export class UserAdminService {
     reason: string,
     requestId: string,
   ) {
-    const user = await this.prisma.db.user.findUnique({
-      where: { id: userId },
+    const user = await this.prisma.db.user.findFirst({
+      where: { id: userId, ...(await this.userScopeWhere(actor)) },
       select: { id: true, username: true, status: true },
     });
     if (!user) throw new NotFoundException({ code: 'USER_NOT_FOUND' });
@@ -205,6 +219,7 @@ export class UserAdminService {
     const rawToken = randomBytes(32).toString('base64url');
     const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
     const issued = await this.prisma.db.$transaction(async (tx) => {
+      await this.assertUserInScope(actor, userId, tx);
       const token = await this.issueAccountToken(tx, userId, actor.id, 'INVITATION', rawToken, expiresAt);
       await this.writeAudit(tx, actor.id, 'user.invitation.resend', 'user', userId, reason.trim(),
         null, { tokenId: token.id, expiresAt: expiresAt.toISOString() }, requestId);
@@ -281,6 +296,7 @@ export class UserAdminService {
         },
       });
       if (!user) throw new NotFoundException({ code: 'USER_NOT_FOUND' });
+      await this.assertUserInScope(actor, userId, tx);
       if (user.status === input.status) throw new ConflictException({ code: 'USER_STATUS_UNCHANGED' });
 
       if (user.status === AccountStatus.ACTIVE && input.status !== AccountStatus.ACTIVE && user.roles.length) {
@@ -327,6 +343,7 @@ export class UserAdminService {
         select: { id: true, username: true, displayName: true },
       });
       if (!user) throw new NotFoundException({ code: 'USER_NOT_FOUND' });
+      await this.assertUserInScope(actor, userId, tx);
       const result = await tx.session.updateMany({
         where: { userId, revokedAt: null },
         data: { revokedAt: new Date() },
@@ -351,6 +368,7 @@ export class UserAdminService {
       ]);
       if (!user) throw new NotFoundException({ code: 'USER_NOT_FOUND' });
       if (!role || !role.active) throw new NotFoundException({ code: 'ROLE_NOT_FOUND' });
+      await this.assertUserInScope(actor, userId, tx);
       assertGlobalRoleAssignment(actor.roles.some((assignment) => assignment.isGlobal), role.isGlobal);
       assertCanAssignRole({
         isGlobal: role.isGlobal,
@@ -359,27 +377,42 @@ export class UserAdminService {
         scopeCount,
       });
 
-      if (input.organizationId) {
-        const exists = await tx.organization.findUnique({ where: { id: input.organizationId }, select: { id: true } });
+      const organizationId = input.organizationId ?? null;
+      const regionId = input.regionId ?? null;
+      const sppgId = input.sppgId ?? null;
+      let targetOrganizationId = organizationId;
+      let targetRegionId = regionId;
+      if (sppgId) {
+        const sppg = await tx.sppg.findUnique({ where: { id: sppgId }, select: { id: true, organizationId: true, regionId: true } });
+        if (!sppg) throw new NotFoundException({ code: 'SPPG_NOT_FOUND' });
+        if ((organizationId && organizationId !== sppg.organizationId) || (regionId && regionId !== sppg.regionId)) {
+          throw new ConflictException({ code: 'ROLE_SCOPE_HIERARCHY_INVALID' });
+        }
+        targetOrganizationId = sppg.organizationId;
+        targetRegionId = sppg.regionId;
+      }
+      if (regionId) {
+        const region = await tx.region.findUnique({ where: { id: regionId }, select: { id: true, organizationId: true } });
+        if (!region) throw new NotFoundException({ code: 'REGION_NOT_FOUND' });
+        if (organizationId && organizationId !== region.organizationId) {
+          throw new ConflictException({ code: 'ROLE_SCOPE_HIERARCHY_INVALID' });
+        }
+        targetOrganizationId = region.organizationId;
+      }
+      if (organizationId) {
+        const exists = await tx.organization.findUnique({ where: { id: organizationId }, select: { id: true } });
         if (!exists) throw new NotFoundException({ code: 'ORGANIZATION_NOT_FOUND' });
       }
-      if (input.regionId) {
-        const region = await tx.region.findUnique({ where: { id: input.regionId }, select: { id: true, organizationId: true } });
-        if (!region) throw new NotFoundException({ code: 'REGION_NOT_FOUND' });
-      }
-      if (input.sppgId) {
-        const sppg = await tx.sppg.findUnique({ where: { id: input.sppgId }, select: { id: true, organizationId: true } });
-        if (!sppg) throw new NotFoundException({ code: 'SPPG_NOT_FOUND' });
-      }
+      await this.assertAssignableScope(actor, { organizationId: targetOrganizationId, regionId: targetRegionId, sppgId }, tx);
 
       const now = new Date();
       const duplicate = await tx.userRole.findFirst({
         where: {
           userId,
           roleId: role.id,
-          organizationId: input.organizationId ?? null,
-          regionId: input.regionId ?? null,
-          sppgId: input.sppgId ?? null,
+          organizationId,
+          regionId,
+          sppgId,
           effectiveFrom: { lte: now },
           OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }],
         },
@@ -429,7 +462,9 @@ export class UserAdminService {
         },
         include: { role: true, user: { select: { status: true } } },
       });
+      await this.assertUserInScope(actor, userId, tx);
       if (!assignment) throw new NotFoundException({ code: 'USER_ROLE_NOT_FOUND' });
+      await this.assertAssignableScope(actor, assignment, tx);
       if (assignment.role.isGlobal && assignment.user.status === AccountStatus.ACTIVE) {
         const globalCount = await tx.userRole.findMany({
           where: {
@@ -451,6 +486,71 @@ export class UserAdminService {
         { roleCode: assignment.role.code, effectiveUntil: updated.effectiveUntil, revokedSessionCount: revoked.count }, requestId);
       return { assignment: updated, revokedSessionCount: revoked.count };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+
+  private async userScopeWhere(actor: SessionPrincipal): Promise<Prisma.UserWhereInput> {
+    if (actor.roles.some((role) => role.isGlobal)) return {};
+    const membershipTenantIds = actor.tenantId ? [actor.tenantId] : [];
+    const organizationIds = [...new Set(actor.roles.flatMap((role) => role.organizationId ? [role.organizationId] : []))];
+    const regionIds = [...new Set(actor.roles.flatMap((role) => role.regionId ? [role.regionId] : []))];
+    const sppgIds = [...new Set(actor.roles.flatMap((role) => role.sppgId ? [role.sppgId] : []))];
+    const OR: Prisma.UserWhereInput[] = [
+      ...(membershipTenantIds.length ? [{ tenantMemberships: { some: { tenantId: { in: membershipTenantIds }, status: { in: [MembershipStatus.ACTIVE, MembershipStatus.INVITED] } } } }] : []),
+      ...(organizationIds.length || regionIds.length || sppgIds.length ? [{ roles: { some: {
+        effectiveFrom: { lte: new Date() },
+        OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: new Date() } }],
+        AND: [{ OR: [
+          ...(organizationIds.length ? [{ organizationId: { in: organizationIds } }] : []),
+          ...(regionIds.length ? [{ regionId: { in: regionIds } }] : []),
+          ...(sppgIds.length ? [{ sppgId: { in: sppgIds } }] : []),
+        ] }],
+      } } }] : []),
+    ];
+    return OR.length ? { OR } : { id: actor.id };
+  }
+
+  private async assertUserInScope(actor: SessionPrincipal, userId: string, tx?: Prisma.TransactionClient) {
+    if (actor.roles.some((role) => role.isGlobal)) return;
+    const where = await this.userScopeWhere(actor);
+    const client = tx ?? this.prisma.db;
+    const target = await client.user.findFirst({ where: { AND: [{ id: userId }, where] }, select: { id: true } });
+    if (!target) throw new NotFoundException({ code: 'USER_NOT_FOUND' });
+  }
+
+  private async assertAssignableScope(
+    actor: SessionPrincipal,
+    scope: { organizationId?: string | null; regionId?: string | null; sppgId?: string | null },
+    tx?: Prisma.TransactionClient,
+  ) {
+    if (actor.roles.some((role) => role.isGlobal)) return;
+    const client = tx ?? this.prisma.db;
+    let organizationId = scope.organizationId ?? null;
+    let regionId = scope.regionId ?? null;
+    if (scope.sppgId && (!organizationId || !regionId)) {
+      const sppg = await client.sppg.findUnique({
+        where: { id: scope.sppgId },
+        select: { organizationId: true, regionId: true },
+      });
+      if (sppg) {
+        organizationId ??= sppg.organizationId;
+        regionId ??= sppg.regionId;
+      }
+    }
+    if (regionId && !organizationId) {
+      const region = await client.region.findUnique({ where: { id: regionId }, select: { organizationId: true } });
+      organizationId = region?.organizationId ?? null;
+    }
+    const allowed = actor.roles.some((role) =>
+      (role.organizationId && role.organizationId === organizationId) ||
+      (role.regionId && role.regionId === regionId) ||
+      (role.sppgId && role.sppgId === scope.sppgId),
+    );
+    if (allowed) return;
+    if (actor.tenantId && scope.sppgId) {
+      const tenant = await client.tenant.findFirst({ where: { id: actor.tenantId, legacySppgId: scope.sppgId, status: 'ACTIVE' }, select: { id: true } });
+      if (tenant) return;
+    }
+    throw new NotFoundException({ code: 'USER_SCOPE_NOT_FOUND' });
   }
 
   private async writeAudit(

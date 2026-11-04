@@ -20,7 +20,7 @@ const TENANT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'geofence:read', 'geofence:manage',
     'exception:read',
     'report:read',
-    'tenant:read', 'tenant:manage', 'admin:manage_users',
+    'tenant:read', 'tenant:manage', 'admin:manage_users', 'account:invitation:accept',
   ],
   TENANT_OPERATOR: [
     'trip:read', 'trip:create', 'trip:schedule', 'trip:dispatch', 'trip:manage', 'trip:track:read',
@@ -29,9 +29,11 @@ const TENANT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'exception:read',
     'report:read',
     'tenant:read',
+    'account:invitation:accept',
   ],
   TENANT_DRIVER: [
     'trip:read', 'trip:start', 'trip:location:update', 'trip:track:read',
+    'delivery:start', 'delivery:confirm', 'arrival:verify', 'delivery:proof:read',
   ],
   TENANT_VIEWER: [
     'trip:read', 'trip:track:read',

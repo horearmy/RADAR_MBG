@@ -21,7 +21,7 @@ import {
 import { HeaderAccount } from "@/components/account-menu";
 import { FleetMap } from "@/components/fleet-map";
 import { TenantSidebar } from "@/components/tenant-sidebar";
-import { apiBaseUrl, getCurrentSession, hasPermission, type SessionUser, type TripSummary } from "@/lib/api";
+import { apiFetch, getCurrentSession, getSelectedTenantId, hasPermission, setSelectedTenantId, type SessionUser, type TripSummary } from "@/lib/api";
 
 type TenantSummary = {
   drivers: number;
@@ -167,9 +167,9 @@ export default function TenantPage() {
     if (!silent) setSessionState("checking");
     try {
       const [summaryRes, meRes, tripsRes] = await Promise.all([
-        fetch(`${apiBaseUrl}/tenant/summary`, { credentials: "include" }),
-        fetch(`${apiBaseUrl}/tenant/me`, { credentials: "include" }),
-        fetch(`${apiBaseUrl}/tenant/trips`, { credentials: "include" }),
+        apiFetch("/tenant/summary", { credentials: "include" }),
+        apiFetch("/tenant/me", { credentials: "include" }),
+        apiFetch("/tenant/trips", { credentials: "include" }),
       ]);
       if (!summaryRes.ok || !meRes.ok) throw new Error("Gagal memuat data tenant");
       const [summaryData, meData, tripsData] = await Promise.all([summaryRes.json(), meRes.json(), tripsRes.json()]);
@@ -197,7 +197,19 @@ export default function TenantPage() {
       try {
         const user = await getCurrentSession();
         if (!active) return;
-        if (user.tenantRole !== "TENANT_ADMIN" && user.tenantRole !== "SUPERADMIN") {
+        const selectedTenantId = getSelectedTenantId();
+        const hasValidSelection = Boolean(selectedTenantId && user.tenantMemberships?.some((membership) => membership.tenantId === selectedTenantId));
+        if (!user.tenantRole && !hasValidSelection && (user.tenantMemberships?.length ?? 0) === 1) {
+          setSelectedTenantId(user.tenantMemberships![0].tenantId);
+          window.location.reload();
+          return;
+        }
+        if (!user.tenantRole && (user.tenantMemberships?.length ?? 0) > 1) {
+          setSessionUser(user);
+          setSessionState("ready");
+          return;
+        }
+        if (!hasPermission(user, "tenant:read")) {
           router.replace(user.tenantRole === "TENANT_DRIVER" ? "/radarapp" : "/login");
           return;
         }
@@ -277,6 +289,24 @@ export default function TenantPage() {
     return <main className="session-state"><span className="session-spinner" /><p>Memuat data tenant…</p></main>;
   }
 
+  if (sessionUser && !sessionUser.tenantRole && (sessionUser.tenantMemberships?.length ?? 0) > 1) {
+    const selectedTenantId = getSelectedTenantId() ?? "";
+    return (
+      <main className="session-state">
+        <span className="session-error-mark"><Building2 size={18} /></span>
+        <h1>Pilih workspace tenant</h1>
+        <p>Akun Anda terdaftar pada beberapa tenant. Pilih tenant yang akan dibuka.</p>
+        <select className="tenant-picker-prompt" aria-label="Pilih tenant" value={selectedTenantId} onChange={(event) => {
+          setSelectedTenantId(event.target.value || null);
+          if (event.target.value) window.location.reload();
+        }}>
+          <option value="">Pilih tenant…</option>
+          {sessionUser.tenantMemberships?.map((membership) => <option key={membership.tenantId} value={membership.tenantId}>{membership.tenantName} · {membership.tenantCode}</option>)}
+        </select>
+      </main>
+    );
+  }
+
   if (sessionState === "unavailable" || !sessionUser) {
     return <main className="session-state"><span className="session-error-mark">!</span><h1>Layanan belum tersedia</h1><p>Dashboard tidak dapat memverifikasi sesi. Pastikan API dan PostgreSQL aktif.</p><button className="session-retry" onClick={() => window.location.reload()}>Coba lagi</button></main>;
   }
@@ -287,9 +317,16 @@ export default function TenantPage() {
 
   const canReadTrips = hasPermission(sessionUser, "trip:read");
   const canManageUsers = hasPermission(sessionUser, "admin:manage_users");
+  const [dashboardNow, setDashboardNow] = useState(0);
+
+  useEffect(() => {
+    const now = Date.now();
+    setDashboardNow(now);
+    const interval = window.setInterval(() => setDashboardNow(Date.now()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const locatedTrips = trips.filter((t) => t.positions?.length > 0);
-  const dashboardNow = Date.now();
   const mapTrips = locatedTrips.filter((t) => matchesMapFilter(t, mapFilter, dashboardNow));
   const selectedMapTrip = mapTrips.find((t) => t.id === selectedMapTripId) ?? null;
   const selectedPosition = selectedMapTrip?.positions?.[0] ?? null;
@@ -299,7 +336,7 @@ export default function TenantPage() {
     if (!received) return latest;
     return !latest || new Date(received) > new Date(latest) ? received : latest;
   }, null);
-  const freshnessStale = !latestPositionAt || Date.now() - new Date(latestPositionAt).getTime() > 10 * 60_000;
+  const freshnessStale = !latestPositionAt || dashboardNow - new Date(latestPositionAt).getTime() > 10 * 60_000;
 
   return (
     <div className="app-shell">

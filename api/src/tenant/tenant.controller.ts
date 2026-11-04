@@ -13,11 +13,13 @@ export class TenantController {
   constructor(private readonly service: TenantService) {}
 
   @Get('summary')
+  @RequirePermissions('tenant:read')
   summary(@Req() req: AuthenticatedRequest) {
     return this.service.summary(req.tenantContext!.tenantId);
   }
 
   @Get('me')
+  @RequirePermissions('tenant:read')
   getMe(@Req() req: AuthenticatedRequest) {
     return this.service.getMe(req.tenantContext!.tenantId);
   }
@@ -35,6 +37,7 @@ export class TenantController {
   }
 
   @Get('delivery-locations/:id')
+  @RequirePermissions('master:read')
   getDeliveryLocation(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.service.getDeliveryLocation(req.tenantContext!.tenantId, id);
   }
@@ -46,6 +49,7 @@ export class TenantController {
   }
 
   @Get('delivery-locations')
+  @RequirePermissions('master:read')
   deliveryLocations(@Req() req: AuthenticatedRequest) {
     return this.service.listDeliveryLocations(req.tenantContext!.tenantId);
   }
@@ -57,6 +61,7 @@ export class TenantController {
   }
 
   @Get('drivers')
+  @RequirePermissions('master:read')
   drivers(@Req() req: AuthenticatedRequest) {
     return this.service.listDrivers(req.tenantContext!.tenantId);
   }
@@ -68,6 +73,7 @@ export class TenantController {
   }
 
   @Get('vehicles')
+  @RequirePermissions('master:read')
   vehicles(@Req() req: AuthenticatedRequest) {
     return this.service.listVehicles(req.tenantContext!.tenantId);
   }
@@ -79,11 +85,13 @@ export class TenantController {
   }
 
   @Get('trips')
+  @RequirePermissions('trip:read')
   trips(@Req() req: AuthenticatedRequest) {
     return this.service.listTrips(req.tenantContext!.tenantId);
   }
 
   @Get('audit')
+  @RequirePermissions('tenant:read')
   audit(@Req() req: AuthenticatedRequest) {
     return this.service.listAudit(req.tenantContext!.tenantId);
   }
@@ -101,11 +109,13 @@ export class TenantController {
   }
 
   @Get('users')
+  @RequirePermissions('tenant:read')
   listUsers(@Req() req: AuthenticatedRequest) {
     return this.service.listUsers(req.tenantContext!.tenantId);
   }
 
   @Get('users/:id')
+  @RequirePermissions('tenant:read')
   getUser(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.service.getUser(req.tenantContext!.tenantId, id);
   }
@@ -129,6 +139,7 @@ export class TenantController {
   }
 
   @Post('invitations/accept')
+  @RequirePermissions('account:invitation:accept')
   accept(@Body() body: { token: string; passwordHash: string }) {
     return this.service.acceptInvitation(body.token, body.passwordHash);
   }

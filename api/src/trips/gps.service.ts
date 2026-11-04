@@ -38,6 +38,7 @@ export class GpsService {
     input: GpsPositionDto,
     idempotencyKey: string,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
     this.assertIdempotencyKey(idempotencyKey);
     this.assertIngestRateLimit(principal.id, tripId);
@@ -64,7 +65,9 @@ export class GpsService {
         },
       });
       if (!trip) throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
-      // tenant check (if tenantContext passed separately? not available here) skip for now
+      if (trip.tenantId !== (tenantContext?.tenantId ?? null)) {
+        throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+      }
       assertSppgAccess(principal, {
         organizationId: trip.sppg.organizationId,
         regionId: trip.sppg.regionId,
@@ -179,16 +182,21 @@ export class GpsService {
     tripId: string,
     principal: SessionPrincipal,
     query: TrackQueryDto,
+    tenantContext?: { tenantId: string } | null,
   ) {
     const trip = await this.prisma.db.trip.findUnique({
       where: { id: tripId },
       select: {
         id: true,
         driverId: true,
+        tenantId: true,
         sppg: { select: { id: true, organizationId: true, regionId: true } },
       },
     });
     if (!trip) throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+    if (trip.tenantId !== (tenantContext?.tenantId ?? null)) {
+      throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+    }
     assertSppgAccess(principal, {
       organizationId: trip.sppg.organizationId,
       regionId: trip.sppg.regionId,

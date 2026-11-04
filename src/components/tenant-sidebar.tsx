@@ -4,18 +4,18 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Activity, LayoutDashboard, Navigation, Truck, UserRound, Users, Building2, FilePlus, ClipboardCheck, KeyRound, BarChart3, MapPinned, MapPin, LogOut } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { apiBaseUrl } from '@/lib/api';
+import { apiBaseUrl, getCurrentSession, getSelectedTenantId, hasPermission, setSelectedTenantId, type SessionUser } from '@/lib/api';
 
 const items = [
-  { href: '/tenant', label: 'Ringkasan', icon: LayoutDashboard },
-  { href: '/tenant/trips', label: 'Perjalanan', icon: Navigation },
-  { href: '/tenant/drivers', label: 'Driver', icon: UserRound },
-  { href: '/tenant/vehicles', label: 'Kendaraan', icon: Truck },
-  { href: '/tenant/users', label: 'Pengguna', icon: Users },
-  { href: '/tenant/recipients', label: 'Penerima', icon: MapPin },
-  { href: '/tenant/audit', label: 'Audit Aktivitas', icon: Activity },
-  { href: '/tenant/profile', label: 'Profil SPPG', icon: Building2 },
-  { href: '/tenant/map', label: 'Peta', icon: MapPinned },
+  { href: '/tenant', label: 'Ringkasan', icon: LayoutDashboard, permission: 'tenant:read' },
+  { href: '/tenant/trips', label: 'Perjalanan', icon: Navigation, permission: 'trip:read' },
+  { href: '/tenant/drivers', label: 'Driver', icon: UserRound, permission: 'master:read' },
+  { href: '/tenant/vehicles', label: 'Kendaraan', icon: Truck, permission: 'master:read' },
+  { href: '/tenant/users', label: 'Pengguna', icon: Users, permission: 'tenant:read' },
+  { href: '/tenant/recipients', label: 'Penerima', icon: MapPin, permission: 'tenant:manage' },
+  { href: '/tenant/audit', label: 'Audit Aktivitas', icon: Activity, permission: 'tenant:read' },
+  { href: '/tenant/profile', label: 'Profil SPPG', icon: Building2, permission: 'tenant:read' },
+  { href: '/tenant/map', label: 'Peta', icon: MapPinned, permission: 'master:read' },
 ];
 
 const links = [
@@ -28,8 +28,17 @@ const links = [
 export function TenantSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [selectedTenantId, setSelectedTenantIdState] = useState('');
+  useEffect(() => {
+    void getCurrentSession().then((current) => {
+      setUser(current);
+      const memberships = current.tenantMemberships ?? [];
+      const savedId = getSelectedTenantId();
+      const selected = memberships.some((membership) => membership.tenantId === savedId) ? savedId ?? '' : current.tenantId ?? '';
+      setSelectedTenantIdState(selected);
+    }).catch(() => undefined);
+  }, []);
 
   async function logout() {
     try {
@@ -53,12 +62,18 @@ export function TenantSidebar() {
       </Link>
       <div className="workspace-switcher">
         <span className="workspace-icon"><Building2 size={16} /></span>
-        <span className="workspace-copy"><small>TENANT</small><strong>Operasional SPPG</strong></span>
+        <span className="workspace-copy"><small>TENANT</small><strong>{user?.tenantMemberships?.find((membership) => membership.tenantId === selectedTenantId)?.tenantName ?? 'Operasional SPPG'}</strong></span>
       </div>
+      {(user?.tenantMemberships?.length ?? 0) > 1 && <label className="tenant-context-switcher"><span>AKTIF TENANT</span><select aria-label="Pilih tenant aktif" value={selectedTenantId} onChange={(event) => {
+        const nextTenantId = event.target.value;
+        setSelectedTenantId(nextTenantId || null);
+        setSelectedTenantIdState(nextTenantId);
+        window.location.reload();
+      }}><option value="">Pilih tenant…</option>{user?.tenantMemberships?.map((membership) => <option key={membership.tenantId} value={membership.tenantId}>{membership.tenantName} · {membership.tenantCode}</option>)}</select></label>}
       <nav className="side-nav">
         <p className="nav-caption">OPERASIONAL</p>
-        {items.map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href} className={`nav-item nav-link${mounted && pathname === href ? ' nav-active' : ''}`} suppressHydrationWarning>
+        {items.filter((item) => hasPermission(user, item.permission)).map(({ href, label, icon: Icon }) => (
+          <Link key={href} href={href} className={`nav-item nav-link${pathname === href ? ' nav-active' : ''}`}>
             <Icon size={17} strokeWidth={1.8} /><span>{label}</span>
           </Link>
         ))}

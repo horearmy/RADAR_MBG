@@ -1,18 +1,12 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { CheckCircle2, Plus, RefreshCw, Search, ShieldAlert, Truck, UserRound, Users, Ban, ChevronLeft, ChevronRight } from "lucide-react";
 import { DriverCard } from "@/app/drivers/DriverCard";
-import { BottomNavBar } from "@/app/drivers/BottomNavBar";
-import { FilterChips } from "@/app/drivers/FilterChips";
-import { getCurrentSession, hasPermission, apiBaseUrl, type SessionUser } from "@/lib/api";
-import { hasFeature } from "@/app/drivers/user-features";
-import type { UserFeatures } from "@/app/drivers/user-features";
+import { getCurrentSession, hasPermission, hasPlatformPermission, apiBaseUrl, apiFetchUrl, type SessionUser } from "@/lib/api";
 
-// Gunakan apiBaseUrl agar selalu berakhiran /api/v1 (env NEXT_PUBLIC_RADAR_API_URL
-// bisa saja hanya berisi host, yang membuat request jatuh ke rute Nest tanpa prefix
-// dan mengembalikan HTML -> "Unexpected token '<'".
 const apiBase = apiBaseUrl;
 
 type DriverRow = {
@@ -20,15 +14,26 @@ type DriverRow = {
   code: string;
   name: string;
   status: string;
+  phone?: string | null;
   address?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   region?: { name: string } | null;
   organization?: { name: string } | null;
+  sppg?: { id: string; code: string; name: string } | null;
+  tenant?: { id: string; tenantCode: string; name: string } | null;
   updatedAt: string;
 };
 
 type StatusFilter = "ALL" | "ACTIVE" | "SUSPENDED" | "INACTIVE" | "ARCHIVED";
+
+type DriverResponse = {
+  data?: DriverRow[];
+  pagination?: { total: number; totalPages: number };
+  message?: string;
+};
+
+type DriverSummary = { total: number; active: number; suspended: number; inactive: number };
 
 export default function DriversPage() {
   const router = useRouter();
@@ -39,365 +44,110 @@ export default function DriversPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [summary, setSummary] = useState<DriverSummary>({ total: 0, active: 0, suspended: 0, inactive: 0 });
   const pageSize = 25;
 
-  // Load drivers data
-  useEffect(() => {
-    let active = true;
-    async function loadData() {
-      setLoading(true);
-      setError(null);
-      try {
-        const session = await getCurrentSession().catch(() => null);
-        if (active && session) setUser(session);
-        const params = new URLSearchParams();
-        params.set("page", String(page));
-        params.set("pageSize", String(pageSize));
-        const res = await fetch(`${apiBase}/admin/drivers?${params.toString()}`, {
-          credentials: "include",
-          cache: "no-store",
-        });
-        // Baca teks dulu agar respons HTML (404 dari origin yang salah) tidak
-        // memunculkan error mentah "Unexpected token '<'".
-        const raw = await res.text();
-        let json: { data?: DriverRow[]; message?: string } | null = null;
-        try {
-          json = raw ? JSON.parse(raw) : null;
-        } catch {
-          json = null;
-        }
-        if (!active) return;
-        if (!res.ok || !json) {
-          throw new Error(json?.message ?? `Gagal memuat Driver (HTTP ${res.status}). Pastikan API tersedia.`);
-        }
-        setRows(json.data ?? []);
-      } catch (err) {
-        if (!active) return;
-        setError(err instanceof Error ? err.message : "Gagal memuat data");
-      } finally {
-        if (active) setLoading(false);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const session = await getCurrentSession();
+      setUser(session);
+      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+      if (statusFilter !== "ALL") params.set("status", statusFilter);
+      const [response, summaryResponse] = await Promise.all([
+        apiFetchUrl(`${apiBase}/admin/drivers?${params}`, { credentials: "include", cache: "no-store" }),
+        apiFetchUrl(`${apiBase}/admin/drivers/summary`, { credentials: "include", cache: "no-store" }),
+      ]);
+      const body = await response.json().catch(() => null) as DriverResponse | null;
+      const summaryBody = await summaryResponse.json().catch(() => null) as DriverSummary | null;
+      if (!response.ok || !body) {
+        if (response.status === 401) throw new Error("Sesi Anda telah berakhir. Silakan masuk kembali.");
+        if (response.status === 403) throw new Error("Anda tidak memiliki izin untuk melihat direktori driver.");
+        throw new Error(body?.message ?? `Gagal memuat driver (HTTP ${response.status}).`);
       }
+      setRows(body.data ?? []);
+      setTotal(body.pagination?.total ?? body.data?.length ?? 0);
+      setTotalPages(Math.max(1, body.pagination?.totalPages ?? 1));
+      if (summaryResponse.ok && summaryBody) setSummary(summaryBody);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Gagal memuat data driver.");
+    } finally {
+      setLoading(false);
     }
+  }, [page, statusFilter]);
 
-    void loadData();
-    return () => { active = false; };
-  }, [page]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-  // Compute stats from current rows (client-side)
-  const stats = useMemo(() => {
-    const total = rows.length;
-    const aktif = rows.filter((r: DriverRow) => r.status?.toUpperCase() === "ACTIVE").length;
-    const perhatian = rows.filter((r: DriverRow) => r.status?.toUpperCase() === "SUSPENDED").length;
-    const nonaktif = rows.filter((r: DriverRow) => {
-      const s = r.status?.toUpperCase();
-      return s === "INACTIVE" || s === "ARCHIVED";
-    }).length;
-    return { total, aktif, perhatian, nonaktif };
-  }, [rows]);
+  const filteredRows = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase("id-ID");
+    return rows.filter((row) => {
+      if (!query) return true;
+      return [row.name, row.code, row.phone, row.sppg?.name, row.sppg?.code, row.tenant?.name, row.tenant?.tenantCode]
+        .some((value) => value?.toLocaleLowerCase("id-ID").includes(query));
+    });
+  }, [rows, search]);
 
-  // Permission checks
-  const canManageUsers = user ? hasPermission(user, "admin:manage_users") : false;
-  const canAccessGeofences = user ? hasPermission(user, "geofence:read") || hasPermission(user, "geofence:manage") : false;
-  const canDrive = user ? hasPermission(user, "trip:start") && hasPermission(user, "trip:location:update") : false;
+  const stats = summary;
+
+  const canRead = user ? hasPlatformPermission(user, "master:read") || hasPermission(user, "master:read") : false;
+  const canManage = user ? hasPermission(user, "master:manage") : false;
+  const canAdd = canManage;
+  const chips: Array<{ value: StatusFilter; label: string }> = [
+    { value: "ALL", label: "Semua" },
+    { value: "ACTIVE", label: "Aktif" },
+    { value: "SUSPENDED", label: "Perhatian" },
+    { value: "INACTIVE", label: "Nonaktif" },
+  ];
+
+  if (!loading && user && !canRead) {
+    return <main className="page"><header className="page-header"><div><p className="page-breadcrumb">Operasional &gt; Manajemen &gt; Driver</p><h1 className="page-title">Manajemen Driver</h1></div></header><div className="panel"><p className="text-secondary">Anda tidak memiliki izin untuk melihat data driver.</p></div></main>;
+  }
 
   return (
-    <main className="app-shell">
-      {/* Header / AppBar Material */}
-      <header style={{
-        height: 56,
-        background: "#fff",
-        borderBottom: "1px solid #e0e0e0",
-        padding: "0 16px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        color: "#1d2b40",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Link
-            href="/"
-            style={{
-              display: "grid",
-              placeItems: "center",
-              color: "#62728A",
-              fontSize: 20,
-              fontWeight: 500,
-              textDecoration: "none",
-            }}
-          >
-            <svg
-              width={24}
-              height={24}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              style={{ marginRight: 8 }}
-            >
-              <path d="M15 19l-7-7 7-7" />
-            </svg>
-            Manajemen Driver
-          </Link>
-          <Link
-            href="/drivers/new"
-            style={{
-              marginLeft: 16,
-              display: "grid",
-              placeItems: "center",
-              color: "#1677FF",
-              fontSize: 18,
-              fontWeight: 500,
-              textDecoration: "none",
-            }}
-          >
-            +
-          </Link>
+    <main className="page drivers-page">
+      <header className="drivers-hero">
+        <div className="drivers-hero-copy">
+          <p className="page-breadcrumb">Operasional <span>/</span> Manajemen <span>/</span> Driver</p>
+          <div className="drivers-title-row">
+            <div className="drivers-title-icon"><Users size={21} /></div>
+            <div><h1>Direktori Driver</h1><p>Telusuri driver dari seluruh tenant dan buka profil operasionalnya.</p></div>
+          </div>
         </div>
-
-        <FilterChips
-          statusFilter={statusFilter}
-          onStatusChange={setStatusFilter}
-        />
+        <div className="drivers-hero-actions">
+          <button className="drivers-refresh" onClick={() => void load()} disabled={loading} aria-label="Muat ulang data"><RefreshCw size={16} className={loading ? "drivers-spinning" : ""} /><span>Muat ulang</span></button>
+          {canAdd && <Link className="drivers-add" href="/drivers/new"><Plus size={17} /><span>Tambah driver</span></Link>}
+        </div>
       </header>
 
-      <div style={{ padding: "20px 16px 40px" }}>
-        {/* KPI Section */}
-        <section style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-          gap: 12,
-          marginBottom: 20,
-        }}>
-          <article style={{
-            background: "#fff",
-            border: "1px solid #e0e0e0",
-            borderRadius: 4,
-            padding: "12px 16px",
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 10,
-            minHeight: 80,
-          }}>
-            <div style={{ width: 32, height: 32, borderRadius: 50, background: "#eaf2ff", display: "grid", placeItems: "center" }}>
-              <svg
-                width={20}
-                height={20}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path d="M17 21v5" />
-                <path d="M21 17l-4-4-5-5" />
-                <path d="M5 17v5h14" />
-              </svg>
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, color: "#62728A", marginBottom: 4 }}>Total Driver</div>
-              <div style={{ fontSize: 34, color: "#1d2b40", fontVariantNumeric: "tabular-nums", lineHeight: 1.1 }}>
-                {stats.total}
-              </div>
-              <div style={{ fontSize: 12, color: "#8693a3" }}>unit</div>
-            </div>
-          </article>
+      <section className="drivers-stats" aria-label="Ringkasan driver">
+        <article className="drivers-stat"><span className="drivers-stat-icon drivers-stat-blue"><Users size={17} /></span><div><span>Total driver</span><strong>{stats.total}</strong><small>Seluruh tenant</small></div></article>
+        <article className="drivers-stat"><span className="drivers-stat-icon drivers-stat-green"><CheckCircle2 size={17} /></span><div><span>Aktif</span><strong>{stats.active}</strong><small>Siap bertugas</small></div></article>
+        <article className="drivers-stat"><span className="drivers-stat-icon drivers-stat-amber"><ShieldAlert size={17} /></span><div><span>Perhatian</span><strong>{stats.suspended}</strong><small>Ditangguhkan</small></div></article>
+        <article className="drivers-stat"><span className="drivers-stat-icon drivers-stat-slate"><Ban size={17} /></span><div><span>Nonaktif</span><strong>{stats.inactive}</strong><small>Tidak beroperasi</small></div></article>
+      </section>
 
-          <article style={{
-            background: "#fff",
-            border: "1px solid #e0e0e0",
-            borderRadius: 4,
-            padding: "12px 16px",
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 10,
-            minHeight: 80,
-          }}>
-            <div style={{ width: 32, height: 32, borderRadius: 50, background: "#e8f4f0", display: "grid", placeItems: "center" }}>
-              <svg
-                width={20}
-                height={20}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path d="M17 21v5" />
-                <path d="M21 17l-4-4-5-5" />
-                <path d="M5 17v5h14" />
-              </svg>
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, color: "#62728A", marginBottom: 4 }}>Aktif</div>
-              <div style={{ fontSize: 34, color: "#1d2b40", fontVariantNumeric: "tabular-nums", lineHeight: 1.1 }}>
-                {stats.aktif}
-              </div>
-              <div style={{ fontSize: 12, color: "#8693a3" }}>beroperasi</div>
-            </div>
-          </article>
+      <section className="drivers-panel">
+        <div className="drivers-panel-heading"><div><h2>Semua driver</h2><p>{total.toLocaleString("id-ID")} profil lintas tenant</p></div><span className="drivers-page-count">{filteredRows.length} ditampilkan</span></div>
+        <div className="drivers-toolbar">
+          <label className="drivers-search"><Search size={17} /><input aria-label="Cari driver" placeholder="Cari nama, kode, nomor telepon…" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /><kbd>/</kbd></label>
+          <div className="drivers-filters" role="group" aria-label="Filter status driver">
+            {chips.map((chip) => <button key={chip.value} type="button" className={`drivers-filter${statusFilter === chip.value ? " is-selected" : ""}`} aria-pressed={statusFilter === chip.value} onClick={() => { setStatusFilter(chip.value); setPage(1); }}>{chip.label}{chip.value === "ALL" && <span>{total}</span>}</button>)}
+          </div>
+        </div>
 
-          <article style={{
-            background: "#fff",
-            border: "1px solid #e0e0e0",
-            borderRadius: 4,
-            padding: "12px 16px",
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 10,
-            minHeight: 80,
-          }}>
-            <div style={{ width: 32, height: 32, borderRadius: 50, background: "#fffef7", display: "grid", placeItems: "center" }}>
-              <svg
-                width={20}
-                height={20}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path d="M22 11.08V12a10 10 0 1 1-5.94-3.17" />
-                <path d="M22 4L12 4 5 11.08" />
-              </svg>
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, color: "#62728A", marginBottom: 4 }}>Perhatian</div>
-              <div style={{ fontSize: 34, color: "#1d2b40", fontVariantNumeric: "tabular-nums", lineHeight: 1.1 }}>
-                {stats.perhatian}
-              </div>
-              <div style={{ fontSize: 12, color: "#8693a3", marginTop: 1 }}>tindak lanjut</div>
-            </div>
-          </article>
+        {error && <div className="drivers-error" role="alert"><span>{error}</span><button onClick={() => void load()}>Coba lagi</button></div>}
+        {loading && <div className="drivers-loading" role="status"><span className="session-spinner" />Memuat daftar driver…</div>}
+        {!loading && !error && filteredRows.length === 0 && <div className="drivers-empty"><span className="drivers-empty-icon"><UserRound size={22} /></span><h3>{rows.length ? "Driver tidak ditemukan" : "Belum ada driver"}</h3><p>{rows.length ? "Coba kata kunci atau status yang berbeda." : "Driver akan muncul di sini setelah terdaftar pada tenant."}</p>{!rows.length && canAdd && <Link className="drivers-add" href="/drivers/new"><Plus size={17} />Tambah driver</Link>}</div>}
+        {!loading && !error && filteredRows.length > 0 && <div className="drivers-list">{filteredRows.map((row) => <DriverCard key={row.id} row={row} onView={(id) => router.push(`/drivers/${id}`)} hasManagePermission={canManage} />)}</div>}
 
-          <article style={{
-            background: "#fff",
-            border: "1px solid #e0e0e0",
-            borderRadius: 4,
-            padding: "12px 16px",
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 10,
-            minHeight: 80,
-          }}>
-            <div style={{ width: 32, height: 32, borderRadius: 50, background: "#fafafa", display: "grid", placeItems: "center" }}>
-              <svg
-                width={20}
-                height={20}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <circle cx="9" cy="21" r="1" />
-                <circle cx="20" cy="21" r="1" />
-              </svg>
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, color: "#62728A", marginBottom: 4 }}>Nonaktif</div>
-              <div style={{ fontSize: 34, color: "#1d2b40", fontVariantNumeric: "tabular-nums", lineHeight: 1.1 }}>
-                {stats.nonaktif}
-              </div>
-              <div style={{ fontSize: 12, color: "#8693a3" }}>tidak beroperasi</div>
-            </div>
-          </article>
-        </section>
-
-        {/* Table Area with DriverCards */}
-        <section>
-          {loading && (
-            <div style={{
-              minHeight: 200,
-              background: "#f9fafb",
-              borderRadius: 8,
-              marginBottom: 16,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#62728A",
-              fontSize: 14,
-            }}>
-              Memuat data Driver...
-            </div>
-          )}
-
-          {error && (
-            <div style={{
-              background: "#fef2f2",
-              border: "1px solid #fecaca",
-              borderRadius: 8,
-              padding: 16,
-              color: "#b00020",
-              fontSize: 14,
-            }}>
-              <strong>Error:</strong> {error}
-            </div>
-          )}
-
-          {!loading && !error && rows.length === 0 && (
-            <div style={{
-              textAlign: "center",
-              padding: 40,
-              color: "#62728A",
-            }}>
-              <svg
-                width={80}
-                height={80}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={1.5}
-                style={{ marginTop: "0", marginBottom: "12" }}
-              >
-                <circle cx="9" cy="21" r="1" />
-                <circle cx="20" cy="21" r="1" />
-              </svg>
-              <div style={{ marginTop: 12, fontSize: 24, color: "#1d2b40" }}>Tidak ada Driver</div>
-              <div style={{ marginTop: 8, fontSize: 14, color: "#62728A" }}>
-                Tambah driver pertama untuk memulai pelacakan
-              </div>
-              <br />
-              <button
-                style={{
-                  marginTop: 16,
-                  padding: "10px 24px",
-                  background: "#1677FF",
-                  color: "#FFFFFF",
-                  border: "none",
-                  borderRadius: 6,
-                  fontSize: 14,
-                  fontWeight: 500,
-                  cursor: "pointer",
-                  transition: "background 0.15s",
-                }}
-                onMouseOver={(e) => { e.currentTarget.style.background = "#1a7bff"; }}
-                onMouseOut={(e) => { e.currentTarget.style.background = "#1677FF"; }}
-              >
-                Tambah Driver
-              </button>
-            </div>
-          )}
-
-          {hasFeature(user as any, "drivers") ? (
-              <p>Driver actived</p>
-            ) : (
-              <p>Driver not actived</p>
-            )}
-
-          {!loading && !error && page > 1 && (
-            <div style={{
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              padding: "8px 0",
-              color: "#62728A",
-              fontSize: 12,
-            }}>
-              Halaman {page}
-              <span style={{ margin: "0 8px" }}>/</span>
-              {/* totalPages */}
-            </div>
-          )}
-        </section>
-      </div>
-
-      <BottomNavBar onSectionChange={() => { }} hasFeature={(feature: string) => hasFeature(user as any, feature as "drivers" | "vehicles")} />
+        {!loading && !error && totalPages > 1 && <div className="drivers-pagination"><span>Halaman <strong>{page}</strong> dari <strong>{totalPages}</strong></span><div><button aria-label="Halaman sebelumnya" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}><ChevronLeft size={17} />Sebelumnya</button><button aria-label="Halaman berikutnya" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>Berikutnya<ChevronRight size={17} /></button></div></div>}
+      </section>
+      <nav className="drivers-mobile-nav" aria-label="Navigasi cepat"><Link href="/"><UserRound size={17} /><span>Beranda</span></Link><Link href="/drivers" aria-current="page"><Users size={17} /><span>Driver</span></Link><Link href="/vehicles"><Truck size={17} /><span>Kendaraan</span></Link></nav>
     </main>
   );
 }

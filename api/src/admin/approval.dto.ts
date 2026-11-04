@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer';
 import { SppgStatus } from '@prisma/client';
-import { IsEnum, IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
 
 export enum ApprovalDecisionInput {
   APPROVED = 'APPROVED',
@@ -18,6 +18,7 @@ export class CreateSppgStatusApprovalDto {
 
   @IsString()
   @Length(3, 2000)
+  @Matches(/\S/)
   reason!: string;
 }
 
@@ -27,6 +28,7 @@ export class DecideApprovalDto {
 
   @IsString()
   @Length(3, 2000)
+  @Matches(/\S/)
   reason!: string;
 }
 

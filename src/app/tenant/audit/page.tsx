@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import { apiBaseUrl, getCurrentSession, type SessionUser } from "@/lib/api";
+import { apiBaseUrl, apiFetchUrl, getCurrentSession, type SessionUser } from "@/lib/api";
 import { TenantSidebar } from "@/components/tenant-sidebar";
 import { HeaderAccount } from "@/components/account-menu";
 
@@ -22,7 +22,7 @@ export default function TenantAuditPage() {
         const session = await getCurrentSession();
         if (!active) return;
         setUser(session);
-        const res = await fetch(`${apiBaseUrl}/tenant/audit`, { credentials: "include" });
+        const res = await apiFetchUrl(`${apiBaseUrl}/tenant/audit`, { credentials: "include" });
         if (!res.ok) throw new Error("Gagal memuat audit");
         const data = await res.json();
         if (!active) return;

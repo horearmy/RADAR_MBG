@@ -22,7 +22,7 @@ import {
   Users,
   Utensils,
 } from "lucide-react";
-import { getCurrentSession, hasPermission, hasPlatformPermission, isPlatformAdmin, type SessionUser } from "@/lib/api";
+import { getCurrentSession, getSelectedTenantId, hasPermission, hasPlatformPermission, isPlatformAdmin, setSelectedTenantId, type SessionUser } from "@/lib/api";
 
 type NavItem = { label: string; icon: typeof LayoutDashboard; href?: string; permissions?: string[] };
 
@@ -56,13 +56,30 @@ export function AppSidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<SessionUser | null>(null);
+  const [selectedTenantId, setSelectedTenantIdState] = useState("");
 
   useEffect(() => {
     let active = true;
     void (async () => {
       try {
         const current = await getCurrentSession();
-        if (active) setUser(current);
+        if (active) {
+          setUser(current);
+          const memberships = current.tenantMemberships ?? [];
+          const savedTenantId = getSelectedTenantId();
+          const validTenantId = memberships.some((membership) => membership.tenantId === savedTenantId) ? savedTenantId : "";
+          if (validTenantId) setSelectedTenantIdState(validTenantId);
+          else if (memberships.length === 1) {
+            setSelectedTenantId(memberships[0].tenantId);
+            setSelectedTenantIdState(memberships[0].tenantId);
+          } else {
+            setSelectedTenantId(null);
+          }
+          if (current.roles.some((role) => role.isGlobal)) {
+            setSelectedTenantId(null);
+            setSelectedTenantIdState("");
+          }
+        }
       } catch {
         if (active) router.replace("/login?expired=1");
       }
@@ -73,12 +90,13 @@ export function AppSidebar() {
   if (!user) return <aside className="sidebar" aria-busy="true" />;
 
   const canReadAudit = hasPlatformPermission(user, "audit:read");
-  const canManageUsers = hasPlatformPermission(user, "admin:manage_users");
-  const canAccessApprovals = hasPlatformPermission(user, "sppg:manage") || hasPlatformPermission(user, "approval:review");
+  const canManageUsers = hasPermission(user, "admin:manage_users");
+  const canAccessApprovals = hasPermission(user, "sppg:manage") || hasPermission(user, "approval:review");
   const canDrive = hasPermission(user, "trip:start") && hasPermission(user, "trip:location:update");
   const canAccessGeofences = hasPlatformPermission(user, "geofence:read") || hasPlatformPermission(user, "geofence:manage");
   const canManageAdmin = hasPlatformPermission(user, "admin:manage_users") || hasPlatformPermission(user, "admin:manage_roles");
   const platformAdmin = isPlatformAdmin(user);
+  const memberships = user.tenantMemberships ?? [];
 
   const canAccessNav = (item: NavItem) => !item.permissions || item.permissions.some((permission) => hasPermission(user, permission));
 
@@ -109,10 +127,15 @@ export function AppSidebar() {
           </Link>
         ) : null}
         {platformAdmin ? (
-          <Link className={`nav-item nav-link${isNavActive("/tenant", pathname) ? " nav-active" : ""}`} href="/tenant">
+          <Link className={`nav-item nav-link${isNavActive("/platform", pathname) ? " nav-active" : ""}`} href="/platform">
             <Building2 size={17} strokeWidth={1.8} /><span>Tenant</span>
           </Link>
         ) : null}
+        {memberships.length > 0 && (
+          <Link className={`nav-item nav-link${isNavActive("/tenant", pathname) ? " nav-active" : ""}`} href="/tenant">
+            <Building2 size={17} strokeWidth={1.8} /><span>Workspace Tenant</span>
+          </Link>
+        )}
         {management.filter(canAccessNav).map(({ label, icon: Icon, href }) => {
           if (!href) return null;
           return (
@@ -123,12 +146,30 @@ export function AppSidebar() {
         })}
         {/* Tautan dipindahkan ke halaman utama */}
         {canReadAudit && <Link className="nav-item nav-link" href="/audit"><Activity size={17} strokeWidth={1.8} /><span>Audit explorer</span></Link>}
-        {canManageUsers && <Link className="nav-item nav-link" href="/users"><Users size={17} strokeWidth={1.8} /><span>Administrasi akun</span></Link>}
+        {(canManageUsers || canAccessApprovals) && <Link className={`nav-item nav-link${isNavActive("/user-management", pathname) ? " nav-active" : ""}`} href="/user-management"><Users size={17} strokeWidth={1.8} /><span>Manajemen Pengguna</span></Link>}
         {canAccessGeofences && <Link className="nav-item nav-link" href="/geofences"><MapPinned size={17} strokeWidth={1.8} /><span>Geofence</span></Link>}
         {user.mfaEnabled === false && <Link className="nav-item nav-link" href="/security/mfa"><ShieldCheck size={17} strokeWidth={1.8} /><span>Daftarkan MFA</span></Link>}
-        {canAccessApprovals && <Link className="nav-item nav-link" href="/approvals"><ClipboardCheck size={17} strokeWidth={1.8} /><span>Persetujuan</span></Link>}
         {canDrive && <Link className={`nav-item nav-link${isNavActive("/driver", pathname) ? " nav-active" : ""}`} href="/driver"><Navigation size={17} strokeWidth={1.8} /><span>Mode pengemudi</span></Link>}
       </nav>
+
+      {memberships.length > 1 && (
+        <label className="tenant-context-switcher">
+          <span>AKTIF TENANT</span>
+          <select
+            aria-label="Pilih tenant aktif"
+            value={selectedTenantId}
+            onChange={(event) => {
+              const nextTenantId = event.target.value;
+              setSelectedTenantId(nextTenantId || null);
+              setSelectedTenantIdState(nextTenantId);
+              window.location.assign(pathname);
+            }}
+          >
+            <option value="">Pilih tenant…</option>
+            {memberships.map((membership) => <option key={membership.tenantId} value={membership.tenantId}>{membership.tenantName} · {membership.tenantCode}</option>)}
+          </select>
+        </label>
+      )}
 
       <div className="sidebar-bottom">
         <div className="sidebar-help"><div className="help-icon"><Activity size={17} /></div><div><strong>Data operasional</strong><span>Terhubung ke API RADAR MBG</span></div></div>

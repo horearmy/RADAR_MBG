@@ -36,6 +36,7 @@ export class ProofService {
     principal: SessionPrincipal,
     file: UploadedProofFile | undefined,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
     if (!file?.buffer?.length) {
       throw new BadRequestException({ code: 'PROOF_FILE_REQUIRED' });
@@ -49,7 +50,7 @@ export class ProofService {
       throw new BadRequestException({ code: 'PROOF_FILE_TYPE_UNSUPPORTED' });
     }
 
-    const trip = await this.findScopedTrip(tripId, principal);
+    const trip = await this.findScopedTrip(tripId, principal, tenantContext);
     const record = await this.prisma.db.deliveryRecord.findFirst({
       where: { tripId, isCurrent: true },
       orderBy: { version: 'desc' },
@@ -144,8 +145,8 @@ export class ProofService {
     }
   }
 
-  async listProofs(tripId: string, principal: SessionPrincipal, requestId: string) {
-    await this.findScopedTrip(tripId, principal);
+  async listProofs(tripId: string, principal: SessionPrincipal, requestId: string, tenantContext?: { tenantId: string } | null) {
+    await this.findScopedTrip(tripId, principal, tenantContext);
     const proofs = await this.prisma.db.proofOfDelivery.findMany({
       where: { deliveryRecord: { tripId } },
       orderBy: { uploadedAt: 'desc' },
@@ -161,8 +162,9 @@ export class ProofService {
     proofId: string,
     principal: SessionPrincipal,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
-    await this.findScopedTrip(tripId, principal);
+    await this.findScopedTrip(tripId, principal, tenantContext);
     const proof = await this.prisma.db.proofOfDelivery.findFirst({
       where: { id: proofId, deliveryRecord: { tripId } },
     });
@@ -202,11 +204,12 @@ export class ProofService {
     });
   }
 
-  private async findScopedTrip(tripId: string, principal: SessionPrincipal) {
+  private async findScopedTrip(tripId: string, principal: SessionPrincipal, tenantContext?: { tenantId: string } | null) {
     const trip = await this.prisma.db.trip.findUnique({
       where: { id: tripId },
       select: {
         id: true,
+        tenantId: true,
         organizationId: true,
         sppgId: true,
         deliveryLocationId: true,
@@ -215,6 +218,9 @@ export class ProofService {
       },
     });
     if (!trip) throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+    if (trip.tenantId !== (tenantContext?.tenantId ?? null)) {
+      throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+    }
 
     const [source, destination] = await Promise.all([
       this.prisma.db.sppg.findUnique({

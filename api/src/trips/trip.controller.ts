@@ -17,6 +17,7 @@ import { RequirePermissions } from '../auth/permissions.js';
 import type { AuthenticatedRequest } from '../auth/session.guard.js';
 import { PermissionGuard } from '../auth/permission.guard.js';
 import { SessionGuard } from '../auth/session.guard.js';
+import { TenantGuard } from '../auth/tenant.guard.js';
 import {
   CancelTripDto,
   ChangeDestinationDto,
@@ -31,7 +32,7 @@ import { GpsService } from './gps.service.js';
 import { TripService } from './trip.service.js';
 
 @Controller('trips')
-@UseGuards(SessionGuard, PermissionGuard)
+@UseGuards(SessionGuard, TenantGuard, PermissionGuard)
 export class TripController {
   constructor(
     private readonly trips: TripService,
@@ -65,6 +66,7 @@ export class TripController {
       request.principal!,
       this.requireIdempotencyKey(idempotencyKey),
       this.requestId(request),
+      request.tenantContext ?? null,
     );
   }
 
@@ -204,6 +206,7 @@ export class TripController {
       input,
       this.requireIdempotencyKey(idempotencyKey),
       this.requestId(request),
+      request.tenantContext ?? null,
     );
   }
 
@@ -214,7 +217,7 @@ export class TripController {
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: TrackQueryDto,
   ) {
-    return this.gps.getTrack(id, request.principal!, query);
+    return this.gps.getTrack(id, request.principal!, query, request.tenantContext ?? null);
   }
 
   private requireIdempotencyKey(value?: string) {

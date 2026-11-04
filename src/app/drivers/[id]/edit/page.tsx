@@ -3,9 +3,9 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Save } from "lucide-react";
-import { getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
+import { getCurrentSession, hasPermission, apiBaseUrl, apiFetchUrl, type SessionUser } from "@/lib/api";
 
-const apiBase = process.env.NEXT_PUBLIC_RADAR_API_URL ?? "http://localhost:4000/api/v1";
+const apiBase = apiBaseUrl;
 
 function DriverEditContent() {
   const params = useParams<{ id: string }>();
@@ -24,11 +24,9 @@ function DriverEditContent() {
     try {
       const session = await getCurrentSession().catch(() => null);
       if (session) setUser(session);
-      const res = await fetch(`${apiBase}/admin/drivers?page=1&pageSize=100`, { credentials: "include", cache: "no-store" });
+      const res = await apiFetchUrl(`${apiBase}/admin/drivers/${encodeURIComponent(params.id)}`, { credentials: "include", cache: "no-store" });
       if (!res.ok) throw new Error("Gagal memuat driver");
-      const json = await res.json();
-      const found = (json.data ?? []).find((x: any) => x.id === params.id);
-      if (!found) throw new Error("Driver tidak ditemukan");
+      const found = await res.json();
       setDriver(found);
       setForm({ name: found.name ?? "", phone: found.phone ?? "", status: found.status ?? "ACTIVE", reason: "" });
     } catch (err) {
@@ -50,9 +48,9 @@ function DriverEditContent() {
     setSaving(true);
     setError(null);
     try {
-      const csrfRes = await fetch(`${apiBase}/auth/csrf`, { credentials: "include", cache: "no-store" });
+      const csrfRes = await apiFetchUrl(`${apiBase}/auth/csrf`, { credentials: "include", cache: "no-store" });
       const { csrfToken } = (await csrfRes.json()) as { csrfToken?: string };
-      const res = await fetch(`${apiBase}/admin/drivers/${params.id}`, {
+      const res = await apiFetchUrl(`${apiBase}/admin/drivers/${params.id}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json", ...(csrfToken ? { "x-csrf-token": csrfToken } : {}) },

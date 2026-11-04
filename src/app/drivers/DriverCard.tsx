@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { MapPin } from "lucide-react";
+import { ArrowUpRight, Edit, MapPin, Phone, UserRound } from "lucide-react";
 
 type DriverRow = {
   id: string;
@@ -12,6 +12,9 @@ type DriverRow = {
   region?: { name: string } | null;
   organization?: { name: string } | null;
   updatedAt: string;
+  phone?: string | null;
+  sppg?: { name: string; code: string } | null;
+  tenant?: { tenantCode: string; name: string } | null;
 };
 
 type DriverCardProps = {
@@ -20,86 +23,36 @@ type DriverCardProps = {
   hasManagePermission: boolean;
 };
 
+function statusLabel(status: string) {
+  switch (status.toUpperCase()) {
+    case "ACTIVE": return "Aktif";
+    case "SUSPENDED": return "Perhatian";
+    case "INACTIVE": return "Nonaktif";
+    case "ARCHIVED": return "Diarsipkan";
+    default: return status;
+  }
+}
+
 export function DriverCard({ row, onView, hasManagePermission }: DriverCardProps) {
+  const initials = row.name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
+
   return (
-    <div
-      className="driver-card"
-      onMouseEnter={() => {}}
-      onMouseLeave={() => {}}
-      onClick={() => onView(row.id)}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 12, width: "100%" }}>
-        <div style={{ flex: "1", minWidth: 0 }}>
-          <div style={{ fontSize: 14, color: "#1d2b40", fontWeight: 500 }}>
-            {row.name}
-          </div>
-          <div style={{ fontSize: 12, color: "#62728a", marginTop: 2 }}>
-            {row.code ?? "-"}
-          </div>
-        </div>
-
-        <div style={{ flex: "0 0 120px", fontSize: 12, color: "#62728a" }}>
-          <div>{row.address ?? "Koordinat belum diisi"}</div>
-          {row.latitude && row.longitude && (
-            <div style={{ marginTop: 1, fontSize: 11, color: "#62728a" }}>
-              {row.latitude}, {row.longitude}
-            </div>
-          )}
-        </div>
-
-        <div style={{ flex: "0 0 100px", fontSize: 12, color: "#62728a" }}>
-          {row.region?.name ?? "-"}
-        </div>
-        <div style={{ flex: "0 0 120px", fontSize: 12, color: "#62728a" }}>
-          {row.organization?.name ?? "-"}
-        </div>
+    <article className="drivers-card">
+      <button className="drivers-card-main" type="button" onClick={() => onView(row.id)} aria-label={`Lihat detail ${row.name}`}>
+        <span className="drivers-avatar">{initials || <UserRound size={19} />}</span>
+        <span className="drivers-identity"><strong>{row.name}</strong><span><code>{row.code}</code><i>·</i>{row.sppg?.code ?? "Driver"}<i>·</i>{row.tenant?.tenantCode ?? "Tenant"}</span></span>
+        <span className={`drivers-status ${`drivers-status-${row.status.toLowerCase()}`}`}><i />{statusLabel(row.status)}</span>
+        <ArrowUpRight className="drivers-card-arrow" size={17} />
+      </button>
+      <div className="drivers-card-meta">
+        <span><MapPin size={14} />{row.sppg?.name ?? row.region?.name ?? row.organization?.name ?? "Lokasi belum ditentukan"}{row.tenant?.name ? ` · ${row.tenant.name}` : ""}</span>
+        {row.phone ? <a href={`tel:${row.phone}`} onClick={(event) => event.stopPropagation()}><Phone size={14} />{row.phone}</a> : <span className="drivers-meta-muted"><Phone size={14} />Nomor belum tersedia</span>}
+        {row.address && <span className="drivers-address">{row.address}</span>}
+        <span className="drivers-card-actions">
+          <Link href={`/drivers/${row.id}`} aria-label={`Detail ${row.name}`}><ArrowUpRight size={15} />Detail</Link>
+          {hasManagePermission && <Link href={`/drivers/${row.id}/edit`} aria-label={`Edit ${row.name}`}><Edit size={14} />Edit</Link>}
+        </span>
       </div>
-
-      <div style={{ marginTop: 6, display: "flex", justifyContent: "flex-end", gap: 8 }}>
-        <Link
-          className="icon-btn"
-          href={`/drivers/${row.id}`}
-          title="Detail"
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 50,
-            background: "#f9fbfd",
-            display: "grid",
-            placeItems: "center",
-            color: "#4d7bab",
-            fontSize: 18,
-            transition: "background 0.15s",
-          }}
-          onMouseOver={(e) => { e.currentTarget.style.background = "#e8f0fa"; }}
-          onMouseOut={(e) => { e.currentTarget.style.background = "#f9fbfd"; }}
-        >
-          <MapPin size={16} />
-        </Link>
-
-        {hasManagePermission && (
-          <Link
-            className="icon-btn"
-            href={`/drivers/${row.id}/edit`}
-            title="Edit"
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 50,
-              background: "#f9fbfd",
-              display: "grid",
-              placeItems: "center",
-              color: "#4d7bab",
-              fontSize: 18,
-              transition: "background 0.15s",
-            }}
-            onMouseOver={(e) => { e.currentTarget.style.background = "#e8f0fa"; }}
-            onMouseOut={(e) => { e.currentTarget.style.background = "#f9fbfd"; }}
-          >
-            <MapPin size={16} />
-          </Link>
-        )}
-      </div>
-    </div>
+    </article>
   );
 }

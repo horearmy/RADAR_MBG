@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Building2, ChevronRight, Pencil, RefreshCw, X } from "lucide-react";
 import { HeaderAccount } from "@/components/account-menu";
 import { TenantSidebar } from "@/components/tenant-sidebar";
-import { apiBaseUrl, getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
+import { apiBaseUrl, apiFetchUrl, getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
 
 type TenantProfile = {
   id: string;
@@ -51,7 +51,7 @@ export default function TenantProfilePage() {
   const loadProfile = async (silent: boolean) => {
     if (!silent) setSessionState("checking");
     try {
-      const res = await fetch(`${apiBaseUrl}/tenant/me`, { credentials: "include" });
+      const res = await apiFetchUrl(`${apiBaseUrl}/tenant/me`, { credentials: "include" });
       if (!res.ok) throw new Error("Gagal memuat profil");
       const data = await res.json();
       setMe(data);
@@ -108,9 +108,9 @@ export default function TenantProfilePage() {
     setSubmitting(true);
     setFormError(null);
     try {
-      const csrfRes = await fetch(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
+      const csrfRes = await apiFetchUrl(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
       const { csrfToken } = await csrfRes.json();
-      const res = await fetch(`${apiBaseUrl}/tenant/profile`, {
+      const res = await apiFetchUrl(`${apiBaseUrl}/tenant/profile`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json", "x-csrf-token": csrfToken },

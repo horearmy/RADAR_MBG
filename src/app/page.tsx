@@ -222,9 +222,18 @@ export default function Home() {
         router.replace("/login?expired=1");
         return;
       }
+      if (error instanceof Error && error.message === "REQUEST_FAILED_403") {
+        setSessionState("forbidden");
+        return;
+      }
       if (silent) {
         setRefreshError("Pembaruan otomatis gagal. Data terakhir tetap ditampilkan.");
       } else {
+        setRefreshError(
+          error instanceof Error && error.message.startsWith("REQUEST_FAILED_")
+            ? error.message
+            : "Gangguan saat memuat data operasional.",
+        );
         setSessionState("data-error");
       }
     }
@@ -250,8 +259,12 @@ export default function Home() {
       if (!active) return;
       setSessionUser(user);
 
-      if (!hasPlatformPermission(user, "trip:read") && !hasPlatformPermission(user, "exception:read")) {
+      if (!hasPermission(user, "trip:read") && !hasPermission(user, "exception:read")) {
         if (user.tenantRole) {
+          router.replace(user.tenantRole === "TENANT_DRIVER" ? "/radarapp" : "/tenant");
+          return;
+        }
+        if (user.tenantMemberships?.length) {
           router.replace("/tenant");
           return;
         }
@@ -388,7 +401,12 @@ export default function Home() {
   }
 
   if (sessionState === "data-error" || !dashboard) {
-    return <main className="session-state"><span className="session-error-mark">!</span><h1>Data operasional gagal dimuat</h1><p>Sesi valid, tetapi API trip/exception tidak merespons. Periksa koneksi API lalu coba lagi.</p><button className="session-retry" onClick={() => window.location.reload()}>Coba lagi</button></main>;
+    const errorMessage = refreshError?.startsWith("REQUEST_FAILED_")
+      ? `API menolak atau gagal memproses permintaan (${refreshError.replace("REQUEST_FAILED_", "HTTP ")}).`
+      : refreshError
+        ? `API tidak dapat memuat data operasional (${refreshError}).`
+        : "API tidak dapat memuat data operasional. Periksa koneksi API lalu coba lagi.";
+    return <main className="session-state"><span className="session-error-mark">!</span><h1>Data operasional gagal dimuat</h1><p>{errorMessage}</p><button className="session-retry" onClick={() => void handleRefresh(false)}>Coba lagi</button></main>;
   }
 
   const trips = dashboard.trips;

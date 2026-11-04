@@ -35,8 +35,8 @@ export class UserAdminController {
 
   @Get('users')
   @RequirePermissions('admin:manage_users')
-  listUsers(@Query() query: ListUsersDto) {
-    return this.users.listUsers(query);
+  listUsers(@Req() request: AuthenticatedRequest, @Query() query: ListUsersDto) {
+    return this.users.listUsers(request.principal!, query);
   }
 
   @Get('roles')

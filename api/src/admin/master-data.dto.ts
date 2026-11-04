@@ -17,6 +17,10 @@ import { DriverStatus, SppgStatus, VehicleStatus } from '@prisma/client';
 
 export class MasterDataListDto {
   @IsOptional()
+  @IsEnum(DriverStatus)
+  status?: DriverStatus;
+
+  @IsOptional()
   @IsUUID()
   organizationId?: string;
 

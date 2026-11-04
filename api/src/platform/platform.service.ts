@@ -7,7 +7,18 @@ export class PlatformService {
 
 
   async listTenants() {
-    return this.prisma.db.tenant.findMany({ orderBy: { createdAt: 'desc' }, take: 100 });
+    return this.prisma.db.tenant.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      select: {
+        id: true,
+        tenantCode: true,
+        name: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
   }
 
   async listGeofences(tenantId?: string, activeOnly?: boolean) {

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ChevronRight, Plus, RefreshCw, UserRound, X } from "lucide-react";
 import { HeaderAccount } from "@/components/account-menu";
 import { TenantSidebar } from "@/components/tenant-sidebar";
-import { apiBaseUrl, getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
+import { apiBaseUrl, apiFetchUrl, getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
 
 type FieldUser = {
   id: string;
@@ -45,7 +45,7 @@ export default function TenantRecipientsPage() {
   const loadUsers = async (silent: boolean) => {
     if (!silent) setSessionState("checking");
     try {
-      const res = await fetch(`${apiBaseUrl}/tenant/users`, { credentials: "include" });
+      const res = await apiFetchUrl(`${apiBaseUrl}/tenant/users`, { credentials: "include" });
       if (!res.ok) throw new Error("Gagal memuat pengguna");
       const data = await res.json();
       const raw = Array.isArray(data) ? data : data.data ?? [];
@@ -70,7 +70,7 @@ export default function TenantRecipientsPage() {
 
   const loadDrivers = async () => {
     try {
-      const res = await fetch(`${apiBaseUrl}/tenant/drivers`, { credentials: "include" });
+      const res = await apiFetchUrl(`${apiBaseUrl}/tenant/drivers`, { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
         setDrivers(Array.isArray(data) ? data : data.data ?? []);
@@ -115,9 +115,9 @@ export default function TenantRecipientsPage() {
     try {
       const code = `USR-${Date.now().toString(36).toUpperCase()}`;
       const username = form.username.trim() || code.toLowerCase();
-      const csrfRes = await fetch(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
+      const csrfRes = await apiFetchUrl(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
       const { csrfToken } = await csrfRes.json();
-      const res = await fetch(`${apiBaseUrl}/tenant/users`, {
+      const res = await apiFetchUrl(`${apiBaseUrl}/tenant/users`, {
         method: "POST",
         credentials: "include",
         headers: {

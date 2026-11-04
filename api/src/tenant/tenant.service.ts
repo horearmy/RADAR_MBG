@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
 import { EmailService } from './email.service.js';
 import type { FeaturesConfig } from './tenant-features.controller.js';
@@ -126,7 +126,7 @@ async getDeliveryLocation(tenantId: string, id: string) {
     const sppg = await this.prisma.db.sppg.findUnique({ where: { id: sppgId } });
     if (!sppg) throw new Error('SPPG_NOT_FOUND');
     const loc = await this.prisma.db.deliveryLocation.findFirst({
-      where: { id, organizationId: sppg.organizationId },
+      where: { id, tenantId },
     });
     if (!loc) throw new Error('LOCATION_NOT_FOUND');
     return loc;
@@ -137,7 +137,7 @@ async getDeliveryLocation(tenantId: string, id: string) {
     const sppg = await this.prisma.db.sppg.findUnique({ where: { id: sppgId } });
     if (!sppg) throw new Error('SPPG_NOT_FOUND');
     const loc = await this.prisma.db.deliveryLocation.findFirst({
-      where: { id, organizationId: sppg.organizationId },
+      where: { id, tenantId },
     });
     if (!loc) throw new Error('LOCATION_NOT_FOUND');
     return this.prisma.db.deliveryLocation.update({
@@ -157,7 +157,7 @@ async getDeliveryLocation(tenantId: string, id: string) {
     const sppg = await this.prisma.db.sppg.findUnique({ where: { id: sppgId } });
     if (!sppg) return [];
     return this.prisma.db.deliveryLocation.findMany({
-      where: { organizationId: sppg.organizationId, regionId: sppg.regionId },
+      where: { tenantId },
       select: { id: true, code: true, name: true, address: true, latitude: true, longitude: true, active: true },
       orderBy: { name: 'asc' },
     });
@@ -181,7 +181,7 @@ async getDeliveryLocation(tenantId: string, id: string) {
     const driver = await this.prisma.db.driver.findFirst({ where: { id: input.driverId, tenantId } });
     if (!driver) throw new Error('DRIVER_NOT_AVAILABLE');
 
-    const deliveryLocation = await this.prisma.db.deliveryLocation.findFirst({ where: { id: input.deliveryLocationId, organizationId: sppg.organizationId } });
+    const deliveryLocation = await this.prisma.db.deliveryLocation.findFirst({ where: { id: input.deliveryLocationId, tenantId } });
     if (!deliveryLocation) throw new Error('INVALID_DESTINATION');
 
     const trip = await this.prisma.db.$transaction(async (tx) => {
@@ -280,47 +280,43 @@ async getDeliveryLocation(tenantId: string, id: string) {
   }
 
   async bulkAssignRole(tenantId: string, userIds: string[], role: 'TENANT_ADMIN' | 'TENANT_OPERATOR' | 'TENANT_DRIVER' | 'TENANT_VIEWER') {
-    await this.prisma.db.tenantMembership.updateMany({
+    const result = await this.prisma.db.tenantMembership.updateMany({
       where: { tenantId, userId: { in: userIds } },
       data: { role },
     });
-    return { updated: userIds.length };
+    return { updated: result.count };
   }
 
   async bulkUpdateStatus(tenantId: string, userIds: string[], status: 'ACTIVE' | 'SUSPENDED' | 'INACTIVE') {
-    await this.prisma.db.tenantMembership.updateMany({
+    const result = await this.prisma.db.tenantMembership.updateMany({
       where: { tenantId, userId: { in: userIds } },
       data: { status },
     });
-    await this.prisma.db.user.updateMany({
-      where: { id: { in: userIds } },
-      data: { status },
-    });
-    return { updated: userIds.length };
+    return { updated: result.count };
   }
 
 async createUser(tenantId: string, username: string, displayName: string, password: string, role: 'TENANT_ADMIN' | 'TENANT_OPERATOR' | 'TENANT_DRIVER' | 'TENANT_VIEWER', driverId: string | undefined, invitedByUserId: string) {
     const passwordHash = await argon2.hash(password);
-    const user = await this.prisma.db.user.create({
-      data: {
-        username: username.trim().toLowerCase(),
-        displayName: displayName.trim() || username.trim(),
-        passwordHash,
-        status: 'ACTIVE',
-        passwordChangedAt: new Date(),
-        ...(driverId ? { driver: { connect: { id: driverId } } } : {}),
-      },
+    const membership = await this.prisma.db.$transaction(async (tx) => {
+      if (driverId && !await tx.driver.findFirst({ where: { id: driverId, tenantId }, select: { id: true } })) {
+        throw new NotFoundException({ code: 'DRIVER_NOT_FOUND' });
+      }
+      const user = await tx.user.create({
+        data: {
+          username: username.trim().toLowerCase(),
+          displayName: displayName.trim() || username.trim(),
+          passwordHash,
+          status: 'ACTIVE',
+          passwordChangedAt: new Date(),
+          ...(driverId ? { driver: { connect: { id: driverId } } } : {}),
+        },
+      });
+      const createdMembership = await tx.tenantMembership.create({
+        data: { tenantId, userId: user.id, role, status: 'ACTIVE', invitedByUserId },
+      });
+      return { user, membership: createdMembership };
     });
-    const membership = await this.prisma.db.tenantMembership.create({
-      data: {
-        tenantId,
-        userId: user.id,
-        role,
-        status: 'ACTIVE',
-        invitedByUserId,
-      },
-    });
-    return { user, membership };
+    return membership;
   }
 
 async getUser(tenantId: string, userId: string) {
@@ -369,30 +365,30 @@ async getUser(tenantId: string, userId: string) {
   }
 
   async inviteUser(tenantId: string, username: string, displayName: string, role: 'TENANT_ADMIN' | 'TENANT_OPERATOR' | 'TENANT_DRIVER' | 'TENANT_VIEWER', invitedByUserId: string, driverId?: string) {
-    const user = await this.prisma.db.user.create({
-      data: {
-        username,
-        displayName,
-        passwordHash: '',
-        status: 'INVITED',
-        ...(driverId ? { driver: { connect: { id: driverId } } } : {}),
-      },
-    });
-    const membership = await this.prisma.db.tenantMembership.create({
-      data: {
-        tenantId,
-        userId: user.id,
-        role,
-        status: 'INVITED',
-        invitedByUserId,
-      },
+    const created = await this.prisma.db.$transaction(async (tx) => {
+      if (driverId && !await tx.driver.findFirst({ where: { id: driverId, tenantId }, select: { id: true } })) {
+        throw new NotFoundException({ code: 'DRIVER_NOT_FOUND' });
+      }
+      const user = await tx.user.create({
+        data: {
+          username: username.trim().toLowerCase(),
+          displayName: displayName.trim(),
+          passwordHash: '',
+          status: 'INVITED',
+          ...(driverId ? { driver: { connect: { id: driverId } } } : {}),
+        },
+      });
+      const membership = await tx.tenantMembership.create({
+        data: { tenantId, userId: user.id, role, status: 'INVITED', invitedByUserId },
+      });
+      return { user, membership };
     });
     const rawToken = (await import('node:crypto')).randomBytes(32).toString('base64url');
     const { createHash } = await import('node:crypto');
     const tokenHash = createHash('sha256').update(rawToken).digest('hex');
     await this.prisma.db.accountAccessToken.create({
       data: {
-        userId: user.id,
+        userId: created.user.id,
         tokenHash,
         purpose: 'INVITATION',
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -400,7 +396,7 @@ async getUser(tenantId: string, userId: string) {
       },
     });
     if (username.includes('@')) await this.email.sendInvitation(username, rawToken);
-    return { user, membership, invitationToken: rawToken };
+    return { user: created.user, membership: created.membership, invitationToken: rawToken };
   }
 
   async acceptInvitation(token: string, passwordHash: string) {
@@ -409,26 +405,36 @@ async getUser(tenantId: string, userId: string) {
     const accessToken = await this.prisma.db.accountAccessToken.findFirst({
       where: { tokenHash, purpose: 'INVITATION', consumedAt: null, expiresAt: { gt: new Date() } },
     });
-    if (!accessToken) throw new Error('INVALID_OR_EXPIRED_TOKEN');
-    await this.prisma.db.user.update({
-      where: { id: accessToken.userId },
-      data: { passwordHash, status: 'ACTIVE', passwordChangedAt: new Date() },
-    });
-    await this.prisma.db.tenantMembership.updateMany({
-      where: { userId: accessToken.userId, status: 'INVITED' },
-      data: { status: 'ACTIVE' },
-    });
-    await this.prisma.db.accountAccessToken.update({
-      where: { id: accessToken.id },
-      data: { consumedAt: new Date() },
+    if (!accessToken) throw new NotFoundException({ code: 'INVALID_OR_EXPIRED_TOKEN' });
+    await this.prisma.db.$transaction(async (tx) => {
+      const invitedMemberships = await tx.tenantMembership.findMany({
+        where: { userId: accessToken.userId, status: 'INVITED' },
+        select: { id: true },
+      });
+      if (invitedMemberships.length !== 1) {
+        throw new ConflictException({ code: 'INVITATION_MEMBERSHIP_AMBIGUOUS' });
+      }
+      const consumed = await tx.accountAccessToken.updateMany({
+        where: { id: accessToken.id, consumedAt: null, expiresAt: { gt: new Date() } },
+        data: { consumedAt: new Date() },
+      });
+      if (consumed.count !== 1) throw new NotFoundException({ code: 'INVALID_OR_EXPIRED_TOKEN' });
+      await tx.user.update({
+        where: { id: accessToken.userId },
+        data: { passwordHash, status: 'ACTIVE', passwordChangedAt: new Date() },
+      });
+      await tx.tenantMembership.update({
+        where: { id: invitedMemberships[0].id },
+        data: { status: 'ACTIVE' },
+      });
     });
     return { ok: true };
   }
 
   async setTenantFeatures(tenantId: string, actorUserId: string, features: FeaturesConfig) {
     const featuresJson = features as any;
-    await this.prisma.db.user.updateMany({
-      where: { tenantMemberships: { some: { tenantId } } },
+    await this.prisma.db.tenant.update({
+      where: { id: tenantId },
       data: { features: featuresJson },
     });
     await this.prisma.db.auditLog.create({
@@ -436,7 +442,8 @@ async getUser(tenantId: string, userId: string) {
         tenantId,
         actorUserId,
         action: 'tenant.features.set',
-        entityType: 'user',
+        entityType: 'tenant',
+        entityId: tenantId,
         result: 'SUCCESS',
         reason: 'Fitur per tenant telah dikonfigurasi',
       },
