@@ -113,6 +113,7 @@ export function FleetMap({
   draftGeofence = null,
   pickGeofenceCenter = false,
   onPickGeofenceCenter,
+  onSearchResultSelect,
   focusPoint,
   polygonPoints = null,
   onPolygonPointClick,
@@ -138,6 +139,7 @@ export function FleetMap({
   draftGeofence?: GeofenceCircleDraft | null;
   pickGeofenceCenter?: boolean;
   onPickGeofenceCenter?: (longitude: number, latitude: number) => void;
+  onSearchResultSelect?: (latitude: number, longitude: number, displayName: string) => void;
   focusPoint?: { longitude: number; latitude: number } | null;
   polygonPoints?: Array<{ longitude: number; latitude: number }> | null;
   onPolygonPointClick?: (longitude: number, latitude: number) => void;
@@ -188,13 +190,15 @@ export function FleetMap({
     }
   }
 
-  function flyToResult(result: { lat: string; lon: string }) {
+  function flyToResult(result: { lat: string; lon: string; display_name?: string }) {
     const lat = Number(result.lat);
     const lon = Number(result.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
     mapRef.current?.flyTo({ center: [lon, lat], zoom: 14, duration: 800 });
+    onSearchResultSelect?.(lat, lon, result.display_name ?? "");
     setSearchResults([]);
-    setSearchQuery("");
+    // Pertahankan nama tempat yang dipilih agar pengguna tahu hasil pencarian sudah diterapkan.
+    setSearchQuery(result.display_name ?? `${lat.toFixed(5)}, ${lon.toFixed(5)}`);
   }
 
   useEffect(() => {

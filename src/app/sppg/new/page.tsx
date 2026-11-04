@@ -4,9 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Building2, FileText, MapPin, RefreshCw, Save } from "lucide-react";
 import { LocationPicker } from "@/components/location-picker";
-import { getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
+import { apiBaseUrl, getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
 
-const apiBase = process.env.NEXT_PUBLIC_RADAR_API_URL ?? "http://localhost:4000/api/v1";
+const apiBase = apiBaseUrl;
 
 const PROVINCES_URL = "https://www.emsifa.com/api-wilayah-indonesia/v2/provinces.json";
 const REGENCIES_URL = (provinceId: string) => `https://www.emsifa.com/api-wilayah-indonesia/v2/regencies/${provinceId}.json`;
@@ -300,7 +300,11 @@ export default function SppgNewPage() {
     setError(null);
     try {
       const csrfRes = await fetch(`${apiBase}/auth/csrf`, { credentials: "include", cache: "no-store" });
-      const { csrfToken } = (await csrfRes.json()) as { csrfToken?: string };
+      const csrfData = await csrfRes.json().catch(() => null) as { csrfToken?: string } | null;
+      if (!csrfRes.ok || !csrfData?.csrfToken) {
+        throw new Error("Gagal memulai sesi keamanan. Muat ulang halaman lalu coba lagi.");
+      }
+      const csrfToken = csrfData.csrfToken;
       const res = await fetch(`${apiBase}/admin/sppg`, {
         method: "POST",
         credentials: "include",
@@ -316,8 +320,14 @@ export default function SppgNewPage() {
           reason: form.reason.trim(),
         }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.message ?? json?.error?.message ?? "Gagal menyimpan");
+      const raw = await res.text();
+      let json: { message?: string; error?: { message?: string } } | null = null;
+      try {
+        json = raw ? JSON.parse(raw) : null;
+      } catch {
+        json = null;
+      }
+      if (!res.ok) throw new Error(json?.message ?? json?.error?.message ?? `Gagal menyimpan (HTTP ${res.status})`);
       setHasUnsavedChanges(false);
       setToast({ message: "SPPG berhasil disimpan", type: "success" });
       setTimeout(() => router.push("/sppg"), 1200);

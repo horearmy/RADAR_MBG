@@ -91,13 +91,17 @@ export class MasterDataService {
     const where: Prisma.SppgWhereInput = {
       ...(scope.global
         ? {}
-        : {
-            OR: [
-              { organizationId: { in: scope.directOrganizationIds } },
-              { regionId: { in: scope.regionIds } },
-              { id: { in: scope.sppgIds } },
-            ],
-          }),
+        : principal.tenantRole && scope.sppgIds.length
+          // Pengguna tenant hanya boleh melihat SPPG miliknya sendiri (legacySppgId),
+          // bukan seluruh SPPG yang kebetulan berada di organisasi/region yang sama.
+          ? { id: { in: scope.sppgIds } }
+          : {
+              OR: [
+                { organizationId: { in: scope.directOrganizationIds } },
+                { regionId: { in: scope.regionIds } },
+                { id: { in: scope.sppgIds } },
+              ],
+            }),
       ...(query.organizationId ? { organizationId: query.organizationId } : {}),
       ...(query.regionId ? { regionId: query.regionId } : {}),
       ...(query.sppgId ? { id: query.sppgId } : {}),
@@ -276,6 +280,38 @@ export class MasterDataService {
       this.prisma.db.driver.count({ where }),
     ]);
     return this.page(data, total, query);
+  }
+
+  async nextDriverCode(sppgId: string, principal: SessionPrincipal) {
+    const sppg = await this.prisma.db.sppg.findUnique({
+      where: { id: sppgId },
+      select: { id: true, organizationId: true, regionId: true, status: true },
+    });
+    if (!sppg || sppg.status === SppgStatus.SUSPENDED || sppg.status === SppgStatus.ARCHIVED) {
+      throw new NotFoundException({ code: 'SPPG_NOT_FOUND' });
+    }
+    this.assertSppgAccess(principal, sppg);
+
+    const existing = await this.prisma.db.driver.findMany({
+      where: { sppgId },
+      select: { code: true },
+    });
+    const used = new Set(existing.map((row) => row.code.toUpperCase()));
+    let maxSeq = 0;
+    for (const row of existing) {
+      const match = row.code.match(/^DRV[-_]?(\d+)$/i);
+      if (match) {
+        const value = Number(match[1]);
+        if (Number.isFinite(value) && value > maxSeq) maxSeq = value;
+      }
+    }
+    let seq = Math.max(1, maxSeq + 1);
+    let code = `DRV-${String(seq).padStart(3, '0')}`;
+    while (used.has(code.toUpperCase())) {
+      seq += 1;
+      code = `DRV-${String(seq).padStart(3, '0')}`;
+    }
+    return { code };
   }
 
   createOrganization(

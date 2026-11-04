@@ -26,9 +26,12 @@ import {
   Users,
   Utensils,
 } from "lucide-react";
-import { getCurrentSession, hasPermission, hasPlatformPermission, type SessionUser } from "@/lib/api";
+import { apiBaseUrl, getCurrentSession, hasPermission, hasPlatformPermission, type SessionUser } from "@/lib/api";
 
-const apiBase = process.env.NEXT_PUBLIC_RADAR_API_URL ?? "http://localhost:4000/api/v1";
+// Gunakan apiBaseUrl dari lib agar selalu berakhiran /api/v1. Sebelumnya halaman ini
+// memakai NEXT_PUBLIC_RADAR_API_URL mentah (tanpa /api/v1), sehingga request jatuh ke
+// rute Nest yang tidak ada dan mengembalikan HTML ("Cannot GET ...") -> JSON parse error.
+const apiBase = apiBaseUrl;
 
 type Sppg = {
   id: string;
@@ -87,13 +90,19 @@ export default function SppgPage() {
   async function loadRegistrations() {
     try {
       const res = await fetch(`${apiBase}/public/sppg-registrations`, { credentials: 'include', cache: 'no-store' });
-      if (res.ok) setRegistrations(await res.json());
+      if (!res.ok) return;
+      const data = await res.json().catch(() => null);
+      if (Array.isArray(data)) setRegistrations(data);
     } catch {}
   }
 
   async function regAction(id: string, action: 'approve' | 'reject' | 'request-revision' | 'provision') {
     const csrfRes = await fetch(`${apiBase}/auth/csrf`, { credentials: 'include' });
-    const csrfJson = await csrfRes.json();
+    const csrfJson = await csrfRes.json().catch(() => null) as { csrfToken?: string } | null;
+    if (!csrfRes.ok || !csrfJson?.csrfToken) {
+      alert('Gagal memulai sesi keamanan. Muat ulang halaman lalu coba lagi.');
+      return;
+    }
     const url = action === 'provision'
       ? `${apiBase}/public/sppg-registrations/${id}/provision`
       : `${apiBase}/public/sppg-registrations/${id}/${action}`;
@@ -132,8 +141,18 @@ export default function SppgPage() {
       params.set("pageSize", String(pageSize));
       if (statusFilter !== "ALL") params.set("status", statusFilter);
       const res = await fetch(`${apiBase}/admin/sppg?${params.toString()}`, { credentials: "include", cache: "no-store" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.message ?? "Gagal memuat data SPPG");
+      // Baca sebagai teks dulu supaya respons HTML (mis. halaman 404 Next/Nest) tidak
+      // memunculkan error mentah "Unexpected token '<'".
+      const raw = await res.text();
+      let json: { data?: Sppg[]; pagination?: { totalPages?: number }; message?: string } | null = null;
+      try {
+        json = raw ? JSON.parse(raw) : null;
+      } catch {
+        json = null;
+      }
+      if (!res.ok || !json) {
+        throw new Error(json?.message ?? `Gagal memuat data SPPG (HTTP ${res.status}). Pastikan API tersedia.`);
+      }
       setRows(json.data ?? []);
       setTotalPages(json.pagination?.totalPages ?? 1);
       void loadRegistrations();

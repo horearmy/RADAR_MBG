@@ -328,6 +328,7 @@ export type PlatformGeofence = {
   centerLatitude: number | null;
   centerLongitude: number | null;
   radiusMeters: number | null;
+  polygonCoordinates?: Array<{ latitude: number; longitude: number }> | null;
   minGpsAccuracyMeters: number;
   confirmationFixes: number;
   confirmationDurationSeconds: number;
@@ -346,11 +347,22 @@ export type TenantSummary = {
   createdAt: string;
 };
 
-const configuredBaseUrl = process.env.NEXT_PUBLIC_RADAR_API_URL;
+const configuredBaseUrl = process.env.NEXT_PUBLIC_RADAR_API_URL?.trim();
+const serverApiBase = process.env.RADAR_API_INTERNAL_URL?.trim() || "http://localhost:4000";
 const isBrowser = typeof window !== "undefined";
-const serverApiBase = process.env.RADAR_API_INTERNAL_URL ?? "http://localhost:4000";
-export const apiBaseUrl =
-  configuredBaseUrl ?? (isBrowser ? "/api/v1" : `${serverApiBase}/api/v1`);
+
+function withApiPrefix(baseUrl: string) {
+  const trimmed = baseUrl.replace(/\/+$/, "");
+  return /\/api\/v1$/.test(trimmed) ? trimmed : `${trimmed}/api/v1`;
+}
+
+// Browser: pakai URL API publik bila diisi, selain itu lewat proxy Next.js (/api/v1).
+// Server: pakai URL internal agar render server tidak bergantung pada origin browser.
+export const apiBaseUrl = configuredBaseUrl
+  ? withApiPrefix(configuredBaseUrl)
+  : isBrowser
+    ? "/api/v1"
+    : withApiPrefix(serverApiBase);
 
 export async function apiGet<T>(path: string): Promise<T> {
   if (!apiBaseUrl) throw new Error('API_NOT_CONFIGURED');

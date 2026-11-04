@@ -16,9 +16,9 @@ import {
   Wrench,
   Ban,
 } from "lucide-react";
-import { getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
+import { getCurrentSession, hasPermission, apiBaseUrl, type SessionUser } from "@/lib/api";
 
-const apiBase = process.env.NEXT_PUBLIC_RADAR_API_URL ?? "http://localhost:4000/api/v1";
+const apiBase = apiBaseUrl;
 
 type Vehicle = {
   id: string;
@@ -78,8 +78,8 @@ export default function VehiclesPage() {
       ]);
       if (sessionRes) setUser(sessionRes);
       if (sppgRes.ok) {
-        const json = await sppgRes.json();
-        setSppgs(json.data ?? []);
+        const json = await sppgRes.json().catch(() => null);
+        if (json) setSppgs(json.data ?? []);
       }
 
       const params = new URLSearchParams();
@@ -87,8 +87,14 @@ export default function VehiclesPage() {
       params.set("pageSize", String(pageSize));
       if (sppgFilter !== "ALL") params.set("sppgId", sppgFilter);
       const res = await fetch(`${apiBase}/admin/vehicles?${params.toString()}`, { credentials: "include", cache: "no-store" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.message ?? "Gagal memuat data kendaraan");
+      const raw = await res.text();
+      let json: { data?: Vehicle[]; pagination?: { totalPages?: number }; message?: string } | null = null;
+      try {
+        json = raw ? JSON.parse(raw) : null;
+      } catch {
+        json = null;
+      }
+      if (!res.ok || !json) throw new Error(json?.message ?? `Gagal memuat data kendaraan (HTTP ${res.status})`);
       setRows(json.data ?? []);
       setTotalPages(json.pagination?.totalPages ?? 1);
     } catch (err) {

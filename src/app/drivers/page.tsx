@@ -6,11 +6,14 @@ import Link from "next/link";
 import { DriverCard } from "@/app/drivers/DriverCard";
 import { BottomNavBar } from "@/app/drivers/BottomNavBar";
 import { FilterChips } from "@/app/drivers/FilterChips";
-import { getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
+import { getCurrentSession, hasPermission, apiBaseUrl, type SessionUser } from "@/lib/api";
 import { hasFeature } from "@/app/drivers/user-features";
 import type { UserFeatures } from "@/app/drivers/user-features";
 
-const apiBase = process.env.NEXT_PUBLIC_RADAR_API_URL ?? "http://localhost:4000/api/v1";
+// Gunakan apiBaseUrl agar selalu berakhiran /api/v1 (env NEXT_PUBLIC_RADAR_API_URL
+// bisa saja hanya berisi host, yang membuat request jatuh ke rute Nest tanpa prefix
+// dan mengembalikan HTML -> "Unexpected token '<'".
+const apiBase = apiBaseUrl;
 
 type DriverRow = {
   id: string;
@@ -40,12 +43,13 @@ export default function DriversPage() {
 
   // Load drivers data
   useEffect(() => {
+    let active = true;
     async function loadData() {
       setLoading(true);
       setError(null);
       try {
         const session = await getCurrentSession().catch(() => null);
-        if (session) setUser(session);
+        if (active && session) setUser(session);
         const params = new URLSearchParams();
         params.set("page", String(page));
         params.set("pageSize", String(pageSize));
@@ -53,32 +57,31 @@ export default function DriversPage() {
           credentials: "include",
           cache: "no-store",
         });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json?.message ?? "Gagal memuat Driver");
+        // Baca teks dulu agar respons HTML (404 dari origin yang salah) tidak
+        // memunculkan error mentah "Unexpected token '<'".
+        const raw = await res.text();
+        let json: { data?: DriverRow[]; message?: string } | null = null;
+        try {
+          json = raw ? JSON.parse(raw) : null;
+        } catch {
+          json = null;
+        }
+        if (!active) return;
+        if (!res.ok || !json) {
+          throw new Error(json?.message ?? `Gagal memuat Driver (HTTP ${res.status}). Pastikan API tersedia.`);
+        }
         setRows(json.data ?? []);
-        // client-side filter
-        const q = search.trim().toLowerCase();
-        const filtered = rows.filter((row: DriverRow) => {
-          if (statusFilter !== "ALL" && row.status?.toUpperCase() !== statusFilter) return false;
-          if (!q) return true;
-          return (
-            row.code?.toLowerCase().includes(q) ||
-            row.name?.toLowerCase().includes(q) ||
-            (row.address?.toLowerCase().includes(q) ?? false) ||
-            (row.region?.name?.toLowerCase().includes(q) ?? false) ||
-            (row.organization?.name?.toLowerCase().includes(q) ?? false)
-          );
-        });
-        setRows(filtered);
       } catch (err) {
+        if (!active) return;
         setError(err instanceof Error ? err.message : "Gagal memuat data");
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
 
-    loadData();
-  }, [page, rows, search, statusFilter]);
+    void loadData();
+    return () => { active = false; };
+  }, [page]);
 
   // Compute stats from current rows (client-side)
   const stats = useMemo(() => {

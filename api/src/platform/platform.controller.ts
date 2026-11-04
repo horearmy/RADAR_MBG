@@ -24,8 +24,9 @@ export class PlatformController {
   }
 
   @Get('geofences')
-  geofences(@Query() query: { tenantId?: string }) {
-    return this.service.listGeofences(query.tenantId);
+  geofences(@Query() query: { tenantId?: string; active?: string }) {
+    const active = query.active === undefined ? undefined : query.active === 'true';
+    return this.service.listGeofences(query.tenantId, active);
   }
 
   @Get('geofences/platform')

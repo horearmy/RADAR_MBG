@@ -9,6 +9,7 @@ import { RouteSearchPanel } from "@/components/route-search-panel";
 import { HeaderAccount } from "@/components/account-menu";
 import { AppSidebar } from "@/components/app-sidebar";
 import {
+  apiBaseUrl,
   createGeofence,
   getCurrentSession,
   getDeliveryLocationOptions,
@@ -130,6 +131,10 @@ export default function GeofencesPage() {
     : null, [selectedLocation]);
 
   const refreshGeofences = useCallback(async (type: GeofenceLocationType, id: string) => {
+    if (!id) {
+      setGeofences([]);
+      return;
+    }
     if (!user || !hasPermission(user, "geofence:read")) {
       setGeofences([]);
       return;
@@ -137,12 +142,17 @@ export default function GeofencesPage() {
     setGeofencesLoading(true);
     try {
       setGeofences(await getGeofences(type, id));
+      setError("");
     } catch (loadError: unknown) {
       if (loadError instanceof Error && loadError.message === "UNAUTHENTICATED") {
         router.replace("/login?expired=1");
         return;
       }
-      setError("Riwayat geofence gagal dimuat. Periksa koneksi atau scope akses lokasi.");
+      setGeofences([]);
+      const code = loadError instanceof Error ? loadError.message : "";
+      setError(code === "REQUEST_FAILED_404"
+        ? "Lokasi ini tidak termasuk cakupan akun Anda. Pilih lokasi lain atau hubungi admin platform."
+        : "Riwayat geofence gagal dimuat. Periksa koneksi atau scope akses lokasi.");
     } finally {
       setGeofencesLoading(false);
     }
@@ -165,11 +175,32 @@ export default function GeofencesPage() {
           setLoading(false);
           return;
         }
-        const [sppgOptions, deliveryOptions] = await Promise.all([
+
+        // Pengguna tenant hanya boleh memakai SPPG miliknya (legacySppgId).
+        // Tanpa ini, daftar /admin/sppg bisa memuat SPPG tenant lain pada
+        // organisasi/region yang sama sehingga riwayat geofence gagal dimuat.
+        const isTenantUser = !current.roles.some((role) => role.isGlobal) && Boolean(current.tenantRole);
+        let tenantSppgId: string | null = null;
+        if (isTenantUser) {
+          try {
+            const meResponse = await fetch(`${apiBaseUrl}/tenant/me`, { credentials: "include" });
+            if (meResponse.ok) {
+              const me = await meResponse.json() as { legacySppgId?: string | null };
+              tenantSppgId = me.legacySppgId ?? null;
+            }
+          } catch {
+            // Abaikan; daftar dari API master tetap dipakai sebagai fallback.
+          }
+        }
+
+        const [sppgOptionsRaw, deliveryOptions] = await Promise.all([
           getSppgOptions(),
           getDeliveryLocationOptions(),
         ]);
         if (!active) return;
+        const sppgOptions = tenantSppgId
+          ? sppgOptionsRaw.filter((sppg) => sppg.id === tenantSppgId)
+          : sppgOptionsRaw;
         setSppgs(sppgOptions);
         setDeliveryLocations(deliveryOptions);
         const firstSppg = sppgOptions.find((sppg) => sppg.status === "ACTIVE");
@@ -213,9 +244,8 @@ export default function GeofencesPage() {
           const { getRoutes } = await import("@/lib/api");
           const r = await getRoutes({ page: 1, pageSize: 50 });
           setRoutes(r.data);
-          console.log("Routes loaded:", r.data.length);
-        } catch (e) {
-          console.error("Routes fetch failed:", e);
+        } catch {
+          // Rute hanya pelengkap; kegagalan muat tidak menghalangi pengelolaan geofence.
         }
       })();
     }, 0);
@@ -311,7 +341,6 @@ export default function GeofencesPage() {
 
           {error && <div className="approval-error" role="alert">{error}</div>}
           {notice && <div className="approval-notice" role="status">{notice}</div>}
-          <div style={{ fontSize: 10, color: "#8592a2", marginBottom: 8 }}>Rute dimuat: {routes.length}</div>
 
           <div className="geofence-workspace">
             <form className="panel geofence-form" id="geofence-form" onSubmit={submitGeofence}>
@@ -401,6 +430,11 @@ export default function GeofencesPage() {
                 onPickGeofenceCenter={(longitude, latitude) => {
                   setCenterLongitude(longitude.toFixed(6));
                   setCenterLatitude(latitude.toFixed(6));
+                  setPickCenter(false);
+                }}
+                onSearchResultSelect={(latitude, longitude) => {
+                  setCenterLatitude(latitude.toFixed(6));
+                  setCenterLongitude(longitude.toFixed(6));
                   setPickCenter(false);
                 }}
                 focusPoint={focusPoint}

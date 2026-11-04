@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { CalendarClock, Car, X } from "lucide-react";
+import { apiBaseUrl } from "@/lib/api";
 
-const apiBase = process.env.NEXT_PUBLIC_RADAR_API_URL ?? "http://localhost:4000/api/v1";
+const apiBase = apiBaseUrl;
 
 type Props = {
   open: boolean;
@@ -42,7 +43,11 @@ export function AssignmentModal({ open, onClose, onSuccess, sppgId, driverId, dr
     setError(null);
     try {
       const csrfRes = await fetch(`${apiBase}/auth/csrf`, { credentials: "include", cache: "no-store" });
-      const { csrfToken } = (await csrfRes.json()) as { csrfToken?: string };
+      const csrfData = await csrfRes.json().catch(() => null) as { csrfToken?: string } | null;
+      if (!csrfRes.ok || !csrfData?.csrfToken) {
+        throw new Error("Gagal memulai sesi keamanan. Muat ulang halaman lalu coba lagi.");
+      }
+      const csrfToken = csrfData.csrfToken;
       const res = await fetch(`${apiBase}/admin/assignments`, {
         method: "POST",
         credentials: "include",
@@ -55,8 +60,14 @@ export function AssignmentModal({ open, onClose, onSuccess, sppgId, driverId, dr
           reason: form.reason.trim(),
         }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.message ?? json?.error?.message ?? "Gagal menugaskan kendaraan");
+      const raw = await res.text();
+      let json: { message?: string; error?: { message?: string } } | null = null;
+      try {
+        json = raw ? JSON.parse(raw) : null;
+      } catch {
+        json = null;
+      }
+      if (!res.ok) throw new Error(json?.message ?? json?.error?.message ?? `Gagal menugaskan kendaraan (HTTP ${res.status})`);
       onSuccess();
       onClose();
     } catch (err) {

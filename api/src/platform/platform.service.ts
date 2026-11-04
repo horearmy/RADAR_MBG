@@ -10,10 +10,11 @@ export class PlatformService {
     return this.prisma.db.tenant.findMany({ orderBy: { createdAt: 'desc' }, take: 100 });
   }
 
-  async listGeofences(tenantId?: string) {
+  async listGeofences(tenantId?: string, activeOnly?: boolean) {
     const where: any = {};
     if (tenantId) where.tenantId = tenantId;
-    return this.prisma.db.geofence.findMany({
+    if (activeOnly !== undefined) where.active = activeOnly;
+    const rows = await this.prisma.db.geofence.findMany({
       where,
       orderBy: [{ createdAt: 'desc' }],
       select: {
@@ -30,22 +31,24 @@ export class PlatformService {
         minGpsAccuracyMeters: true,
         confirmationFixes: true,
         confirmationDurationSeconds: true,
+        // Wajib disertakan agar geofence POLYGON tetap tergambar di peta platform.
+        polygonCoordinates: true,
         active: true,
         version: true,
         createdAt: true,
-        tenant: { select: { tenantCode: true, name: true } },
         sppg: { select: { code: true, name: true } },
         deliveryLocation: { select: { code: true, name: true } },
       },
       take: 200,
     });
+    return this.attachTenant(rows);
   }
 
   async listPlatformGeofences(tenantId?: string, activeOnly?: boolean) {
     const where: any = {};
     if (tenantId) where.tenantId = tenantId;
     if (activeOnly !== undefined) where.active = activeOnly;
-    return this.prisma.db.geofence.findMany({
+    const rows = await this.prisma.db.geofence.findMany({
       where,
       orderBy: [{ createdAt: 'desc' }],
       select: {
@@ -62,15 +65,39 @@ export class PlatformService {
         minGpsAccuracyMeters: true,
         confirmationFixes: true,
         confirmationDurationSeconds: true,
+        // Wajib disertakan agar geofence POLYGON tetap tergambar di peta platform.
+        polygonCoordinates: true,
         active: true,
         version: true,
         createdAt: true,
-        tenant: { select: { tenantCode: true, name: true } },
         sppg: { select: { code: true, name: true } },
         deliveryLocation: { select: { code: true, name: true } },
       },
       take: 500,
     });
+    return this.attachTenant(rows);
+  }
+
+  /**
+   * Geofence.tenantId tidak memiliki relasi Prisma ke Tenant, sehingga data tenant
+   * dilampirkan lewat query terpisah agar endpoint platform tidak error (500).
+   */
+  private async attachTenant<T extends { tenantId: string | null }>(rows: T[]) {
+    const tenantIds = [...new Set(rows.map((row) => row.tenantId).filter((id): id is string => Boolean(id)))];
+    if (!tenantIds.length) {
+      return rows.map((row) => ({ ...row, tenant: null }));
+    }
+    const tenants = await this.prisma.db.tenant.findMany({
+      where: { id: { in: tenantIds } },
+      select: { id: true, tenantCode: true, name: true },
+    });
+    const byId = new Map(
+      tenants.map((tenant) => [tenant.id, { tenantCode: tenant.tenantCode, name: tenant.name }]),
+    );
+    return rows.map((row) => ({
+      ...row,
+      tenant: row.tenantId ? byId.get(row.tenantId) ?? null : null,
+    }));
   }
 
   async summary(filters?: { tenantId?: string; from?: string; to?: string }) {

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, CircleDot, Crosshair, MapPinned, Plus, RefreshCw, Save, Search, ShieldCheck, X } from "lucide-react";
+import { ChevronRight, CircleDot, Crosshair, MapPinned, Plus, RefreshCw, Search, ShieldCheck, X } from "lucide-react";
 import { FleetMap } from "@/components/fleet-map";
 import { HeaderAccount } from "@/components/account-menu";
 import { TenantSidebar } from "@/components/tenant-sidebar";
@@ -15,19 +15,6 @@ import {
   type GeofenceSummary,
   type SessionUser,
 } from "@/lib/api";
-
-function errorMessage(error: unknown) {
-  const code = error instanceof Error ? error.message : "";
-  if (code === "REQUEST_FAILED_403" || code === "PERMISSION_FORBIDDEN" || code === "SCOPE_FORBIDDEN") {
-    return "Akun Anda tidak memiliki izin atau scope untuk lokasi ini.";
-  }
-  if (code === "SPPG_NOT_ACTIVE") return "Geofence hanya dapat dibuat untuk SPPG aktif.";
-  if (code === "REQUEST_FAILED_409" || code === "IDEMPOTENCY_KEY_REUSED") {
-    return "Versi geofence berubah atau permintaan tersimpan dengan data berbeda. Muat ulang lalu periksa riwayat.";
-  }
-  if (code === "UNAUTHENTICATED") return "Sesi berakhir. Silakan masuk kembali.";
-  return "Gagal disimpan. Periksa data, koneksi, dan izin akun lalu coba lagi.";
-}
 
 type SearchResult = { display_name: string; lat: string; lon: string };
 
@@ -50,9 +37,10 @@ export default function TenantMapPage() {
   const [pickCenter, setPickCenter] = useState(false);
   const [polygonPoints, setPolygonPoints] = useState<Array<{ longitude: number; latitude: number }>>([]);
   const [drawPolygon, setDrawPolygon] = useState(false);
-  const [searchRouteCoords, setSearchRouteCoords] = useState<Array<{ longitude: number; latitude: number }> | null>(null);
+  const [searchRouteCoords] = useState<Array<{ longitude: number; latitude: number }> | null>(null);
   const [loading, setLoading] = useState(true);
   const [geofencesLoading, setGeofencesLoading] = useState(false);
+  const [geofenceError, setGeofenceError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shapeType, setShapeType] = useState<"CIRCLE" | "POLYGON">("CIRCLE");
@@ -66,6 +54,7 @@ export default function TenantMapPage() {
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
   const [locationSearch, setLocationSearch] = useState("");
   const [locationSearchResults, setLocationSearchResults] = useState<SearchResult[]>([]);
+  const skipLocationSearchRef = useRef(false);
   const [locationFilter, setLocationFilter] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [selectedGeofenceId, setSelectedGeofenceId] = useState<string | null>(null);
@@ -148,14 +137,29 @@ export default function TenantMapPage() {
   })), [geofences, selectedGeofenceId]);
 
   const loadGeofences = useCallback(async (type: GeofenceLocationType, id: string) => {
-    if (!id) return;
+    if (!id) {
+      setGeofences([]);
+      setGeofenceError(null);
+      return;
+    }
     setGeofencesLoading(true);
+    setGeofenceError(null);
     try {
-      const res = await fetch(`${apiBaseUrl}/geofences?locationType=${type}&locationId=${id}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Gagal memuat geofence");
+      const params = new URLSearchParams({ locationType: type, locationId: id });
+      const res = await fetch(`${apiBaseUrl}/geofences?${params.toString()}`, { credentials: "include" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { code?: string; message?: string } | null;
+        throw new Error(body?.code ?? `REQUEST_FAILED_${res.status}`);
+      }
       const data = await res.json();
       setGeofences(Array.isArray(data) ? data : []);
-    } catch {
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "";
+      setGeofenceError(
+        code === "LOCATION_NOT_FOUND"
+          ? "Lokasi ini tidak dapat diakses oleh akun Anda. Pilih lokasi lain."
+          : "Gagal memuat geofence dari server. Periksa koneksi lalu muat ulang.",
+      );
       setGeofences([]);
     } finally {
       setGeofencesLoading(false);
@@ -200,16 +204,18 @@ export default function TenantMapPage() {
   }, [router, loadDeliveryLocations]);
 
   useEffect(() => {
-    if (locationId) {
+    const timer = window.setTimeout(() => {
+      // loadGeofences menangani locationId kosong dengan mengosongkan daftar.
       void loadGeofences(locationType, locationId);
-    }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [locationType, locationId, loadGeofences]);
 
   // Debounced search
   useEffect(() => {
     if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
+      const clearTimer = setTimeout(() => setSearchResults([]), 0);
+      return () => window.clearTimeout(clearTimer);
     }
     const timer = setTimeout(async () => {
       setSearching(true);
@@ -230,7 +236,8 @@ export default function TenantMapPage() {
 
   // Debounced search untuk form tambah lokasi
   useEffect(() => {
-    if (!showAddLocation || !locationSearch.trim()) {
+    if (!showAddLocation || !locationSearch.trim() || skipLocationSearchRef.current) {
+      skipLocationSearchRef.current = false;
       setLocationSearchResults([]);
       return;
     }
@@ -248,12 +255,33 @@ export default function TenantMapPage() {
     return () => clearTimeout(timer);
   }, [locationSearch, showAddLocation]);
 
+  const applyLocationFromCoordinates = (lat: number, lon: number, displayName?: string) => {
+    const latitude = lat.toFixed(6);
+    const longitude = lon.toFixed(6);
+    const fallbackName = displayName ? displayName.split(",")[0].trim().slice(0, 80) : "";
+    setLocationForm((form) => ({
+      ...form,
+      latitude,
+      longitude,
+      name: form.name.trim() ? form.name : fallbackName,
+      address: form.address.trim() ? form.address : displayName ?? form.address,
+    }));
+  };
+
   const handleSearchSelect = (result: SearchResult) => {
     const lat = Number(result.lat);
     const lon = Number(result.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
     setSearchMarker({ longitude: lon, latitude: lat });
     setSearchResults([]);
     setSearchQuery(result.display_name);
+    if (showAddLocation || pickLocation) {
+      applyLocationFromCoordinates(lat, lon, result.display_name);
+      setPickLocation(false);
+    } else {
+      setCenterLatitude(lat.toFixed(6));
+      setCenterLongitude(lon.toFixed(6));
+    }
   };
 
   const handleSelectLocation = (loc: DeliveryLocationOption) => {
@@ -511,9 +539,14 @@ export default function TenantMapPage() {
                             type="button"
                             className="map-search-result"
                             onClick={() => {
-                              setLocationForm((f) => ({ ...f, latitude: Number(Number(r.lat).toFixed(6)).toString(), longitude: Number(Number(r.lon).toFixed(6)).toString() }));
-                              setLocationSearch("");
+                              const lat = Number(r.lat);
+                              const lon = Number(r.lon);
+                              if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+                              skipLocationSearchRef.current = true;
+                              applyLocationFromCoordinates(lat, lon, r.display_name);
+                              setLocationSearch(r.display_name);
                               setLocationSearchResults([]);
+                              setSearchMarker({ longitude: lon, latitude: lat });
                             }}
                           >
                             {r.display_name}
@@ -643,6 +676,17 @@ export default function TenantMapPage() {
                         setPickCenter(false);
                       }
                     }}
+                    onSearchResultSelect={(lat, lon, displayName) => {
+                      setSearchMarker({ longitude: lon, latitude: lat });
+                      if (showAddLocation || pickLocation) {
+                        applyLocationFromCoordinates(lat, lon, displayName);
+                        setLocationSearch(displayName);
+                        setPickLocation(false);
+                      } else {
+                        setCenterLatitude(lat.toFixed(6));
+                        setCenterLongitude(lon.toFixed(6));
+                      }
+                    }}
                     draftGeofence={
                       shapeType === "CIRCLE" && centerLatitude && centerLongitude && radiusMeters
                         ? {
@@ -697,7 +741,15 @@ export default function TenantMapPage() {
                         onChange={(e) => {
                           const nextType = e.target.value as GeofenceLocationType;
                           setLocationType(nextType);
-                          if (nextType === "SPPG") setLocationId(sppgId ?? "");
+                          setSearchMarker(null);
+                          if (nextType === "SPPG") {
+                            setLocationId(sppgId ?? "");
+                            setSelectedLocationId(null);
+                          } else {
+                            const first = deliveryLocations[0]?.id ?? "";
+                            setLocationId(first);
+                            setSelectedLocationId(first || null);
+                          }
                         }}
                       >
                         <option value="SPPG">SPPG (Tenant)</option>
@@ -956,7 +1008,7 @@ export default function TenantMapPage() {
               <div className="panel-empty">
                 <Search size={22} />
                 <strong>Tidak ditemukan</strong>
-                <span>Tidak ada lokasi yang cocok dengan pencarian "{locationFilter}".</span>
+                <span>Tidak ada lokasi yang cocok dengan pencarian &quot;{locationFilter}&quot;.</span>
               </div>
             ) : (
               <div className="table-wrap">
@@ -1045,7 +1097,7 @@ export default function TenantMapPage() {
                     role="tab"
                     aria-selected={locationType === "SPPG"}
                     className={`segmented-item ${locationType === "SPPG" ? "active" : ""}`}
-                    onClick={() => { setLocationType("SPPG"); setLocationId(sppgId ?? ""); }}
+                    onClick={() => { setLocationType("SPPG"); setLocationId(sppgId ?? ""); setSelectedLocationId(null); setSearchMarker(null); }}
                   >
                     SPPG
                   </button>
@@ -1054,7 +1106,13 @@ export default function TenantMapPage() {
                     role="tab"
                     aria-selected={locationType === "DELIVERY"}
                     className={`segmented-item ${locationType === "DELIVERY" ? "active" : ""}`}
-                    onClick={() => setLocationType("DELIVERY")}
+                    onClick={() => {
+                      setLocationType("DELIVERY");
+                      setSearchMarker(null);
+                      const first = deliveryLocations[0]?.id ?? "";
+                      setLocationId(first);
+                      setSelectedLocationId(first || null);
+                    }}
                   >
                     Lokasi Pengiriman
                   </button>
@@ -1109,6 +1167,12 @@ export default function TenantMapPage() {
               </div>
             </div>
 
+            {geofenceError && (
+              <div className="approval-error" role="alert" style={{ margin: "0 0 8px" }}>
+                {geofenceError}
+              </div>
+            )}
+
             {geofencesLoading ? (
               <div className="panel-empty">
                 <span className="session-spinner" style={{ width: 20, height: 20 }} />
@@ -1133,7 +1197,7 @@ export default function TenantMapPage() {
                   <Search size={22} />
                 </div>
                 <strong>Tidak ditemukan</strong>
-                <span>Tidak ada geofence yang cocok dengan pencarian "{geofenceFilter}".</span>
+                <span>Tidak ada geofence yang cocok dengan pencarian &quot;{geofenceFilter}&quot;.</span>
               </div>
             ) : (
               <div className="table-wrap">
@@ -1152,7 +1216,10 @@ export default function TenantMapPage() {
                     {filteredGeofences.map((g) => (
                       <tr
                         key={g.id}
-                        onClick={() => setSelectedGeofenceId(g.id === selectedGeofenceId ? null : g.id)}
+                        onClick={() => {
+                          setSelectedGeofenceId(g.id === selectedGeofenceId ? null : g.id);
+                          setSearchMarker(null);
+                        }}
                         className={selectedGeofenceId === g.id ? "row-selected" : ""}
                       >
                         <td className="col-name">

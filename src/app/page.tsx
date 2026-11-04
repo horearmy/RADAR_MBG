@@ -197,8 +197,8 @@ export default function Home() {
   const [platformSummary, setPlatformSummary] = useState<PlatformDashboardSummary | null>(null);
   const [platformGeofences, setPlatformGeofences] = useState<PlatformGeofence[]>([]);
   const [platformTenants, setPlatformTenants] = useState<TenantSummary[]>([]);
-  const [activeFilter, setActiveFilter] = useState<boolean | undefined>(undefined);
-  const [tenantFilter, setTenantFilter] = useState<string | undefined>(undefined);
+  // Filter tenant belum punya kontrol UI; disimpan sebagai konstanta agar mudah diaktifkan.
+  const tenantFilter: string | undefined = undefined;
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
 
@@ -281,22 +281,32 @@ export default function Home() {
     return () => window.clearInterval(interval);
   }, [sessionUser, sessionState, handleRefresh]);
 
-  // Fetch platform geofences when session is ready
+  // Fetch platform geofences when session is ready, lalu sinkronkan ulang berkala
+  // agar geofence yang baru dibuat dari halaman tenant langsung terlihat.
+  const loadPlatformGeofences = useCallback(async () => {
+    try {
+      const geofences = await getPlatformGeofences(tenantFilter, true);
+      setPlatformGeofences(geofences);
+      const tenants = await getPlatformTenants();
+      setPlatformTenants(tenants);
+    } catch {
+      // Silently ignore fetch errors - geofences are supplementary
+    }
+  }, [tenantFilter]);
+
   useEffect(() => {
     if (!sessionUser || sessionState !== "ready") return;
     if (!hasPlatformPermission(sessionUser, "geofence:read")) return;
-    (async () => {
-      try {
-        const tenantId = sessionUser.roles[0]?.organizationId ?? undefined;
-        const geofences = await getPlatformGeofences(tenantId, true);
-        setPlatformGeofences(geofences);
-        const tenants = await getPlatformTenants();
-        setPlatformTenants(tenants);
-      } catch (error) {
-        // Silently ignore fetch errors - geofences are supplementary
-      }
-    })();
-  }, [sessionUser, sessionUser && sessionUser.roles[0]?.organizationId, sessionState, hasPlatformPermission]);
+    const initial = window.setTimeout(() => { void loadPlatformGeofences(); }, 0);
+    const interval = window.setInterval(() => { void loadPlatformGeofences(); }, 30_000);
+    const handleFocus = () => { void loadPlatformGeofences(); };
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [sessionUser, sessionState, loadPlatformGeofences]);
 
   useEffect(() => {
     if (!mapExpanded) return;
@@ -630,11 +640,6 @@ export default function Home() {
                           Geofence
                         </label>
                       </span>
-                      {activeFilter !== undefined && (
-                        <span className="legend-geofence-filter-text">
-                          Aktif: {activeFilter ? "ya" : "tidak"}
-                        </span>
-                      )}
                       {tenantFilter && (
                         <span className="legend-geofence-filter-text">
                           {platformTenants.find((t) => t.id === tenantFilter)?.tenantCode ?? "Semua tenant"}

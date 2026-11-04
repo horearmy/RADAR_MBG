@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Save, Truck } from "lucide-react";
-import { getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
+import { getCurrentSession, hasPermission, apiBaseUrl, type SessionUser } from "@/lib/api";
 
-const apiBase = process.env.NEXT_PUBLIC_RADAR_API_URL ?? "http://localhost:4000/api/v1";
+const apiBase = apiBaseUrl;
 
 export default function VehicleNewPage() {
   const router = useRouter();
@@ -20,7 +20,10 @@ export default function VehicleNewPage() {
       const session = await getCurrentSession().catch(() => null);
       if (session) setUser(session);
       const res = await fetch(`${apiBase}/admin/sppg?page=1&pageSize=200`, { credentials: "include", cache: "no-store" });
-      if (res.ok) setSppgs((await res.json()).data ?? []);
+      if (res.ok) {
+        const json = await res.json().catch(() => null);
+        if (json) setSppgs(json.data ?? []);
+      }
     } catch {}
   }, []);
 
@@ -37,7 +40,11 @@ export default function VehicleNewPage() {
     setError(null);
     try {
       const csrfRes = await fetch(`${apiBase}/auth/csrf`, { credentials: "include", cache: "no-store" });
-      const { csrfToken } = (await csrfRes.json()) as { csrfToken?: string };
+      const csrfData = await csrfRes.json().catch(() => null) as { csrfToken?: string } | null;
+      if (!csrfRes.ok || !csrfData?.csrfToken) {
+        throw new Error("Gagal memulai sesi keamanan. Muat ulang halaman lalu coba lagi.");
+      }
+      const csrfToken = csrfData.csrfToken;
       const body: any = {
         sppgId: form.sppgId,
         plateNumber: form.plateNumber.trim().toUpperCase(),
@@ -51,8 +58,14 @@ export default function VehicleNewPage() {
         headers: { "Content-Type": "application/json", ...(csrfToken ? { "x-csrf-token": csrfToken } : {}) },
         body: JSON.stringify(body),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.message ?? json?.error?.message ?? "Gagal menyimpan");
+      const raw = await res.text();
+      let json: { message?: string; error?: { message?: string } } | null = null;
+      try {
+        json = raw ? JSON.parse(raw) : null;
+      } catch {
+        json = null;
+      }
+      if (!res.ok) throw new Error(json?.message ?? json?.error?.message ?? `Gagal menyimpan (HTTP ${res.status})`);
       router.push("/vehicles");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal menyimpan");

@@ -143,13 +143,13 @@ export class MasterDataController {
     return this.masterData.listDrivers(request.principal!, query, request.tenantContext ?? null);
   }
 
-  @Post('drivers')
-  @RequirePermissions('master:manage')
-  createDriver(
+  @Get('drivers/next-code')
+  @RequirePermissions('master:read')
+  nextDriverCode(
     @Req() request: AuthenticatedRequest,
-    @Body() input: CreateDriverDto,
+    @Query('sppgId', new ParseUUIDPipe()) sppgId: string,
   ) {
-    return this.masterData.createDriver(input, request.principal!, this.requestId(request));
+    return this.masterData.nextDriverCode(sppgId, request.principal!);
   }
 
   @Get('assignments')

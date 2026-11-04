@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, RefreshCw, Save } from "lucide-react";
-import { getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
+import { getCurrentSession, hasPermission, apiBaseUrl, type SessionUser } from "@/lib/api";
 
-const apiBase = process.env.NEXT_PUBLIC_RADAR_API_URL ?? "http://localhost:4000/api/v1";
+// Gunakan apiBaseUrl agar request selalu menuju /api/v1 (bukan HTML 404 Next/Nest).
+const apiBase = apiBaseUrl;
 
 export default function DriverNewPage() {
   const router = useRouter();
@@ -22,8 +23,8 @@ export default function DriverNewPage() {
       if (session) setUser(session);
       const res = await fetch(`${apiBase}/admin/sppg?page=1&pageSize=200`, { credentials: "include", cache: "no-store" });
       if (res.ok) {
-        const json = await res.json();
-        setSppgs(json.data ?? []);
+        const json = await res.json().catch(() => null);
+        if (json) setSppgs(json.data ?? []);
       } else {
         // Fallback data
         setSppgs([
@@ -41,8 +42,8 @@ export default function DriverNewPage() {
     try {
       const res = await fetch(`${apiBase}/admin/drivers/next-code?sppgId=${sppgId}`, { credentials: "include", cache: "no-store" });
       if (res.ok) {
-        const json = await res.json();
-        setForm((f) => ({ ...f, code: json.code ?? "" }));
+        const json = await res.json().catch(() => null);
+        if (json) setForm((f) => ({ ...f, code: json.code ?? "" }));
       }
     } catch {}
     finally { setGeneratingCode(false); }
@@ -68,7 +69,11 @@ export default function DriverNewPage() {
     setError(null);
     try {
       const csrfRes = await fetch(`${apiBase}/auth/csrf`, { credentials: "include", cache: "no-store" });
-      const { csrfToken } = (await csrfRes.json()) as { csrfToken?: string };
+      const csrfData = await csrfRes.json().catch(() => null) as { csrfToken?: string } | null;
+      if (!csrfRes.ok || !csrfData?.csrfToken) {
+        throw new Error("Gagal memulai sesi keamanan. Muat ulang halaman lalu coba lagi.");
+      }
+      const csrfToken = csrfData.csrfToken;
       const res = await fetch(`${apiBase}/admin/drivers`, {
         method: "POST",
         credentials: "include",
@@ -81,8 +86,14 @@ export default function DriverNewPage() {
           reason: form.reason.trim(),
         }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.message ?? json?.error?.message ?? "Gagal menyimpan");
+      const raw = await res.text();
+      let json: { message?: string; error?: { message?: string } } | null = null;
+      try {
+        json = raw ? JSON.parse(raw) : null;
+      } catch {
+        json = null;
+      }
+      if (!res.ok) throw new Error(json?.message ?? json?.error?.message ?? `Gagal menyimpan (HTTP ${res.status})`);
       router.push("/drivers");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal menyimpan");
