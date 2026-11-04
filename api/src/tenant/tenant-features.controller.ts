@@ -1,6 +1,6 @@
 import { UseGuards, Body, Controller, Post, Req } from '@nestjs/common';
 import { SessionGuard } from '../auth/session.guard.js';
-import { TenantGuard } from '../auth/tenant.guard.js';
+import { RequireTenant, TenantGuard } from '../auth/tenant.guard.js';
 import { PermissionGuard } from '../auth/permission.guard.js';
 import { RequirePermissions } from '../auth/permissions.js';
 import type { AuthenticatedRequest } from '../auth/session.guard.js';
@@ -15,6 +15,7 @@ export type FeaturesConfig = {
 };
 
 @Controller('tenant')
+@RequireTenant()
 @UseGuards(SessionGuard, TenantGuard, PermissionGuard)
 export class TenantFeaturesController {
   constructor(private readonly service: TenantService) {}

@@ -1152,5 +1152,7 @@ model NotificationEvent {
   user User @relation(fields: [userId], references: [id])
 
   @@index([userId, status])
+  @@index([stopId])
+  @@index([tripId])
   @@map("notification_events")
 }

@@ -107,14 +107,15 @@ export class GeofenceService {
         ? { sppgId: input.locationId }
         : { deliveryLocationId: input.locationId };
       const tenantId = tenantContext?.tenantId ?? null;
+      const scopeWhere = tenantId ? { tenantId } : {};
       const current = await tx.geofence.findFirst({
-        where: { ...locationWhere, active: true },
+        where: { ...locationWhere, ...scopeWhere, active: true },
         orderBy: { version: 'desc' },
         select: { id: true, version: true },
       });
 
       await tx.geofence.updateMany({
-        where: { ...locationWhere, active: true },
+        where: { ...locationWhere, ...scopeWhere, active: true },
         data: { active: false },
       });
 
@@ -318,7 +319,10 @@ export class GeofenceService {
 
     // Tenant users: check if the location belongs to their tenant or their tenant's SPPG scope.
     if (tenantContext) {
-      if (location.tenantId && location.tenantId === tenantContext.tenantId) {
+      if (location.tenantId) {
+        if (location.tenantId !== tenantContext.tenantId) {
+          throw new NotFoundException({ code: 'LOCATION_NOT_FOUND' });
+        }
         return location;
       }
       const tenant = await tx.tenant.findUnique({

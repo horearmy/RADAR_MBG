@@ -89,7 +89,7 @@ export default function SppgPage() {
 
   async function loadRegistrations() {
     try {
-      const res = await fetch(`${apiBase}/public/sppg-registrations`, { credentials: 'include', cache: 'no-store' });
+      const res = await fetch(`${apiBase}/admin/sppg-registrations`, { credentials: 'include', cache: 'no-store' });
       if (!res.ok) return;
       const data = await res.json().catch(() => null);
       if (Array.isArray(data)) setRegistrations(data);
@@ -104,13 +104,13 @@ export default function SppgPage() {
       return;
     }
     const url = action === 'provision'
-      ? `${apiBase}/public/sppg-registrations/${id}/provision`
-      : `${apiBase}/public/sppg-registrations/${id}/${action}`;
+      ? `${apiBase}/admin/sppg-registrations/${id}/provision`
+      : `${apiBase}/admin/sppg-registrations/${id}/${action}`;
     const method = action === 'provision' ? 'POST' : 'PATCH';
     const res = await fetch(url, {
       method, credentials: 'include',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfJson.csrfToken },
-      body: action === 'provision' ? undefined : JSON.stringify({ approverId: user?.id ?? 'admin', notes: 'review' }),
+      body: action === 'provision' ? undefined : JSON.stringify({ notes: 'review' }),
     });
     const body = await res.json().catch(() => null);
     if (!res.ok) {
