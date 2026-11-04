@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Plus, RefreshCw, Search, ShieldAlert, Truck, UserRound, Users, Ban, ChevronLeft, ChevronRight } from "lucide-react";
+import { CheckCircle2, Plus, RefreshCw, Search, ShieldAlert, UserRound, Users, Ban, ChevronLeft, ChevronRight } from "lucide-react";
 import { DriverCard } from "@/app/drivers/DriverCard";
 import { getCurrentSession, hasPermission, hasPlatformPermission, apiBaseUrl, apiFetchUrl, type SessionUser } from "@/lib/api";
 
@@ -147,7 +147,6 @@ export default function DriversPage() {
 
         {!loading && !error && totalPages > 1 && <div className="drivers-pagination"><span>Halaman <strong>{page}</strong> dari <strong>{totalPages}</strong></span><div><button aria-label="Halaman sebelumnya" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}><ChevronLeft size={17} />Sebelumnya</button><button aria-label="Halaman berikutnya" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>Berikutnya<ChevronRight size={17} /></button></div></div>}
       </section>
-      <nav className="drivers-mobile-nav" aria-label="Navigasi cepat"><Link href="/"><UserRound size={17} /><span>Beranda</span></Link><Link href="/drivers" aria-current="page"><Users size={17} /><span>Driver</span></Link><Link href="/vehicles"><Truck size={17} /><span>Kendaraan</span></Link></nav>
     </main>
   );
 }
