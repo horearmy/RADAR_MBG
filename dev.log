@@ -9,8 +9,9 @@
 ▲ Next.js 16.4.3 (Turbopack)
 - Local:         http://localhost:3000
 - Network:       http://192.168.1.42:3000
-✓ Ready in 766ms
-✓ Running next.config.ts took 65ms
+✓ Ready in 828ms
+✓ Running next.config.ts took 78ms
 - Cache Components enabled
 - Partial Prefetching enabled
 
+○ Compiling / ...

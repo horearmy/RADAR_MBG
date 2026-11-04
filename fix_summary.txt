@@ -1,0 +1,38 @@
+=== SUMMARY OF FIXES APPLIED ===
+
+1. MAP FILL-LOCATION AND AUTO-DIRECTION FEATURES
+   - Added mapInitialized state to FleetMap component (radar-mbg/src/components/fleet-map.tsx, line 166)
+   - runSearch() now checks mapInitialized before running (line 173-176)
+   - flyToResult() now checks mapInitialized before flying (line 194)
+   - pickGeofenceCenter useEffect now sets mapInitialized=true when map is ready and pickGeofenceCenter is true (radar-mbg/src/components/fleet-map.tsx, line 392)
+
+2. /TENANT/MAP ROUTE CREATED
+   - New route: radar-mbg-web/src/app/tenant/map/page.tsx
+   - Page displays FleetMap with geofence data
+   - Supports locationType and locationId query parameters (e.g., /tenant/map?type=SPPG&id=xxx)
+   - Shows loading/error states
+   - Includes "Tambah Geofence" button
+
+3. GEOFENCE DATA LOADING IMPROVEMENTS
+   - Added fallback coordinates (-6.2088, 106.8456) in geofences page when API doesn't provide lat/lon (radar-mbg/src/app/geofences/page.tsx, lines 184-188)
+   - Improved permission checks with clearer error messages
+   - Better handling when locationId is not set
+   - User must have master:read permission to load locations
+
+4. ADD LOCATION FORM Enhancements
+   - Form now properly requires location selection before enabling
+   - Coordinate fields have sensible fallback values
+   - Radius validation (10-10,000m) enforced
+   - Shape type (circle/polygon) properly validated
+   - "Simpan geofence" button disabled until all requirements met
+
+FILES MODIFIED:
+- radar-mbg/src/components/fleet-map.tsx (mapInitialized state, search/flyTo checks)
+- radar-mbg/src/app/geofences/page.tsx (fallback coordinates, improved loading)
+- radar-mbg-web/src/app/tenant/map/page.tsx (new route file)
+
+ADDITIONAL NOTES:
+- The /tenant/map route is now available at http://localhost:3000/tenant/map
+- Query parameters can be used: ?type=SPPG&id=<location-id>
+- The map search/fill-location feature requires the map to be ready (15-second load timeout)
+- User permissions (geofence:read, geofence:manage, master:read) must be configured in the backend
