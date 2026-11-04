@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { HeaderAccount } from "@/components/account-menu";
@@ -406,7 +406,7 @@ function deliveryActionErrorMessage(error: unknown) {
   }
 }
 
-export default function TripDetailPage() {
+function TripDetailContent() {
   const params = useParams();
   const router = useRouter();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -2023,5 +2023,13 @@ export default function TripDetailPage() {
         </div>
       )}
     </main>
+  );
+}
+
+export default function TripDetailPage() {
+  return (
+    <Suspense fallback={<div className="session-state"><span className="session-spinner" /><p>Memuat detail perjalanan...</p></div>}>
+      <TripDetailContent />
+    </Suspense>
   );
 }

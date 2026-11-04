@@ -3,6 +3,15 @@ export type SessionUser = {
   username: string;
   displayName: string;
   mfaEnabled?: boolean;
+  driverId?: string | null;
+  tenantRole?: string | null;
+  tenantId?: string | null;
+  tenantMemberships?: Array<{
+    tenantId: string;
+    tenantCode: string;
+    tenantName: string;
+    role: string;
+  }>;
   roles: Array<{
     code: string;
     isGlobal: boolean;
@@ -27,7 +36,7 @@ export type TripSummary = {
   receivedQuantity: number | null;
   version: number;
   sppg: { id: string; code: string; name: string };
-  deliveryLocation: { id: string; code: string; name: string };
+  deliveryLocation: { id: string; code: string; name: string; latitude?: string | number | null; longitude?: string | number | null };
   driver: { id: string; code: string; name: string };
   vehicle: { id: string; plateNumber: string };
   positions: Array<{
@@ -280,6 +289,8 @@ export type AdminRoleSummary = {
   permissions: Array<{ permission: { code: string; description: string | null } }>;
 };
 
+export type AdminScopeOption = { id: string; code: string; name: string };
+
 export type IssuedAccountToken = {
   user: { id: string; username: string; email?: string | null; displayName?: string; status?: string };
   token: string;
@@ -305,14 +316,97 @@ export type DashboardData = {
   refreshedAt: string;
 };
 
-const configuredBaseUrl = process.env.NEXT_PUBLIC_RADAR_API_URL;
-export const apiBaseUrl = configuredBaseUrl ??
-  (process.env.NODE_ENV === 'development' ? 'http://localhost:4000/api/v1' : '');
+export type PlatformDashboardSummary = {
+  tenants: {
+    total: number;
+    active: number;
+    pendingActivation: number;
+    suspended: number;
+  };
+  registrations: { pendingReview: number };
+  approvals: { pending: number };
+  refreshedAt: string;
+};
 
-async function apiGet<T>(path: string): Promise<T> {
+export type PlatformGeofence = {
+  id: string;
+  tenantId: string | null;
+  type: string;
+  shapeType: "CIRCLE" | "POLYGON";
+  name: string;
+  centerLatitude: number | null;
+  centerLongitude: number | null;
+  radiusMeters: number | null;
+  polygonCoordinates?: Array<{ latitude: number; longitude: number }> | null;
+  minGpsAccuracyMeters: number;
+  confirmationFixes: number;
+  confirmationDurationSeconds: number;
+  active: boolean;
+  createdAt: string;
+  tenant: { tenantCode: string; name: string } | null;
+  sppg: { code: string; name: string } | null;
+  deliveryLocation: { code: string; name: string } | null;
+};
+
+export type TenantSummary = {
+  id: string;
+  tenantCode: string;
+  name: string;
+  status: string;
+  createdAt: string;
+};
+
+const configuredBaseUrl = process.env.NEXT_PUBLIC_RADAR_API_URL?.trim();
+const serverApiBase = process.env.RADAR_API_INTERNAL_URL?.trim() || "http://localhost:4000";
+const isBrowser = typeof window !== "undefined";
+export const SELECTED_TENANT_STORAGE_KEY = "radar.selectedTenantId";
+
+export function getSelectedTenantId() {
+  if (!isBrowser) return null;
+  return window.localStorage.getItem(SELECTED_TENANT_STORAGE_KEY);
+}
+
+export function setSelectedTenantId(tenantId: string | null) {
+  if (!isBrowser) return;
+  if (tenantId) window.localStorage.setItem(SELECTED_TENANT_STORAGE_KEY, tenantId);
+  else window.localStorage.removeItem(SELECTED_TENANT_STORAGE_KEY);
+}
+
+function requestHeaders(headers?: HeadersInit) {
+  const result = new Headers(headers);
+  const tenantId = getSelectedTenantId();
+  if (tenantId) result.set("x-tenant-id", tenantId);
+  return result;
+}
+
+export function apiFetch(path: string, init: RequestInit = {}) {
+  return fetch(`${apiBaseUrl}${path}`, {
+    ...init,
+    headers: requestHeaders(init.headers),
+  });
+}
+
+export function apiFetchUrl(url: string, init: RequestInit = {}) {
+  return fetch(url, { ...init, headers: requestHeaders(init.headers) });
+}
+
+function withApiPrefix(baseUrl: string) {
+  const trimmed = baseUrl.replace(/\/+$/, "");
+  return /\/api\/v1$/.test(trimmed) ? trimmed : `${trimmed}/api/v1`;
+}
+
+// Browser: pakai URL API publik bila diisi, selain itu lewat proxy Next.js (/api/v1).
+// Server: pakai URL internal agar render server tidak bergantung pada origin browser.
+export const apiBaseUrl = configuredBaseUrl
+  ? withApiPrefix(configuredBaseUrl)
+  : isBrowser
+    ? "/api/v1"
+    : withApiPrefix(serverApiBase);
+
+export async function apiGet<T>(path: string): Promise<T> {
   if (!apiBaseUrl) throw new Error('API_NOT_CONFIGURED');
 
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const response = await apiFetch(path, {
     credentials: 'include',
     cache: 'no-store',
   });
@@ -333,17 +427,17 @@ async function getCsrfToken(): Promise<string> {
   return csrfToken;
 }
 
-async function apiMutate<T>(
+export async function apiMutate<T>(
   path: string,
   method: 'POST' | 'PATCH',
   body?: unknown,
-  idempotencyKey = crypto.randomUUID(),
+  idempotencyKey: string = crypto.randomUUID(),
 ): Promise<T> {
   if (!apiBaseUrl) throw new Error('API_NOT_CONFIGURED');
 
   const csrfToken = await getCsrfToken();
 
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const response = await apiFetch(path, {
     method,
     credentials: 'include',
     cache: 'no-store',
@@ -373,7 +467,7 @@ async function apiMutate<T>(
 async function apiUpload<T>(
   path: string,
   file: File,
-  idempotencyKey = crypto.randomUUID(),
+  idempotencyKey: string = crypto.randomUUID(),
 ): Promise<T> {
   if (!apiBaseUrl) throw new Error('API_NOT_CONFIGURED');
 
@@ -381,7 +475,7 @@ async function apiUpload<T>(
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const response = await apiFetch(path, {
     method: 'POST',
     credentials: 'include',
     cache: 'no-store',
@@ -616,6 +710,17 @@ export function createTrip(input: CreateTripInput) {
   return apiMutate<TripMutationResult>('/trips', 'POST', input);
 }
 
+export function createTenantTrip(input: {
+  deliveryLocationId: string;
+  vehicleId: string;
+  driverId: string;
+  plannedDepartureAt: string;
+  plannedArrivalAt: string;
+  plannedQuantity: number;
+}) {
+  return apiMutate<unknown>('/tenant/trips', 'POST', input);
+}
+
 export function scheduleTrip(id: string) {
   return apiMutate<TripMutationResult>(`/trips/${encodeURIComponent(id)}/schedule`, 'POST');
 }
@@ -665,16 +770,31 @@ export function changeTripDestination(
   );
 }
 
+const TENANT_ROLE_PERMISSIONS: Record<string, string[]> = {
+  TENANT_ADMIN: ['trip:read', 'trip:create', 'trip:schedule', 'trip:dispatch', 'trip:manage', 'trip:start', 'trip:location:update', 'trip:track:read', 'master:read', 'master:manage', 'sppg:read', 'sppg:manage', 'organization:read', 'geofence:read', 'geofence:manage', 'exception:read', 'report:read', 'tenant:read', 'tenant:manage', 'admin:manage_users', 'account:invitation:accept'],
+  TENANT_OPERATOR: ['trip:read', 'trip:create', 'trip:schedule', 'trip:dispatch', 'trip:manage', 'trip:track:read', 'master:read', 'sppg:read', 'geofence:read', 'exception:read', 'report:read', 'tenant:read', 'account:invitation:accept'],
+  TENANT_DRIVER: ['trip:read', 'trip:start', 'trip:location:update', 'trip:track:read', 'delivery:start', 'delivery:confirm', 'arrival:verify', 'delivery:proof:read'],
+  TENANT_VIEWER: ['trip:read', 'trip:track:read', 'master:read', 'sppg:read', 'report:read', 'tenant:read'],
+};
+
+export function hasPlatformPermission(user: SessionUser | null | undefined, permission: string): boolean {
+  if (!user?.roles) return false;
+  return user.roles.some((role) => Array.isArray(role?.permissions) && role.permissions.includes(permission));
+}
+
+export function isPlatformAdmin(user: SessionUser | null | undefined): boolean {
+  if (!user?.roles) return false;
+  return user.roles.some((role) => Boolean(role?.isGlobal));
+}
+
 export function hasPermission(user: SessionUser | null | undefined, permission: string): boolean {
   if (!user) return false;
-  const roles = (user as any)?.roles;
-  if (!Array.isArray(roles)) return false;
-  for (let i = 0; i < roles.length; i++) {
-    const role = roles[i];
-    if (!role) continue;
-    const perms = role?.permissions;
-    if (Array.isArray(perms) && perms.includes(permission)) return true;
+  if (isPlatformAdmin(user)) return true;
+  if (user.roles?.some((role) => Array.isArray(role?.permissions) && role.permissions.includes(permission))) {
+    return true;
   }
+  const tenantRole = user.tenantRole;
+  if (tenantRole && TENANT_ROLE_PERMISSIONS[tenantRole]?.includes(permission)) return true;
   return false;
 }
 
@@ -727,9 +847,28 @@ export async function getDashboardData(user: SessionUser): Promise<DashboardData
   };
 }
 
-export async function getTrips(query: { status?: string; page?: number; pageSize?: number } = {}): Promise<Paginated<TripSummary>> {
+export async function getPlatformDashboardSummary(): Promise<PlatformDashboardSummary> {
+  return apiGet<PlatformDashboardSummary>('/platform/dashboard-summary');
+}
+
+export async function getPlatformGeofences(
+  tenantId?: string,
+  activeOnly?: boolean,
+): Promise<PlatformGeofence[]> {
+  const params = new URLSearchParams();
+  if (tenantId) params.set('tenantId', tenantId);
+  if (activeOnly !== undefined) params.set('active', activeOnly ? 'true' : 'false');
+  return apiGet<PlatformGeofence[]>(`/platform/geofences?${params.toString()}`);
+}
+
+export async function getPlatformTenants(): Promise<TenantSummary[]> {
+  return apiGet<TenantSummary[]>('/platform/tenants');
+}
+
+export async function getTrips(query: { status?: string; q?: string; page?: number; pageSize?: number } = {}): Promise<Paginated<TripSummary>> {
   const params = new URLSearchParams();
   if (query.status) params.set('status', query.status);
+  if (query.q) params.set('q', query.q);
   params.set('page', String(query.page ?? 1));
   params.set('pageSize', String(query.pageSize ?? 25));
   return apiGet<Paginated<TripSummary>>(`/trips?${params.toString()}`);
@@ -757,11 +896,12 @@ export function startTrip(id: string, input: StartTripInput) {
   );
 }
 
-export function appendTripLocation(id: string, input: TripLocationInput) {
+export function appendTripLocation(id: string, input: TripLocationInput, idempotencyKey?: string) {
   return apiMutate<{ positionId: string; replayed: boolean }>(
     `/trips/${encodeURIComponent(id)}/locations`,
     'POST',
     input,
+    idempotencyKey,
   );
 }
 
@@ -792,11 +932,13 @@ export function submitTripDelivery(
     confirmationNote?: string;
     deviceTimestamp?: string;
   },
+  idempotencyKey?: string,
 ) {
   return apiMutate<DeliverySubmitResult>(
     `/trips/${encodeURIComponent(id)}/delivery`,
     'POST',
     input,
+    idempotencyKey,
   );
 }
 
@@ -820,10 +962,11 @@ export function completeTrip(id: string) {
   }>(`/trips/${encodeURIComponent(id)}/complete`, 'POST');
 }
 
-export function uploadTripProof(id: string, file: File) {
+export function uploadTripProof(id: string, file: File, idempotencyKey?: string) {
   return apiUpload<ProofSummary>(
     `/trips/${encodeURIComponent(id)}/delivery/proofs`,
     file,
+    idempotencyKey,
   );
 }
 
@@ -1053,6 +1196,11 @@ export async function getAdminUsers(query: {
     if (value !== undefined && value !== "") params.set(key, String(value));
   }
   return apiGet<Paginated<AdminUserSummary>>(`/admin/users?${params.toString()}`);
+}
+
+export async function getAdminScopeOptions(scope: 'organizations' | 'regions' | 'sppg') {
+  const payload = await apiGet<Paginated<AdminScopeOption>>(`/admin/${scope}?page=1&pageSize=100`);
+  return payload.data;
 }
 
 export function getAdminRoles() {

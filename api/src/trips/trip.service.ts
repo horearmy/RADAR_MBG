@@ -33,22 +33,44 @@ import {
 
 const TERMINAL_STATUSES = [TripStatus.COMPLETED, TripStatus.CANCELLED];
 
+const TRIP_STATUS_LABELS: Array<{ status: TripStatus; label: string }> = [
+  { status: TripStatus.DRAFT, label: 'draf' },
+  { status: TripStatus.SCHEDULED, label: 'terjadwal' },
+  { status: TripStatus.READY_TO_DEPART, label: 'siap berangkat' },
+  { status: TripStatus.IN_TRANSIT, label: 'dalam perjalanan' },
+  { status: TripStatus.ARRIVAL_DETECTED, label: 'kedatangan terdeteksi' },
+  { status: TripStatus.ARRIVAL_VERIFIED, label: 'kedatangan terverifikasi' },
+  { status: TripStatus.DELIVERY_IN_PROGRESS, label: 'penyaluran berlangsung' },
+  { status: TripStatus.DELIVERED, label: 'terkirim' },
+  { status: TripStatus.COMPLETED, label: 'selesai' },
+  { status: TripStatus.CANCELLED, label: 'dibatalkan' },
+  { status: TripStatus.EXCEPTION, label: 'perlu perhatian' },
+];
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 @Injectable()
 export class TripService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listTrips(principal: SessionPrincipal, query: ListTripsDto) {
+  async listTrips(principal: SessionPrincipal, query: ListTripsDto, tenantContext?: { tenantId: string } | null) {
+    const search = query.q ? this.searchWhere(query.q) : null;
     const where: Prisma.TripWhereInput = {
-      ...this.scopeWhere(principal),
-      ...(query.status ? { status: query.status } : {}),
-      ...(query.from || query.to
-        ? {
-            plannedDepartureAt: {
-              ...(query.from ? { gte: new Date(query.from) } : {}),
-              ...(query.to ? { lte: new Date(query.to) } : {}),
-            },
-          }
-        : {}),
+      AND: [
+        this.scopeWhere(principal, tenantContext),
+        ...(query.status ? [{ status: query.status }] : []),
+        ...(query.from || query.to
+          ? [
+              {
+                plannedDepartureAt: {
+                  ...(query.from ? { gte: new Date(query.from) } : {}),
+                  ...(query.to ? { lte: new Date(query.to) } : {}),
+                },
+              },
+            ]
+          : []),
+        ...(search ? [{ OR: search }] : []),
+      ],
     };
     const skip = (query.page - 1) * query.pageSize;
     const [items, total] = await Promise.all([
@@ -71,7 +93,7 @@ export class TripService {
           receivedQuantity: true,
           version: true,
           sppg: { select: { id: true, code: true, name: true } },
-          deliveryLocation: { select: { id: true, code: true, name: true } },
+          deliveryLocation: { select: { id: true, code: true, name: true, address: true, latitude: true, longitude: true } },
           driver: { select: { id: true, code: true, name: true } },
           vehicle: { select: { id: true, plateNumber: true } },
           positions: {
@@ -104,9 +126,9 @@ export class TripService {
     };
   }
 
-  async getTrip(id: string, principal: SessionPrincipal) {
+  async getTrip(id: string, principal: SessionPrincipal, tenantContext?: { tenantId: string } | null) {
     const trip = await this.prisma.db.trip.findFirst({
-      where: { id, ...this.scopeWhere(principal) },
+      where: { id, ...this.scopeWhere(principal, tenantContext) },
       select: {
         id: true,
         status: true,
@@ -126,7 +148,7 @@ export class TripService {
         receivedQuantity: true,
         version: true,
         sppg: { select: { id: true, code: true, name: true } },
-        deliveryLocation: { select: { id: true, code: true, name: true, address: true } },
+        deliveryLocation: { select: { id: true, code: true, name: true, address: true, latitude: true, longitude: true } },
         driver: { select: { id: true, code: true, name: true } },
         vehicle: { select: { id: true, plateNumber: true, label: true } },
         positions: {
@@ -183,6 +205,7 @@ export class TripService {
     principal: SessionPrincipal,
     idempotencyKey: string,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
     this.assertIdempotencyKey(idempotencyKey);
     const plannedDepartureAt = new Date(input.plannedDepartureAt);
@@ -193,8 +216,9 @@ export class TripService {
 
     try {
       return await this.prisma.db.$transaction(async (tx) => {
-        const replay = await tx.trip.findUnique({ where: { idempotencyKey } });
+        const replay = await tx.trip.findFirst({ where: { idempotencyKey, ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}) } });
         if (replay) {
+          if (tenantContext && replay.tenantId !== tenantContext.tenantId) throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
           await this.assertTripScope(replay.sppgId, replay.driverId, principal, tx);
           this.assertCreateReplayMatches(replay, input, plannedDepartureAt, plannedArrivalAt);
           return { trip: this.presentTrip(replay), replayed: true };
@@ -219,12 +243,14 @@ export class TripService {
               id: input.deliveryLocationId,
               organizationId: source.organizationId,
               active: true,
+              ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}),
             },
-            select: { id: true, organizationId: true, regionId: true },
+            select: { id: true, organizationId: true, regionId: true, tenantId: true },
           }),
           tx.vehicle.findFirst({
             where: {
               id: input.vehicleId,
+              ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}),
               organizationId: source.organizationId,
               sppgId: source.id,
               status: VehicleStatus.ACTIVE,
@@ -234,6 +260,7 @@ export class TripService {
           tx.driver.findFirst({
             where: {
               id: input.driverId,
+              ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}),
               sppgId: source.id,
               status: DriverStatus.ACTIVE,
             },
@@ -242,6 +269,9 @@ export class TripService {
         ]);
 
         if (!destination) throw new NotFoundException({ code: 'INVALID_DESTINATION' });
+        if (tenantContext && destination.tenantId !== tenantContext.tenantId) {
+          throw new NotFoundException({ code: 'INVALID_DESTINATION' });
+        }
         if (!principal.roles.some((role) =>
           role.isGlobal ||
           role.organizationId === destination.organizationId ||
@@ -255,6 +285,7 @@ export class TripService {
 
         const collision = await tx.trip.findFirst({
           where: {
+            ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}),
             status: { notIn: TERMINAL_STATUSES },
             plannedDepartureAt: { lt: plannedArrivalAt },
             plannedArrivalAt: { gt: plannedDepartureAt },
@@ -266,8 +297,12 @@ export class TripService {
           throw new ConflictException({ code: 'RESOURCE_ALREADY_ASSIGNED' });
         }
 
+        const tenant = await tx.tenant.findUnique({ where: { legacySppgId: source.id } });
+        if (!tenant) throw new BadRequestException({ code: 'TENANT_NOT_FOUND' });
+
         const trip = await tx.trip.create({
           data: {
+            tenantId: tenant.id,
             organizationId: source.organizationId,
             sppgId: source.id,
             deliveryLocationId: destination.id,
@@ -304,10 +339,11 @@ export class TripService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        const replay = await this.prisma.db.trip.findUnique({
-          where: { idempotencyKey },
+        const replay = await this.prisma.db.trip.findFirst({
+          where: { idempotencyKey, ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}) },
         });
         if (replay) {
+          if (tenantContext && replay.tenantId !== tenantContext.tenantId) throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
           await this.assertTripScope(replay.sppgId, replay.driverId, principal);
           this.assertCreateReplayMatches(replay, input, plannedDepartureAt, plannedArrivalAt);
           return { trip: this.presentTrip(replay), replayed: true };
@@ -323,6 +359,7 @@ export class TripService {
     principal: SessionPrincipal,
     idempotencyKey: string,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
     this.assertIdempotencyKey(idempotencyKey);
     const plannedDepartureAt = new Date(input.plannedDepartureAt);
@@ -333,8 +370,9 @@ export class TripService {
 
     try {
       return await this.prisma.db.$transaction(async (tx) => {
-        const trip = await tx.trip.findUnique({ where: { id } });
+      const trip = await tx.trip.findFirst({ where: { id, ...this.scopeWhere(principal, tenantContext) } });
         if (!trip) throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+        if (tenantContext && trip.tenantId !== tenantContext.tenantId) throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
         await this.assertTripScope(trip.sppgId, trip.driverId, principal, tx);
 
         const replay = await tx.tripEvent.findUnique({
@@ -357,6 +395,7 @@ export class TripService {
 
         const collision = await tx.trip.findFirst({
           where: {
+            ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}),
             id: { not: trip.id },
             status: { notIn: TERMINAL_STATUSES },
             plannedDepartureAt: { lt: plannedArrivalAt },
@@ -368,7 +407,7 @@ export class TripService {
         if (collision) throw new ConflictException({ code: 'RESOURCE_ALREADY_ASSIGNED' });
 
         const changed = await tx.trip.updateMany({
-          where: { id, version: trip.version },
+          where: { id, version: trip.version, ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}) },
           data: {
             plannedDepartureAt,
             plannedArrivalAt,
@@ -422,13 +461,15 @@ export class TripService {
     principal: SessionPrincipal,
     idempotencyKey: string,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
     this.assertIdempotencyKey(idempotencyKey);
 
     try {
       return await this.prisma.db.$transaction(async (tx) => {
-        const trip = await tx.trip.findUnique({ where: { id } });
+        const trip = await tx.trip.findFirst({ where: { id, ...this.scopeWhere(principal, tenantContext) } });
         if (!trip) throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+        if (tenantContext && trip.tenantId !== tenantContext.tenantId) throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
         await this.assertTripScope(trip.sppgId, trip.driverId, principal, tx);
 
         const replay = await tx.tripEvent.findUnique({
@@ -453,6 +494,7 @@ export class TripService {
           tx.vehicle.findFirst({
             where: {
               id: input.vehicleId,
+              ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}),
               organizationId: trip.organizationId,
               sppgId: trip.sppgId,
               status: VehicleStatus.ACTIVE,
@@ -462,6 +504,7 @@ export class TripService {
           tx.driver.findFirst({
             where: {
               id: input.driverId,
+              ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}),
               sppgId: trip.sppgId,
               status: DriverStatus.ACTIVE,
             },
@@ -473,6 +516,7 @@ export class TripService {
 
         const collision = await tx.trip.findFirst({
           where: {
+            ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}),
             id: { not: trip.id },
             status: { notIn: TERMINAL_STATUSES },
             plannedDepartureAt: { lt: trip.plannedArrivalAt },
@@ -484,7 +528,7 @@ export class TripService {
         if (collision) throw new ConflictException({ code: 'RESOURCE_ALREADY_ASSIGNED' });
 
         const changed = await tx.trip.updateMany({
-          where: { id, version: trip.version },
+          where: { id, version: trip.version, ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}) },
           data: {
             vehicleId: vehicle.id,
             driverId: driver.id,
@@ -538,15 +582,19 @@ export class TripService {
     principal: SessionPrincipal,
     idempotencyKey: string,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
     this.assertIdempotencyKey(idempotencyKey);
 
     return this.prisma.db.$transaction(async (tx) => {
-      const trip = await tx.trip.findUnique({
-        where: { id },
+      const trip = await tx.trip.findFirst({
+        where: { id, ...this.scopeWhere(principal, tenantContext) },
         include: { sppg: { select: { id: true, organizationId: true, regionId: true } } },
       });
       if (!trip) throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+      if (tenantContext && trip.tenantId !== tenantContext.tenantId) {
+        throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+      }
       await this.assertTripScope(trip.sppgId, trip.driverId, principal, tx);
 
       const replay = await tx.tripEvent.findUnique({
@@ -572,8 +620,9 @@ export class TripService {
           id: input.deliveryLocationId,
           organizationId: trip.sppg.organizationId,
           active: true,
+          ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}),
         },
-        select: { id: true, organizationId: true, regionId: true },
+        select: { id: true, organizationId: true, regionId: true, tenantId: true },
       });
       if (!destination) throw new NotFoundException({ code: 'INVALID_DESTINATION' });
       if (!principal.roles.some((role) =>
@@ -586,7 +635,7 @@ export class TripService {
       }
 
       const changed = await tx.trip.updateMany({
-        where: { id, version: trip.version },
+        where: { id, version: trip.version, ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}) },
         data: {
           deliveryLocationId: destination.id,
           version: { increment: 1 },
@@ -630,6 +679,7 @@ export class TripService {
     principal: SessionPrincipal,
     idempotencyKey: string,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
     return this.transitionTrip(
       id,
@@ -639,6 +689,7 @@ export class TripService {
       idempotencyKey,
       requestId,
       { reason: input.reason, version: input.version },
+      tenantContext,
     );
   }
 
@@ -647,8 +698,9 @@ export class TripService {
     principal: SessionPrincipal,
     idempotencyKey: string,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
-    return this.transitionTrip(id, principal, 'SCHEDULED', 'TRIP.SCHEDULED', idempotencyKey, requestId);
+    return this.transitionTrip(id, principal, 'SCHEDULED', 'TRIP.SCHEDULED', idempotencyKey, requestId, undefined, tenantContext);
   }
 
   readyTrip(
@@ -656,8 +708,9 @@ export class TripService {
     principal: SessionPrincipal,
     idempotencyKey: string,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
-    return this.transitionTrip(id, principal, 'READY_TO_DEPART', 'TRIP.READY_TO_DEPART', idempotencyKey, requestId);
+    return this.transitionTrip(id, principal, 'READY_TO_DEPART', 'TRIP.READY_TO_DEPART', idempotencyKey, requestId, undefined, tenantContext);
   }
 
   async startTrip(
@@ -666,12 +719,13 @@ export class TripService {
     input: StartTripDto,
     idempotencyKey: string,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
     this.assertIdempotencyKey(idempotencyKey);
 
     return this.prisma.db.$transaction(async (tx) => {
-      const trip = await tx.trip.findUnique({
-        where: { id },
+      const trip = await tx.trip.findFirst({
+        where: { id, ...this.scopeWhere(principal, tenantContext) },
         include: {
           sppg: {
             include: {
@@ -685,6 +739,7 @@ export class TripService {
         },
       });
       if (!trip) throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+      if (tenantContext && trip.tenantId !== tenantContext.tenantId) throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
       assertSppgAccess(principal, {
         organizationId: trip.sppg.organizationId,
         regionId: trip.sppg.regionId,
@@ -731,7 +786,7 @@ export class TripService {
       const deviceTimestamp = input.deviceTimestamp ? new Date(input.deviceTimestamp) : now;
       this.assertDeviceTimestamp(deviceTimestamp, now);
       const changed = await tx.trip.updateMany({
-        where: { id, status: trip.status, version: trip.version },
+        where: { id, status: trip.status, version: trip.version, ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}) },
         data: {
           status: TripStatus.IN_TRANSIT,
           trackingStatus: TrackingStatus.LIVE,
@@ -770,6 +825,8 @@ export class TripService {
         deviceTimestamp: input.deviceTimestamp ? deviceTimestamp : undefined,
       });
 
+      await this.createStatusNotification(tx, trip.id, TripStatus.IN_TRANSIT);
+
       return { trip: this.presentTrip({
         ...trip,
         status: TripStatus.IN_TRANSIT,
@@ -789,13 +846,17 @@ export class TripService {
     idempotencyKey: string,
     requestId: string,
     options?: { reason?: string; version?: number },
+    tenantContext?: { tenantId: string } | null,
   ) {
     this.assertIdempotencyKey(idempotencyKey);
 
     return this.prisma.db.$transaction(async (tx) => {
-      const trip = await tx.trip.findUnique({ where: { id } });
+        const trip = await tx.trip.findFirst({ where: { id, ...this.scopeWhere(principal, tenantContext) } });
       if (!trip) throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
       await this.assertTripScope(trip.sppgId, trip.driverId, principal, tx);
+      if (tenantContext && trip.tenantId !== tenantContext.tenantId) {
+        throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+      }
 
       const replay = await tx.tripEvent.findUnique({
         where: { tripId_idempotencyKey: { tripId: id, idempotencyKey } },
@@ -833,6 +894,8 @@ export class TripService {
         after: { status: nextStatus, version: trip.version + 1 },
       });
 
+      await this.createStatusNotification(tx, trip.id, nextStatus);
+
       return {
         trip: this.presentTrip({ ...trip, status: nextStatus, version: trip.version + 1 }),
         replayed: false,
@@ -868,7 +931,35 @@ export class TripService {
     });
   }
 
-  private scopeWhere(principal: SessionPrincipal): Prisma.TripWhereInput {
+  private searchWhere(term: string): Prisma.TripWhereInput[] {
+    const contains = { contains: term, mode: 'insensitive' as const };
+    const conditions: Prisma.TripWhereInput[] = [
+      { sppg: { is: { name: contains } } },
+      { sppg: { is: { code: contains } } },
+      { deliveryLocation: { is: { name: contains } } },
+      { deliveryLocation: { is: { code: contains } } },
+      { driver: { is: { name: contains } } },
+      { driver: { is: { code: contains } } },
+      { vehicle: { is: { plateNumber: contains } } },
+    ];
+
+    const normalized = term.toLowerCase();
+    const statuses = TRIP_STATUS_LABELS.filter(
+      (entry) => entry.label.includes(normalized) || entry.status.toLowerCase().replaceAll('_', ' ').includes(normalized),
+    ).map((entry) => entry.status);
+    if (statuses.length > 0) {
+      conditions.push({ status: { in: statuses } });
+    }
+
+    if (UUID_PATTERN.test(term)) {
+      conditions.push({ id: term });
+    }
+
+    return conditions;
+  }
+
+  private scopeWhere(principal: SessionPrincipal, tenantContext?: { tenantId: string } | null): Prisma.TripWhereInput {
+    if (tenantContext) return { tenantId: tenantContext.tenantId };
     if (principal.roles.some((role) => role.isGlobal)) return {};
 
     const rules: Prisma.TripWhereInput[] = [];
@@ -878,15 +969,20 @@ export class TripService {
       if (role.sppgId) rules.push({ sppgId: role.sppgId });
     }
 
-    const scope = rules.length ? { OR: rules } : { id: { in: [] } };
+    const scope: Prisma.TripWhereInput = rules.length
+      ? { OR: rules }
+      : { id: { in: [] } };
     const requiresDriverScope =
       principal.driverId !== null || principal.roles.some((role) => role.code === 'DRIVER');
+    let result: Prisma.TripWhereInput;
     if (requiresDriverScope) {
-      return principal.driverId
+      result = principal.driverId
         ? { AND: [scope, { driverId: principal.driverId }] }
         : { id: { in: [] } };
+    } else {
+      result = scope;
     }
-    return scope;
+    return result;
   }
 
   private assertIdempotencyKey(key: string) {
@@ -1062,5 +1158,37 @@ export class TripService {
         requestId: input.requestId,
       },
     });
+  }
+
+  /** Buat notifikasi untuk recipient saat status trip berubah. */
+  private async createStatusNotification(tx: Prisma.TransactionClient, tripId: string, status: string) {
+    const stops = await tx.deliveryStop.findMany({
+      where: { tripId },
+      include: { site: { include: { memberships: { where: { status: 'ACTIVE' } } } } },
+    });
+    if (stops.length === 0) return;
+    const tripRef = `TRP-${tripId.slice(0, 8).toUpperCase()}`;
+    const titleMap: Record<string, string> = {
+      IN_TRANSIT: 'Kendaraan dalam perjalanan',
+      ARRIVAL_DETECTED: 'Kendaraan mendekati lokasi',
+      ARRIVAL_VERIFIED: 'Kendaraan tiba di lokasi',
+      DELIVERED: 'POD telah dikirim',
+      COMPLETED: 'Pengiriman selesai',
+    };
+    const title = titleMap[status] ?? `Status perjalanan: ${status}`;
+    const notifications = stops.flatMap((stop) =>
+      stop.site.memberships.map((m) => ({
+        userId: m.userId,
+        type: status === 'DELIVERED' ? 'POD_SUBMITTED' : 'SCHEDULE_CHANGED',
+        title,
+        body: `Perjalanan ${tripRef} · ${stop.site.name}`,
+        status: 'QUEUED',
+        stopId: stop.id,
+        tripId,
+      })),
+    );
+    if (notifications.length > 0) {
+      await tx.notificationEvent.createMany({ data: notifications });
+    }
   }
 }

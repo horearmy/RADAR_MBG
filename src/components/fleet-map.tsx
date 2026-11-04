@@ -19,6 +19,7 @@ export type GeofenceOverlay = {
   radiusMeters?: number | string | null;
   polygonCoordinates?: Array<{ latitude: number; longitude: number }> | null;
   active: boolean;
+  selected?: boolean;
 };
 
 export type GeofenceCircleDraft = {
@@ -112,6 +113,7 @@ export function FleetMap({
   draftGeofence = null,
   pickGeofenceCenter = false,
   onPickGeofenceCenter,
+  onSearchResultSelect,
   focusPoint,
   polygonPoints = null,
   onPolygonPointClick,
@@ -123,6 +125,7 @@ export function FleetMap({
   onRoutePointPick,
   originMarker = null,
   destinationMarker = null,
+  searchMarker = null,
   routes = [],
   selectedRouteId = null,
   onSelectRoute,
@@ -136,6 +139,7 @@ export function FleetMap({
   draftGeofence?: GeofenceCircleDraft | null;
   pickGeofenceCenter?: boolean;
   onPickGeofenceCenter?: (longitude: number, latitude: number) => void;
+  onSearchResultSelect?: (latitude: number, longitude: number, displayName: string) => void;
   focusPoint?: { longitude: number; latitude: number } | null;
   polygonPoints?: Array<{ longitude: number; latitude: number }> | null;
   onPolygonPointClick?: (longitude: number, latitude: number) => void;
@@ -148,6 +152,7 @@ export function FleetMap({
   onRoutePointPick?: (longitude: number, latitude: number) => void;
   originMarker?: { longitude: number; latitude: number } | null;
   destinationMarker?: { longitude: number; latitude: number } | null;
+  searchMarker?: { longitude: number; latitude: number } | null;
   routes?: Array<{ id: string; name: string; coordinates: Array<{ latitude: number; longitude: number }>; active: boolean }>;
   selectedRouteId?: string | null;
   onSelectRoute?: (id: string) => void;
@@ -185,13 +190,15 @@ export function FleetMap({
     }
   }
 
-  function flyToResult(result: { lat: string; lon: string }) {
+  function flyToResult(result: { lat: string; lon: string; display_name?: string }) {
     const lat = Number(result.lat);
     const lon = Number(result.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
     mapRef.current?.flyTo({ center: [lon, lat], zoom: 14, duration: 800 });
+    onSearchResultSelect?.(lat, lon, result.display_name ?? "");
     setSearchResults([]);
-    setSearchQuery("");
+    // Pertahankan nama tempat yang dipilih agar pengguna tahu hasil pencarian sudah diterapkan.
+    setSearchQuery(result.display_name ?? `${lat.toFixed(5)}, ${lon.toFixed(5)}`);
   }
 
   useEffect(() => {
@@ -302,9 +309,27 @@ export function FleetMap({
         const marker = new ml.Marker({ element: el, anchor: "center" }).setLngLat([destinationMarker.longitude, destinationMarker.latitude]).addTo(map);
         markers.push(marker);
       }
+      if (searchMarker) {
+        const el = document.createElement("div");
+        el.style.background = "#7c3aed";
+        el.style.border = "3px solid #fff";
+        el.style.width = "20px";
+        el.style.height = "20px";
+        el.style.borderRadius = "50%";
+        el.style.boxShadow = "0 0 0 4px rgba(124,58,237,0.3), 0 2px 6px rgba(0,0,0,0.3)";
+        el.style.display = "flex";
+        el.style.alignItems = "center";
+        el.style.justifyContent = "center";
+        el.style.color = "#fff";
+        el.style.fontSize = "11px";
+        el.style.fontWeight = "700";
+        el.textContent = "S";
+        const marker = new ml.Marker({ element: el, anchor: "center" }).setLngLat([searchMarker.longitude, searchMarker.latitude]).addTo(map);
+        markers.push(marker);
+      }
       (map as unknown as { __odMarkers?: unknown[] }).__odMarkers = markers;
     });
-  }, [originMarker, destinationMarker, ready]);
+  }, [originMarker, destinationMarker, searchMarker, ready]);
 
   useEffect(() => {
     if (!ready || !mapRef.current) return;
@@ -418,7 +443,7 @@ export function FleetMap({
       const shapeType = geofence.shapeType ?? "CIRCLE";
       if (shapeType === "POLYGON" && geofence.polygonCoordinates && geofence.polygonCoordinates.length >= 3) {
         const coords = geofence.polygonCoordinates.map((p) => [Number(p.longitude), Number(p.latitude)]);
-        const properties = { id: geofence.id, name: geofence.name, active: geofence.active, kind: "saved" };
+        const properties = { id: geofence.id, name: geofence.name, active: geofence.active, kind: "saved", selected: geofence.selected ?? false };
         features.push({
           type: "Feature",
           properties,
@@ -430,7 +455,7 @@ export function FleetMap({
       const latitude = Number(geofence.centerLatitude);
       const radiusMeters = Number(geofence.radiusMeters);
       if (![longitude, latitude, radiusMeters].every(Number.isFinite) || radiusMeters <= 0) continue;
-      const properties = { id: geofence.id, name: geofence.name, active: geofence.active, kind: "saved" };
+      const properties = { id: geofence.id, name: geofence.name, active: geofence.active, kind: "saved", selected: geofence.selected ?? false };
       features.push({
         type: "Feature",
         properties,
@@ -485,7 +510,9 @@ export function FleetMap({
       const primary = tokens.getPropertyValue("--color-primary").trim() || "#1677ff";
       const warning = tokens.getPropertyValue("--color-warning").trim() || "#f59e0b";
       const muted = tokens.getPropertyValue("--color-content-muted").trim() || "#92a0b1";
-      const color = ["case", ["==", ["get", "kind"], "draft"], warning, ["==", ["get", "active"], true], primary, muted] as unknown as string;
+      const color = ["case", ["==", ["get", "kind"], "draft"], warning, ["==", ["get", "selected"], true], "#7c3aed", ["==", ["get", "active"], true], primary, muted] as unknown as string;
+      const lineWidth = ["case", ["==", ["get", "selected"], true], 3.5, 2] as unknown as number;
+      const fillOpacity = ["case", ["==", ["get", "selected"], true], 0.2, 0.12] as unknown as number;
       map.addLayer({
         id: "operational-geofences-fill",
         type: "fill",
@@ -493,7 +520,7 @@ export function FleetMap({
         filter: ["==", ["geometry-type"], "Polygon"],
         paint: {
           "fill-color": color,
-          "fill-opacity": 0.12,
+          "fill-opacity": fillOpacity,
         },
       } as Parameters<MapLibreMap["addLayer"]>[0]);
       map.addLayer({
@@ -503,7 +530,7 @@ export function FleetMap({
         filter: ["==", ["geometry-type"], "Polygon"],
         paint: {
           "line-color": color,
-          "line-width": 2,
+          "line-width": lineWidth,
           "line-dasharray": [2, 1.5],
         },
       } as Parameters<MapLibreMap["addLayer"]>[0]);
@@ -538,6 +565,7 @@ export function FleetMap({
           center: JAKARTA_CENTER,
           zoom: 10.5,
           attributionControl: false,
+          trackResize: false,
         });
         map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
         map.addControl(new maplibregl.AttributionControl({ compact: true }));
@@ -553,6 +581,23 @@ export function FleetMap({
         });
         map.on("error", () => {
           if (!cancelled) setError(true);
+        });
+        // Handle WebGL context lost
+        const canvas = map.getCanvas();
+        canvas.addEventListener("webglcontextlost", (e) => {
+          e.preventDefault();
+          console.warn("WebGL context lost, attempting to restore...");
+          setTimeout(() => {
+            if (!cancelled) {
+              map.resize();
+            }
+          }, 100);
+        });
+        canvas.addEventListener("webglcontextrestored", () => {
+          console.log("WebGL context restored");
+          if (!cancelled) {
+            map.resize();
+          }
         });
         loadTimeout = window.setTimeout(() => {
           if (cancelled || styleLoaded) return;

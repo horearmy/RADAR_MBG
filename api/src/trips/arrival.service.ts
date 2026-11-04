@@ -38,6 +38,7 @@ export class ArrivalService {
     principal: SessionPrincipal,
     input: IssueQrTokenDto,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
     const rawToken = randomBytes(32).toString('base64url');
     const tokenHash = this.hash(rawToken);
@@ -47,11 +48,13 @@ export class ArrivalService {
     return this.prisma.db.$transaction(async (tx) => {
       const trip = await tx.trip.findUnique({
         where: { id: tripId },
-        include: {
+        select: {
+          id: true, tenantId: true, organizationId: true, driverId: true, status: true, deliveryLocationId: true,
           sppg: { select: { id: true, organizationId: true, regionId: true } },
         },
       });
       if (!trip) throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+      this.assertTenantTrip(trip.tenantId, tenantContext);
       assertSppgAccess(principal, {
         organizationId: trip.sppg.organizationId,
         regionId: trip.sppg.regionId,
@@ -124,6 +127,7 @@ export class ArrivalService {
     input: VerifyArrivalDto,
     idempotencyKey: string,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
     if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) {
       throw new BadRequestException({ code: 'IDEMPOTENCY_KEY_REQUIRED' });
@@ -144,10 +148,15 @@ export class ArrivalService {
     return this.prisma.db.$transaction(async (tx) => {
       const trip = await tx.trip.findUnique({
         where: { id: tripId },
-        include: {
+        select: {
+          id: true, tenantId: true, organizationId: true, driverId: true, status: true, deliveryLocationId: true, version: true,
           sppg: { select: { id: true, organizationId: true, regionId: true } },
           deliveryLocation: {
-            include: {
+            select: {
+              regionId: true,
+              id: true,
+              latitude: true,
+              longitude: true,
               geofences: {
                 where: { active: true, type: 'DELIVERY' },
                 orderBy: { version: 'desc' },
@@ -158,6 +167,7 @@ export class ArrivalService {
         },
       });
       if (!trip) throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+      this.assertTenantTrip(trip.tenantId, tenantContext);
       this.assertArrivalScope(principal, trip);
 
       const replay = await tx.arrivalVerification.findUnique({
@@ -407,6 +417,7 @@ export class ArrivalService {
     input: OverrideArrivalDto,
     idempotencyKey: string,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
     if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) {
       throw new BadRequestException({ code: 'IDEMPOTENCY_KEY_REQUIRED' });
@@ -421,12 +432,14 @@ export class ArrivalService {
     return this.prisma.db.$transaction(async (tx) => {
       const trip = await tx.trip.findUnique({
         where: { id: tripId },
-        include: {
+        select: {
+          id: true, tenantId: true, organizationId: true, driverId: true, status: true, version: true,
           sppg: { select: { id: true, organizationId: true, regionId: true } },
           deliveryLocation: { select: { regionId: true } },
         },
       });
       if (!trip) throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+      this.assertTenantTrip(trip.tenantId, tenantContext);
       this.assertArrivalScope(principal, trip);
 
       const replay = await tx.arrivalOverride.findUnique({
@@ -645,6 +658,12 @@ export class ArrivalService {
       !inScope ||
       (needsDriverScope && !hasGlobalRole && principal.driverId !== trip.driverId)
     ) {
+      throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
+    }
+  }
+
+  private assertTenantTrip(tripTenantId: string, tenantContext?: { tenantId: string } | null) {
+    if (tripTenantId !== (tenantContext?.tenantId ?? null)) {
       throw new NotFoundException({ code: 'TRIP_NOT_FOUND' });
     }
   }

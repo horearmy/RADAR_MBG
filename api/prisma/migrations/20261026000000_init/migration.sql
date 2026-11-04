@@ -202,4 +202,6 @@ ALTER TABLE "user_roles" ADD CONSTRAINT "user_roles_organization_id_fkey" FOREIG
 ALTER TABLE "user_roles" ADD CONSTRAINT "user_roles_region_id_fkey" FOREIGN KEY ("region_id") REFERENCES "regions"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "user_roles" ADD CONSTRAINT "user_roles_sppg_id_fkey" FOREIGN KEY ("sppg_id") REFERENCES "sppgs"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "sessions" ADD CONSTRAINT "sessions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "users" ADD COLUMN "features" JSON NULL;
 ALTER TABLE "approval_decisions" ADD CONSTRAINT "approval_decisions_approval_request_id_fkey" FOREIGN KEY ("approval_request_id") REFERENCES "approval_requests"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

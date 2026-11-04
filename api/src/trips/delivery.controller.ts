@@ -19,12 +19,13 @@ import { RequirePermissions } from '../auth/permissions.js';
 import type { AuthenticatedRequest } from '../auth/session.guard.js';
 import { PermissionGuard } from '../auth/permission.guard.js';
 import { SessionGuard } from '../auth/session.guard.js';
+import { TenantGuard } from '../auth/tenant.guard.js';
 import { DeliveryService } from './delivery.service.js';
 import { ReviewDeliveryDto, SubmitDeliveryDto } from './delivery.dto.js';
 import { ProofService, type UploadedProofFile } from './proof.service.js';
 
 @Controller('trips/:tripId')
-@UseGuards(SessionGuard, PermissionGuard)
+@UseGuards(SessionGuard, TenantGuard, PermissionGuard)
 export class DeliveryController {
   constructor(
     private readonly delivery: DeliveryService,
@@ -43,6 +44,7 @@ export class DeliveryController {
       request.principal!,
       this.requireIdempotencyKey(idempotencyKey),
       this.requestId(request),
+      request.tenantContext ?? null,
     );
   }
 
@@ -60,6 +62,7 @@ export class DeliveryController {
       input,
       this.requireIdempotencyKey(idempotencyKey),
       this.requestId(request),
+      request.tenantContext ?? null,
     );
   }
 
@@ -77,6 +80,7 @@ export class DeliveryController {
       input,
       this.requireIdempotencyKey(idempotencyKey),
       this.requestId(request),
+      request.tenantContext ?? null,
     );
   }
 
@@ -96,6 +100,7 @@ export class DeliveryController {
       request.principal!,
       file,
       this.requestId(request),
+      request.tenantContext ?? null,
     );
   }
 
@@ -106,7 +111,7 @@ export class DeliveryController {
     @Req() request: AuthenticatedRequest,
     @Param('tripId', ParseUUIDPipe) tripId: string,
   ) {
-    return this.proofs.listProofs(tripId, request.principal!, this.requestId(request));
+    return this.proofs.listProofs(tripId, request.principal!, this.requestId(request), request.tenantContext ?? null);
   }
 
   @Get('delivery/proofs/:proofId/url')
@@ -117,7 +122,7 @@ export class DeliveryController {
     @Param('tripId', ParseUUIDPipe) tripId: string,
     @Param('proofId', ParseUUIDPipe) proofId: string,
   ) {
-    return this.proofs.getDownloadUrl(tripId, proofId, request.principal!, this.requestId(request));
+    return this.proofs.getDownloadUrl(tripId, proofId, request.principal!, this.requestId(request), request.tenantContext ?? null);
   }
 
   @Post('complete')
@@ -132,6 +137,7 @@ export class DeliveryController {
       request.principal!,
       this.requireIdempotencyKey(idempotencyKey),
       this.requestId(request),
+      request.tenantContext ?? null,
     );
   }
 

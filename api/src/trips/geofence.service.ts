@@ -16,11 +16,14 @@ import { canAccessDeliveryGeofence, hasConfirmedGeofenceArrival } from './geofen
 export class GeofenceService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listForLocation(query: ListGeofencesDto, principal: SessionPrincipal) {
-    await this.getScopedLocationWhere(query.locationType, query.locationId, principal);
-    const where = query.locationType === GeofenceLocationType.SPPG
-      ? { sppgId: query.locationId }
-      : { deliveryLocationId: query.locationId };
+  async listForLocation(query: ListGeofencesDto, principal: SessionPrincipal, tenantContext?: { tenantId: string } | null) {
+    await this.getScopedLocationWhere(query.locationType, query.locationId, principal, tenantContext);
+    const where: Prisma.GeofenceWhereInput = {
+      ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}),
+      ...(query.locationType === GeofenceLocationType.SPPG
+        ? { sppgId: query.locationId }
+        : { deliveryLocationId: query.locationId }),
+    };
     return this.prisma.db.geofence.findMany({
       where,
       orderBy: [{ version: 'desc' }, { createdAt: 'desc' }],
@@ -48,6 +51,7 @@ export class GeofenceService {
     principal: SessionPrincipal,
     idempotencyKey: string,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
     this.assertIdempotencyKey(idempotencyKey);
     const type = this.toPrismaType(input.locationType);
@@ -79,7 +83,7 @@ export class GeofenceService {
     return this.prisma.db.$transaction(async (tx) => {
       const replay = await tx.geofence.findUnique({ where: { idempotencyKey } });
       if (replay) {
-        await this.assertGeofenceScope(replay, principal);
+        await this.assertGeofenceScope(replay, principal, tenantContext);
         if (!this.matchesInput(replay, input, type)) {
           throw new ConflictException({ code: 'IDEMPOTENCY_KEY_REUSED' });
         }
@@ -90,6 +94,7 @@ export class GeofenceService {
         input.locationType,
         input.locationId,
         principal,
+        tenantContext,
         tx,
       );
       if (
@@ -101,20 +106,23 @@ export class GeofenceService {
       const locationWhere = input.locationType === GeofenceLocationType.SPPG
         ? { sppgId: input.locationId }
         : { deliveryLocationId: input.locationId };
+      const tenantId = tenantContext?.tenantId ?? null;
+      const scopeWhere = tenantId ? { tenantId } : {};
       const current = await tx.geofence.findFirst({
-        where: { ...locationWhere, active: true },
+        where: { ...locationWhere, ...scopeWhere, active: true },
         orderBy: { version: 'desc' },
         select: { id: true, version: true },
       });
 
       await tx.geofence.updateMany({
-        where: { ...locationWhere, active: true },
+        where: { ...locationWhere, ...scopeWhere, active: true },
         data: { active: false },
       });
 
       const geofence = await tx.geofence.create({
         data: {
           ...locationWhere,
+          tenantId,
           type,
           shapeType: isPolygon ? 'POLYGON' : 'CIRCLE',
           name: input.name,
@@ -275,6 +283,7 @@ export class GeofenceService {
     locationType: GeofenceLocationType,
     locationId: string,
     principal: SessionPrincipal,
+    tenantContext?: { tenantId: string } | null,
     tx: Prisma.TransactionClient = this.prisma.db,
   ) {
     if (locationType === GeofenceLocationType.SPPG) {
@@ -283,6 +292,17 @@ export class GeofenceService {
         select: { id: true, organizationId: true, regionId: true, status: true },
       });
       if (!location) throw new NotFoundException({ code: 'LOCATION_NOT_FOUND' });
+      // Tenant users: check if SPPG belongs to their tenant
+      if (tenantContext) {
+        const tenant = await tx.tenant.findUnique({
+          where: { id: tenantContext.tenantId },
+          select: { legacySppgId: true },
+        });
+        if (tenant?.legacySppgId === locationId) {
+          return location;
+        }
+        throw new NotFoundException({ code: 'LOCATION_NOT_FOUND' });
+      }
       assertSppgAccess(principal, {
         organizationId: location.organizationId,
         regionId: location.regionId,
@@ -293,9 +313,34 @@ export class GeofenceService {
 
     const location = await tx.deliveryLocation.findUnique({
       where: { id: locationId },
-      select: { id: true, organizationId: true, regionId: true, active: true },
+      select: { id: true, organizationId: true, regionId: true, active: true, tenantId: true },
     });
     if (!location || !location.active) throw new NotFoundException({ code: 'LOCATION_NOT_FOUND' });
+
+    // Tenant users: check if the location belongs to their tenant or their tenant's SPPG scope.
+    if (tenantContext) {
+      if (location.tenantId) {
+        if (location.tenantId !== tenantContext.tenantId) {
+          throw new NotFoundException({ code: 'LOCATION_NOT_FOUND' });
+        }
+        return location;
+      }
+      const tenant = await tx.tenant.findUnique({
+        where: { id: tenantContext.tenantId },
+        select: { legacySppgId: true },
+      });
+      if (tenant?.legacySppgId) {
+        const sppg = await tx.sppg.findUnique({
+          where: { id: tenant.legacySppgId },
+          select: { organizationId: true, regionId: true },
+        });
+        if (sppg && sppg.organizationId === location.organizationId && sppg.regionId === location.regionId) {
+          return location;
+        }
+      }
+      throw new NotFoundException({ code: 'LOCATION_NOT_FOUND' });
+    }
+
     const sppgIds = [...new Set(principal.roles.flatMap((role) => role.sppgId ? [role.sppgId] : []))];
     const scopedSppgs = sppgIds.length
       ? await tx.sppg.findMany({
@@ -312,12 +357,13 @@ export class GeofenceService {
   private async assertGeofenceScope(
     geofence: { sppgId: string | null; deliveryLocationId: string | null },
     principal: SessionPrincipal,
+    tenantContext?: { tenantId: string } | null,
   ) {
     if (geofence.sppgId) {
-      return this.getScopedLocationWhere(GeofenceLocationType.SPPG, geofence.sppgId, principal);
+      return this.getScopedLocationWhere(GeofenceLocationType.SPPG, geofence.sppgId, principal, tenantContext);
     }
     if (geofence.deliveryLocationId) {
-      return this.getScopedLocationWhere(GeofenceLocationType.DELIVERY, geofence.deliveryLocationId, principal);
+      return this.getScopedLocationWhere(GeofenceLocationType.DELIVERY, geofence.deliveryLocationId, principal, tenantContext);
     }
     throw new NotFoundException({ code: 'GEOFENCE_NOT_FOUND' });
   }

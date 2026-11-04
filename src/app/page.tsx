@@ -1,31 +1,26 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Activity,
   AlertTriangle,
   ArrowRight,
+  BarChart3,
   Bell,
-  ChevronDown,
+  Building2,
   ChevronRight,
-  Clock3,
-  Command,
   ClipboardCheck,
-  Download,
-  Filter,
+  Clock3,
+  FilePlus,
+  KeyRound,
   Map as MapIcon,
-  MapPinned,
-  LayoutDashboard,
-  ListFilter,
-
-  MoreHorizontal,
   Navigation,
   PackageCheck,
+  Printer,
   Radio,
-  Search,
-  Settings2,
+  RefreshCw,
   ShieldCheck,
   Truck,
   Users,
@@ -33,34 +28,30 @@ import {
   X,
 } from "lucide-react";
 import { HeaderAccount } from "@/components/account-menu";
+import { AppSidebar } from "@/components/app-sidebar";
 import { FleetMap } from "@/components/fleet-map";
 import {
   apiBaseUrl,
   getCurrentSession,
   getDashboardData,
+  getPlatformDashboardSummary,
+  getPlatformGeofences,
+  getPlatformTenants,
   getSessionRole,
   hasPermission,
+  hasPlatformPermission,
+  isPlatformAdmin,
   type DashboardData,
   type ExceptionSummary,
+  type PlatformDashboardSummary,
+  type PlatformGeofence,
   type SessionUser,
+  type TenantSummary,
   type TripSummary,
 } from "@/lib/api";
 
-type NavItem = { label: string; icon: typeof LayoutDashboard; href?: string; count?: string; alert?: boolean; permissions?: string[] };
 type MapFilter = "all" | "active" | "attention" | "stale" | "verified";
-
-const navigation: NavItem[] = [
-  { label: "Ringkasan", icon: LayoutDashboard },
-  { label: "Peta langsung", icon: MapIcon, permissions: ["trip:track:read"] },
-  { label: "Perjalanan", icon: Navigation, permissions: ["trip:read"] },
-  { label: "Pusat risiko", icon: AlertTriangle, alert: true, permissions: ["exception:read"] },
-];
-
-const management: NavItem[] = [
-  { label: "SPPG", icon: Utensils, href: "/sppg", permissions: ["master:read", "sppg:read", "organization:read"] },
-  { label: "Driver", icon: Users, href: "/drivers", permissions: ["master:read"] },
-  { label: "Kendaraan", icon: Truck, href: "/vehicles", permissions: ["master:read"] },
-];
+type TripTab = "active" | "attention" | "all";
 
 const activeTripStatuses = new Set([
   "IN_TRANSIT",
@@ -77,6 +68,14 @@ const closedExceptionStatuses = new Set([
 ]);
 
 const avatarClasses = ["avatar-blue", "avatar-rose", "avatar-green", "avatar-gold"];
+
+const MAP_FILTERS: Array<{ value: MapFilter; label: string }> = [
+  { value: "all", label: "Semua" },
+  { value: "active", label: "Dalam perjalanan" },
+  { value: "attention", label: "Perlu perhatian" },
+  { value: "stale", label: "GPS usang" },
+  { value: "verified", label: "Terverifikasi" },
+];
 
 function formatClock(value: string) {
   const parts = new Intl.DateTimeFormat("id-ID", {
@@ -133,13 +132,29 @@ function tripState(trip: TripSummary): { label: string; tone: string } {
 function exceptionLevel(exception: ExceptionSummary): { label: string; tone: string } {
   if (exception.severity === "CRITICAL") return { label: "Kritis", tone: "red" };
   if (exception.severity === "HIGH") return { label: "Tinggi", tone: "amber" };
-  return { label: "Perhatian", tone: "violet" };
+  return { label: "Perhatian", tone: "amber" };
+}
+
+function severityRank(severity: ExceptionSummary["severity"]) {
+  if (severity === "CRITICAL") return 3;
+  if (severity === "HIGH") return 2;
+  return 1;
 }
 
 function tripNeedsAttention(trip: TripSummary, now: number) {
   const gpsNeedsAttention = ["STALE", "OFFLINE", "GPS_UNAVAILABLE"].includes(trip.trackingStatus);
   const isLate = activeTripStatuses.has(trip.status) && new Date(trip.plannedArrivalAt).getTime() < now;
   return trip.status === "EXCEPTION" || gpsNeedsAttention || isLate;
+}
+
+function tripUrgencyScore(trip: TripSummary, now: number) {
+  let score = 0;
+  if (trip.status === "EXCEPTION") score += 100;
+  if (tripNeedsAttention(trip, now)) score += 50;
+  if (activeTripStatuses.has(trip.status)) score += 20;
+  if (trip.status === "READY_TO_DEPART" || trip.status === "SCHEDULED") score += 10;
+  if (trip.status === "COMPLETED" || trip.status === "CANCELLED") score -= 10;
+  return score;
 }
 
 function matchesMapFilter(trip: TripSummary, filter: MapFilter, now: number) {
@@ -171,14 +186,58 @@ function StatusPill({ tone, children }: { tone: string; children: ReactNode }) {
 
 export default function Home() {
   const router = useRouter();
-  const [activeNav, setActiveNav] = useState("Ringkasan");
-  const [showAlerts, setShowAlerts] = useState(true);
+  const mapSectionRef = useRef<HTMLElement>(null);
   const [mapFilter, setMapFilter] = useState<MapFilter>("all");
   const [selectedMapTripId, setSelectedMapTripId] = useState<string | null>(null);
   const [mapExpanded, setMapExpanded] = useState(false);
+  const [tripTab, setTripTab] = useState<TripTab>("active");
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [sessionState, setSessionState] = useState<"checking" | "ready" | "unavailable" | "data-error" | "forbidden">("checking");
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [platformSummary, setPlatformSummary] = useState<PlatformDashboardSummary | null>(null);
+  const [platformGeofences, setPlatformGeofences] = useState<PlatformGeofence[]>([]);
+  const [platformTenants, setPlatformTenants] = useState<TenantSummary[]>([]);
+  // Filter tenant belum punya kontrol UI; disimpan sebagai konstanta agar mudah diaktifkan.
+  const tenantFilter: string | undefined = undefined;
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+
+  const loadDashboard = useCallback(async (user: SessionUser, silent: boolean) => {
+    if (!silent) setSessionState("checking");
+    try {
+      const data = await getDashboardData(user);
+      setDashboard(data);
+      setSessionState("ready");
+      setRefreshError(null);
+
+      if (isPlatformAdmin(user)) {
+        try {
+          setPlatformSummary(await getPlatformDashboardSummary());
+        } catch {
+          // Governance counters are supplementary; keep the previous snapshot.
+        }
+      }
+    } catch (error: unknown) {
+      if (error instanceof Error && error.message === "UNAUTHENTICATED") {
+        router.replace("/login?expired=1");
+        return;
+      }
+      if (error instanceof Error && error.message === "REQUEST_FAILED_403") {
+        setSessionState("forbidden");
+        return;
+      }
+      if (silent) {
+        setRefreshError("Pembaruan otomatis gagal. Data terakhir tetap ditampilkan.");
+      } else {
+        setRefreshError(
+          error instanceof Error && error.message.startsWith("REQUEST_FAILED_")
+            ? error.message
+            : "Gangguan saat memuat data operasional.",
+        );
+        setSessionState("data-error");
+      }
+    }
+  }, [router]);
 
   useEffect(() => {
     let active = true;
@@ -199,45 +258,111 @@ export default function Home() {
 
       if (!active) return;
       setSessionUser(user);
+
       if (!hasPermission(user, "trip:read") && !hasPermission(user, "exception:read")) {
+        if (user.tenantRole) {
+          router.replace(user.tenantRole === "TENANT_DRIVER" ? "/radarapp" : "/tenant");
+          return;
+        }
+        if (user.tenantMemberships?.length) {
+          router.replace("/tenant");
+          return;
+        }
         setSessionState("forbidden");
         return;
       }
 
-      try {
-        const data = await getDashboardData(user);
-        if (!active) return;
-        setDashboard(data);
-        setSessionState("ready");
-      } catch (error: unknown) {
-        if (!active) return;
-        if (error instanceof Error && error.message === "UNAUTHENTICATED") {
-          router.replace("/login?expired=1");
-          return;
-        }
-        setSessionState("data-error");
-      }
+      await loadDashboard(user, false);
     })();
 
     return () => { active = false; };
-  }, [router]);
+  }, [router, loadDashboard]);
 
-  function openSection(label: string) {
-    if (label === "Peta langsung") {
-      setActiveNav(label);
-      document.getElementById("live-map")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      return;
+  const handleRefresh = useCallback(async (silent = true) => {
+    if (!sessionUser) return;
+    setRefreshing(true);
+    try {
+      await loadDashboard(sessionUser, silent);
+    } finally {
+      setRefreshing(false);
     }
-    if (label === "Perjalanan") {
-      router.push("/trips");
-      return;
+  }, [sessionUser, loadDashboard]);
+
+  useEffect(() => {
+    if (!sessionUser || sessionState !== "ready") return;
+    const interval = window.setInterval(() => { void handleRefresh(true); }, 60_000);
+    return () => window.clearInterval(interval);
+  }, [sessionUser, sessionState, handleRefresh]);
+
+  // Fetch platform geofences when session is ready, lalu sinkronkan ulang berkala
+  // agar geofence yang baru dibuat dari halaman tenant langsung terlihat.
+  const loadPlatformGeofences = useCallback(async () => {
+    try {
+      const geofences = await getPlatformGeofences(tenantFilter, true);
+      setPlatformGeofences(geofences);
+      const tenants = await getPlatformTenants();
+      setPlatformTenants(tenants);
+    } catch {
+      // Silently ignore fetch errors - geofences are supplementary
     }
-    if (label === "Pusat risiko") {
-      router.push("/exceptions");
-      return;
-    }
-    setActiveNav(label);
-  }
+  }, [tenantFilter]);
+
+  useEffect(() => {
+    if (!sessionUser || sessionState !== "ready") return;
+    if (!hasPlatformPermission(sessionUser, "geofence:read")) return;
+    const initial = window.setTimeout(() => { void loadPlatformGeofences(); }, 0);
+    const interval = window.setInterval(() => { void loadPlatformGeofences(); }, 30_000);
+    const handleFocus = () => { void loadPlatformGeofences(); };
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [sessionUser, sessionState, loadPlatformGeofences]);
+
+  useEffect(() => {
+    if (!mapExpanded) return;
+    const node = mapSectionRef.current;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMapExpanded(false);
+        return;
+      }
+      if (event.key !== "Tab" || !node) return;
+
+      const focusables = Array.from(
+        node.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      if (!focusables.length) return;
+
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKeyDown);
+    node?.focus();
+
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused?.focus();
+    };
+  }, [mapExpanded]);
 
   async function logout() {
     if (!apiBaseUrl) {
@@ -276,7 +401,12 @@ export default function Home() {
   }
 
   if (sessionState === "data-error" || !dashboard) {
-    return <main className="session-state"><span className="session-error-mark">!</span><h1>Data operasional gagal dimuat</h1><p>Sesi valid, tetapi API trip/exception tidak merespons. Periksa koneksi API lalu coba lagi.</p><button className="session-retry" onClick={() => window.location.reload()}>Coba lagi</button></main>;
+    const errorMessage = refreshError?.startsWith("REQUEST_FAILED_")
+      ? `API menolak atau gagal memproses permintaan (${refreshError.replace("REQUEST_FAILED_", "HTTP ")}).`
+      : refreshError
+        ? `API tidak dapat memuat data operasional (${refreshError}).`
+        : "API tidak dapat memuat data operasional. Periksa koneksi API lalu coba lagi.";
+    return <main className="session-state"><span className="session-error-mark">!</span><h1>Data operasional gagal dimuat</h1><p>{errorMessage}</p><button className="session-retry" onClick={() => void handleRefresh(false)}>Coba lagi</button></main>;
   }
 
   const trips = dashboard.trips;
@@ -286,163 +416,374 @@ export default function Home() {
   const criticalExceptions = activeExceptions.filter((exception) => exception.severity === "CRITICAL");
   const highExceptions = activeExceptions.filter((exception) => exception.severity === "HIGH");
   const attentionExceptions = activeExceptions.filter((exception) => exception.severity === "ATTENTION");
+  const sortedExceptions = [...activeExceptions].sort(
+    (a, b) => severityRank(b.severity) - severityRank(a.severity) || new Date(a.openedAt).getTime() - new Date(b.openedAt).getTime(),
+  );
   const inTransitTrips = trips.filter((trip) => activeTripStatuses.has(trip.status));
   const verifiedTrips = trips.filter((trip) => ["VERIFIED", "OVERRIDDEN"].includes(trip.verificationStatus));
   const completedTrips = trips.filter((trip) => trip.status === "COMPLETED");
-  const verifiedPct = dashboard.tripTotal
-    ? Math.round((verifiedTrips.length / dashboard.tripTotal) * 1000) / 10
-    : 0;
+  const verifiedPct = trips.length ? Math.round((verifiedTrips.length / trips.length) * 1000) / 10 : 0;
   const locatedTrips = trips.filter((trip) => trip.positions.length > 0);
   const mapTrips = locatedTrips.filter((trip) => matchesMapFilter(trip, mapFilter, dashboardNow));
   const selectedMapTrip = mapTrips.find((trip) => trip.id === selectedMapTripId) ?? null;
   const selectedPosition = selectedMapTrip?.positions[0] ?? null;
-  const arrivalTrips = locatedTrips.filter((trip) => ["ARRIVAL_DETECTED", "ARRIVAL_VERIFIED", "DELIVERY_IN_PROGRESS"].includes(trip.status));
   const staleGpsTrips = locatedTrips.filter((trip) => ["STALE", "OFFLINE", "GPS_UNAVAILABLE"].includes(trip.trackingStatus));
   const latestPositionAt = locatedTrips.reduce<string | null>((latest, trip) => {
     const received = trip.positions[0]?.serverReceivedAt ?? null;
     if (!received) return latest;
     return !latest || new Date(received) > new Date(latest) ? received : latest;
   }, null);
+  const freshnessStale = !latestPositionAt || dashboardNow - new Date(latestPositionAt).getTime() > 10 * 60_000;
   const activeSppg = dashboard.sppgs?.filter((sppg) => sppg.status === "ACTIVE").length ?? null;
   const pendingSppg = activeSppg === null ? null : Math.max(0, dashboard.sppgTotal - activeSppg);
   const canReadTrips = hasPermission(sessionUser, "trip:read");
   const canReadExceptions = hasPermission(sessionUser, "exception:read");
   const canReadMaster = hasPermission(sessionUser, "master:read");
-  const canManageAdmin = hasPermission(sessionUser, "admin:manage_users") || hasPermission(sessionUser, "admin:manage_roles");
   const canDrive = hasPermission(sessionUser, "trip:start") && hasPermission(sessionUser, "trip:location:update");
   const canAccessApprovals = hasPermission(sessionUser, "sppg:manage") || hasPermission(sessionUser, "approval:review");
   const canReadAudit = hasPermission(sessionUser, "audit:read");
-  const canAccessGeofences = hasPermission(sessionUser, "geofence:read") || hasPermission(sessionUser, "geofence:manage");
   const canManageUsers = hasPermission(sessionUser, "admin:manage_users");
-  const canAccessNav = (item: NavItem) => !item.permissions || item.permissions.some((permission) => hasPermission(sessionUser, permission));
-  const navItems = navigation.filter(canAccessNav).map((item) => {
-    if (item.label === "Perjalanan") return { ...item, count: String(inTransitTrips.length) };
-    if (item.label === "Pusat risiko") return { ...item, count: String(activeExceptions.length) };
-    return item;
-  });
-  const managementItems = management.filter(canAccessNav);
+  const platformAdmin = isPlatformAdmin(sessionUser);
+  const kpiCount = [canReadMaster, canReadTrips, canReadTrips, canReadExceptions].filter(Boolean).length;
+
+  const sortedTrips = [...trips].sort(
+    (a, b) => tripUrgencyScore(b, dashboardNow) - tripUrgencyScore(a, dashboardNow)
+      || new Date(a.plannedArrivalAt).getTime() - new Date(b.plannedArrivalAt).getTime(),
+  );
+  const attentionTrips = sortedTrips.filter((trip) => tripNeedsAttention(trip, dashboardNow));
+  const activeTrips = sortedTrips.filter((trip) => activeTripStatuses.has(trip.status));
+  const tabTrips = tripTab === "active" ? activeTrips : tripTab === "attention" ? attentionTrips : sortedTrips;
+  const visibleTrips = tabTrips.slice(0, 6);
 
   return (
-    <main className="app-shell">
-      <aside className="sidebar">
-        <a className="brand" href="#overview" aria-label="RADAR MBG beranda">
-          <span className="brand-mark"><span /><span /><span /></span>
-          <span className="brand-copy"><strong>RADAR<span>MBG</span></strong><small>Operational intelligence</small></span>
-        </a>
-
-        <div className="workspace-switcher">
-          <span className="workspace-icon"><Command size={17} /></span>
-          <span className="workspace-copy"><small>WORKSPACE</small><strong>Pusat Operasional</strong></span>
-          <ChevronDown size={15} className="muted-icon" />
-        </div>
-
-        <nav className="side-nav" aria-label="Navigasi utama">
-          <p className="nav-caption">MONITORING</p>
-          {navItems.map(({ label, icon: Icon, count, alert }) => (
-            <button key={label} className={`nav-item ${activeNav === label ? "nav-active" : ""}`} onClick={() => openSection(label)}>
-              <Icon size={17} strokeWidth={1.8} /><span>{label}</span>
-              {count && <span className={`nav-count ${alert ? "nav-count-alert" : ""}`}>{count}</span>}
-            </button>
-          ))}
-          <p className="nav-caption nav-caption-spaced">OPERASIONAL</p>
-          {managementItems.map(({ label, icon: Icon, href }) => (
-            <Link key={label} className="nav-item nav-link" href={href ?? "/"}>
-              <Icon size={17} strokeWidth={1.8} /><span>{label}</span>
-            </Link>
-          ))}
-          {canReadAudit && <Link className="nav-item nav-link" href="/audit"><Activity size={17} strokeWidth={1.8} /><span>Audit explorer</span></Link>}
-          {canAccessGeofences && <Link className="nav-item nav-link" href="/geofences"><MapPinned size={17} strokeWidth={1.8} /><span>Geofence</span></Link>}
-          {canManageUsers && <Link className="nav-item nav-link" href="/users"><Users size={17} strokeWidth={1.8} /><span>Administrasi akun</span></Link>}
-          {sessionUser.mfaEnabled === false && <Link className="nav-item nav-link" href="/security/mfa"><ShieldCheck size={17} strokeWidth={1.8} /><span>Daftarkan MFA</span></Link>}
-          {canAccessApprovals && <Link className="nav-item nav-link" href="/approvals"><ClipboardCheck size={17} strokeWidth={1.8} /><span>Persetujuan</span></Link>}
-          {canDrive && (
-            <>
-              <p className="nav-caption nav-caption-spaced">PENGEMUDI</p>
-              <Link className="nav-item nav-link" href="/driver">
-                <Navigation size={17} strokeWidth={1.8} /><span>Mode pengemudi</span>
-              </Link>
-            </>
-          )}
-        </nav>
-
-        <div className="sidebar-bottom">
-          <div className="sidebar-help"><div className="help-icon"><Activity size={17} /></div><div><strong>Data operasional</strong><span>Terhubung ke API RADAR MBG</span></div></div>
-          {canManageAdmin && <button className="nav-item settings-item nav-item-soon" disabled title="Pengaturan segera hadir"><Settings2 size={17} /><span>Pengaturan</span><small className="nav-soon-tag">Segera</small></button>}
-
-        </div>
-      </aside>
+    <div className="app-shell">
+      <a className="skip-link" href="#dashboard-main">Lewati ke konten utama</a>
+      <AppSidebar />
 
       <section className="main-column" id="overview">
         <header className="topbar">
-          <div className="breadcrumb"><span>Workspace</span><ChevronRight size={14} /><strong>{activeNav}</strong></div>
-          <div className="topbar-actions"><span className="environment"><span className="live-dot" />DATA OPERASIONAL</span><button className="icon-button" aria-label="Cari"><Search size={17} /></button>{canReadExceptions && <button className="icon-button notification-button" aria-label="Notifikasi" onClick={() => setShowAlerts(!showAlerts)}><Bell size={17} /><i /></button>}<span className="topbar-divider" /><HeaderAccount user={sessionUser} /></div>
+          <div className="breadcrumb"><span>Platform</span><ChevronRight size={14} /><strong>Ringkasan</strong></div>
+          <div className="topbar-actions">
+            <span className="environment"><span className="live-dot" />DATA OPERASIONAL</span>
+            {canReadExceptions && (
+              <Link className="icon-button notification-button" href="/exceptions" aria-label={`Notifikasi: ${activeExceptions.length} exception aktif`}>
+                <Bell size={17} />
+                {activeExceptions.length > 0 && <span className="notification-count">{activeExceptions.length > 99 ? "99+" : activeExceptions.length}</span>}
+              </Link>
+            )}
+            <span className="topbar-divider" />
+            <HeaderAccount user={sessionUser} />
+          </div>
         </header>
 
-        <div className="content-area">
-          <div className="page-heading"><div><div className="eyebrow"><span className="eyebrow-line" />{new Intl.DateTimeFormat("id-ID", { weekday: "long", day: "2-digit", month: "long", year: "numeric", timeZone: "Asia/Jakarta" }).format(new Date()).toUpperCase()}</div><h1>Selamat {Number(new Intl.DateTimeFormat("id-ID", { hour: "2-digit", hourCycle: "h23", timeZone: "Asia/Jakarta" }).format(new Date())) < 12 ? "pagi" : "siang"}, {sessionUser.displayName.split(" ")[0]} <span className="wave">✳</span></h1><p>Gambaran distribusi hari ini dari data operasional RADAR MBG.</p></div><button className="export-button" onClick={() => window.print()}><Download size={15} />Ekspor ringkasan</button></div>
-
-          <div className="demo-notice"><span className="notice-mark">i</span><span><strong>Sumber data</strong> — Ringkasan ini terhubung ke API RADAR MBG. Terakhir dimuat {formatClock(dashboard.refreshedAt)} WIB.</span></div>
-
-          <section className="kpi-grid" aria-label="Ringkasan operasional">
-            {canReadMaster && <article className="kpi-card"><div className="kpi-top"><span className="kpi-icon icon-navy"><Utensils size={17} /></span><span className="kpi-trend trend-up">Live</span></div><p className="kpi-label">SPPG aktif</p><div className="kpi-value">{activeSppg ?? "—"} <span>/ {dashboard.sppgs ? dashboard.sppgTotal : "—"}</span></div><div className="kpi-foot"><span className="mini-bars"><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></span><span>{pendingSppg === null ? "Data SPPG tidak tersedia" : `${pendingSppg} belum aktif`}</span></div></article>}
-            {canReadTrips && <article className="kpi-card"><div className="kpi-top"><span className="kpi-icon icon-blue"><Truck size={17} /></span><span className="kpi-trend trend-up">Hari ini</span></div><p className="kpi-label">Perjalanan hari ini</p><div className="kpi-value">{dashboard.tripTotal} <span>perjalanan</span></div><div className="kpi-foot"><span className="kpi-dot blue-dot" />{inTransitTrips.length} sedang berjalan <span className="kpi-separator">·</span> {completedTrips.length} selesai</div></article>}
-            {canReadTrips && <article className="kpi-card"><div className="kpi-top"><span className="kpi-icon icon-green"><PackageCheck size={17} /></span><span className="kpi-trend trend-up">{verifiedPct}%</span></div><p className="kpi-label">Penyaluran terverifikasi</p><div className="kpi-value">{verifiedPct}<span className="unit">%</span></div><div className="kpi-foot"><span className="progress-track"><i style={{ width: `${Math.min(100, verifiedPct)}%` }} /></span><span>{verifiedTrips.length} dari {dashboard.tripTotal} perjalanan</span></div></article>}
-            {canReadExceptions && <article className="kpi-card"><div className="kpi-top"><span className="kpi-icon icon-amber"><AlertTriangle size={17} /></span><span className="kpi-trend trend-down">{highExceptions.length + criticalExceptions.length} tinggi</span></div><p className="kpi-label">Perlu perhatian</p><div className="kpi-value">{String(activeExceptions.length).padStart(2, "0")} <span>exception aktif</span></div><div className="kpi-foot"><span className="severity"><i />{criticalExceptions.length} kritis</span><span className="kpi-separator">·</span><span>{attentionExceptions.length} perlu ditinjau</span></div></article>}
-          </section>
-
-          <section className={`map-section ${mapExpanded ? "map-section-expanded" : ""}`} id="live-map">
-            <div className="section-heading"><div><div className="section-title-row"><h2>Situasi armada</h2><span className="sample-tag"><span />GPS</span></div><p>Lokasi terakhir yang diterima server · {locatedTrips.length} dari {trips.length} perjalanan memiliki koordinat</p></div><div className="map-actions"><label className="map-filter-control"><ListFilter size={14} /><span className="sr-only">Filter perjalanan pada peta</span><select value={mapFilter} aria-label="Filter perjalanan pada peta" onChange={(event) => { setMapFilter(event.target.value as MapFilter); setSelectedMapTripId(null); }}><option value="all">Semua status</option><option value="active">Dalam perjalanan</option><option value="attention">Perlu perhatian</option><option value="stale">GPS usang / offline</option><option value="verified">Terverifikasi</option></select></label><button className="square-button map-expand-control" aria-label={mapExpanded ? "Tutup tampilan peta" : "Perluas peta"} aria-pressed={mapExpanded} onClick={() => setMapExpanded((expanded) => !expanded)}>{mapExpanded ? <X size={16} /> : <MapIcon size={16} />}</button></div></div>
-            <div className="map-frame">
-              <div className="map-visual" aria-label="Peta posisi armada berdasarkan GPS terakhir">
-                <FleetMap trips={mapTrips} selectedTripId={selectedMapTripId} onSelectTrip={(trip) => setSelectedMapTripId(trip.id)} emptyMessage={locatedTrips.length && mapFilter !== "all" ? "Tidak ada perjalanan sesuai filter peta." : undefined} expanded={mapExpanded} />
-                <div className="map-top-label"><span className="map-live-icon"><Radio size={14} /></span><span><strong>Lokasi terakhir diterima</strong><small>Marker bukan jaminan posisi saat ini · pilih marker untuk detail</small></span></div>
+        <main className="content-area dashboard-content" id="dashboard-main">
+          <div className="page-heading">
+            <div>
+              <div className="eyebrow">
+                <span className="eyebrow-line" />
+                {new Intl.DateTimeFormat("id-ID", { weekday: "long", day: "2-digit", month: "long", year: "numeric", timeZone: "Asia/Jakarta" }).format(new Date()).toUpperCase()}
               </div>
-              <div className="map-legend" aria-label="Legenda status peta"><div className="legend-item"><i className="legend-ring legend-blue" /><span>Berjalan</span><b>{locatedTrips.filter((trip) => activeTripStatuses.has(trip.status)).length}</b></div><div className="legend-item"><i className="legend-ring legend-violet" /><span>Tiba / serah-terima</span><b>{arrivalTrips.length}</b></div>{canReadExceptions && <div className="legend-item"><i className="legend-ring legend-amber" /><span>Perhatian</span><b>{locatedTrips.filter((trip) => tripNeedsAttention(trip, dashboardNow)).length}</b></div>}<div className="legend-item"><i className="legend-ring legend-green" /><span>Terverifikasi</span><b>{locatedTrips.filter((trip) => ["VERIFIED", "OVERRIDDEN"].includes(trip.verificationStatus)).length}</b></div>{staleGpsTrips.length > 0 && <div className="legend-item legend-stale"><i className="legend-ring legend-stale-ring" /><span>GPS usang/offline</span><b>{staleGpsTrips.length}</b></div>}<span className="legend-divider" /><div className="legend-freshness"><span className="freshness-dot" />Terakhir diterima {latestPositionAt ? relativeTime(latestPositionAt) : "belum tersedia"}</div></div>
+              <h1>Selamat {Number(new Intl.DateTimeFormat("id-ID", { hour: "2-digit", hourCycle: "h23", timeZone: "Asia/Jakarta" }).format(new Date())) < 12 ? "pagi" : "siang"}, {sessionUser.displayName.split(" ")[0]}</h1>
+              <p>Gambaran distribusi dan tata kelola platform dari data operasional RADAR MBG.</p>
             </div>
-            {selectedMapTrip && selectedPosition && <article className="map-selection-panel" aria-live="polite">
-              <div className="map-selection-heading"><div><span className="map-selection-eyebrow">DETAIL MARKER TERPILIH</span><strong>{selectedMapTrip.vehicle.plateNumber} · {selectedMapTrip.driver.name}</strong><small>{selectedMapTrip.sppg.name} → {selectedMapTrip.deliveryLocation.name}</small></div><StatusPill tone={tripState(selectedMapTrip).tone}>{tripState(selectedMapTrip).label}</StatusPill></div>
-              <div className="map-selection-meta"><span><strong>GPS {trackingLabel(selectedMapTrip.trackingStatus)}</strong><small>{relativeTime(selectedPosition.serverReceivedAt)} · {formatClock(selectedPosition.serverReceivedAt)} WIB</small></span><span><strong>Koordinat WGS84</strong><small>{formatCoordinate(selectedPosition.latitude)}, {formatCoordinate(selectedPosition.longitude)}</small></span><span><strong>Akurasi</strong><small>{selectedPosition.accuracyMeters === null ? "Tidak tersedia" : `${Number(selectedPosition.accuracyMeters).toFixed(0)} m`}</small></span></div>
-              {canReadTrips && <Link className="map-selection-link" href={`/trips/${selectedMapTrip.id}`}>Buka detail perjalanan<ArrowRight size={14} /></Link>}
-            </article>}
+            <div className="page-heading-actions">
+              <button className="export-button" onClick={() => void handleRefresh(true)} disabled={refreshing}>
+                <RefreshCw size={15} className={refreshing ? "spin" : undefined} />
+                {refreshing ? "Memuat…" : "Muat ulang"}
+              </button>
+              <button className="export-button" onClick={() => window.print()}>
+                <Printer size={15} />
+                Cetak
+              </button>
+            </div>
+          </div>
+
+          <div className="demo-notice">
+            <span className="notice-mark">i</span>
+            <span><strong>Data operasional</strong> — diperbarui otomatis setiap 60 detik. Terakhir dimuat {formatClock(dashboard.refreshedAt)} WIB.</span>
+            {refreshError && (
+              <button type="button" onClick={() => setRefreshError(null)} aria-label="Tutup peringatan pembaruan">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          {refreshError && <p className="refresh-warning" role="status">{refreshError}</p>}
+
+          {canReadExceptions && criticalExceptions.length > 0 && (
+            <section className="critical-banner" role="alert">
+              <span className="critical-banner-icon"><AlertTriangle size={18} /></span>
+              <div>
+                <strong>{criticalExceptions.length} exception kritis belum ditangani</strong>
+                <span>Prioritaskan penanganan sebelum menutup shift operasional.</span>
+              </div>
+              <Link className="btn btn-primary btn-sm" href="/exceptions">Tangani</Link>
+            </section>
+          )}
+
+          <section className={`kpi-grid kpi-grid-${kpiCount}`} aria-label="Ringkasan operasional">
+            {canReadMaster && (
+              <article className="kpi-card">
+                <div className="kpi-top"><span className="kpi-icon icon-navy"><Utensils size={17} /></span><span className="kpi-trend trend-neutral">Data master</span></div>
+                <p className="kpi-label">SPPG aktif</p>
+                <div className="kpi-value">{activeSppg ?? "—"} <span>/ {dashboard.sppgs ? dashboard.sppgTotal : "—"}</span></div>
+                <div className="kpi-foot">{pendingSppg === null ? "Data SPPG tidak tersedia" : `${pendingSppg} belum aktif`}</div>
+              </article>
+            )}
+            {canReadTrips && (
+              <article className="kpi-card">
+                <div className="kpi-top"><span className="kpi-icon icon-blue"><Truck size={17} /></span><span className="kpi-trend trend-neutral">Hari ini</span></div>
+                <p className="kpi-label">Perjalanan hari ini</p>
+                <div className="kpi-value">{dashboard.tripTotal} <span>perjalanan</span></div>
+                <div className="kpi-foot"><span className="kpi-dot blue-dot" />{inTransitTrips.length} aktif <span className="kpi-separator">·</span> {completedTrips.length} selesai</div>
+              </article>
+            )}
+            {canReadTrips && (
+              <article className="kpi-card">
+                <div className="kpi-top"><span className="kpi-icon icon-green"><PackageCheck size={17} /></span><span className="kpi-trend trend-neutral">Verifikasi</span></div>
+                <p className="kpi-label">Penyaluran terverifikasi</p>
+                <div className="kpi-value">{verifiedPct}<span className="unit">%</span></div>
+                <div className="kpi-foot"><span className="progress-track"><i style={{ width: `${Math.min(100, verifiedPct)}%` }} /></span><span>{verifiedTrips.length} dari {trips.length} perjalanan termuat</span></div>
+              </article>
+            )}
+            {canReadExceptions && (
+              <article className="kpi-card">
+                <div className="kpi-top"><span className="kpi-icon icon-amber"><AlertTriangle size={17} /></span><span className="kpi-trend trend-neutral">Aktif</span></div>
+                <p className="kpi-label">Perlu perhatian</p>
+                <div className="kpi-value">{activeExceptions.length} <span>exception aktif</span></div>
+                <div className="kpi-foot"><span className="severity"><i />{criticalExceptions.length} kritis</span><span className="kpi-separator">·</span><span>{highExceptions.length + attentionExceptions.length} lainnya</span></div>
+              </article>
+            )}
           </section>
 
-          <section className={`bottom-grid ${canReadExceptions && showAlerts ? "" : "bottom-grid-wide"}`}>
-            <div className="panel trips-panel"><div className="panel-heading"><div><div className="section-title-row"><h2>Perjalanan terkini</h2><span className="count-chip">{inTransitTrips.length} aktif</span></div><p>Pantau status dan progres distribusi hari ini</p></div><Link className="text-link" href="/trips">Semua perjalanan<ArrowRight size={14} /></Link></div>
-              <div className="table-wrap"><table><thead><tr><th>PERJALANAN</th><th>RUTE & PENGEMUDI</th><th>STATUS</th><th>PORSI</th><th>ETA</th><th><span className="sr-only">Aksi</span></th></tr></thead><tbody>{trips.slice(0, 5).map((trip, index) => {
-                const state = tripState(trip);
-                return (
-                  <tr key={trip.id}>
-                    <td><Link className="trip-id trip-detail-link" href={`/trips/${trip.id}`}>TRP-{trip.id.slice(0, 8).toUpperCase()}</Link><span className="table-sub">{trip.vehicle.plateNumber} <i>·</i> {formatClock(trip.plannedDepartureAt)}</span></td>
-                    <td><div className="driver-cell"><span className={`driver-avatar ${avatarClasses[index % avatarClasses.length]}`}>{initials(trip.driver.name)}</span><span className="route-copy"><strong>{trip.sppg.name} → {trip.deliveryLocation.name}</strong><small>{trip.driver.name}</small></span></div></td>
-                    <td><StatusPill tone={state.tone}>{state.label}</StatusPill></td>
-                    <td><span className="portion-value">{trip.plannedQuantity} porsi</span></td>
-                    <td><span className="eta-value">{trip.status === "COMPLETED" ? "Selesai" : trip.status === "CANCELLED" ? "—" : formatClock(trip.plannedArrivalAt)}</span></td>
-                    <td><button className="row-menu" aria-label={`Opsi TRP-${trip.id.slice(0, 8)}`}><MoreHorizontal size={17} /></button></td>
-                  </tr>
-                );
-              })}
-              {!trips.length && <tr><td colSpan={6} style={{ height: 88, color: "#8a97a7", textAlign: "center" }}>Belum ada perjalanan hari ini.</td></tr>}
-              </tbody></table></div>
-              <Link className="mobile-all-link" href="/trips">Lihat semua perjalanan<ArrowRight size={14} /></Link>
-            </div>
+          {platformAdmin && platformSummary && (
+            <section className="panel governance-panel" aria-label="Tata kelola platform">
+              <div className="panel-heading">
+                <div>
+                  <div className="section-title-row"><h2>Tata kelola platform</h2><span className="count-chip">Superadmin</span></div>
+                  <p>Status tenant, pendaftaran, dan persetujuan lintas organisasi.</p>
+                </div>
+                <Link className="text-link" href="/tenant">Kelola tenant<ArrowRight size={14} /></Link>
+              </div>
+              <div className="gov-grid">
+                <Link className="gov-card" href="/tenant">
+                  <span className="gov-icon icon-navy"><Building2 size={17} /></span>
+                  <span className="gov-copy"><small>Tenant aktif</small><strong>{platformSummary.tenants.active} <i>/ {platformSummary.tenants.total}</i></strong><span>{platformSummary.tenants.pendingActivation} menunggu aktivasi · {platformSummary.tenants.suspended} ditangguhkan</span></span>
+                </Link>
+                <div className="gov-card">
+                  <span className="gov-icon icon-blue"><FilePlus size={17} /></span>
+                  <span className="gov-copy"><small>Pendaftaran SPPG</small><strong>{platformSummary.registrations.pendingReview}</strong><span>menunggu review</span></span>
+                </div>
+                <Link className="gov-card" href="/approvals">
+                  <span className="gov-icon icon-amber"><ClipboardCheck size={17} /></span>
+                  <span className="gov-copy"><small>Persetujuan</small><strong>{platformSummary.approvals.pending}</strong><span>menunggu keputusan</span></span>
+                </Link>
+                <Link className="gov-card" href="/sppg">
+                  <span className="gov-icon icon-green"><Utensils size={17} /></span>
+                  <span className="gov-copy"><small>SPPG aktif</small><strong>{activeSppg ?? "—"} <i>/ {dashboard.sppgs ? dashboard.sppgTotal : "—"}</i></strong><span>{pendingSppg === null ? "Data belum tersedia" : `${pendingSppg} belum aktif`}</span></span>
+                </Link>
+              </div>
+            </section>
+          )}
 
-            {showAlerts && canReadExceptions && <aside className="panel alert-panel"><div className="panel-heading"><div><div className="section-title-row"><h2>Perlu perhatian</h2><span className="alert-count">{activeExceptions.length}</span></div><p>Prioritas tindak lanjut operasional</p></div><button className="square-button small-square" aria-label="Filter alert"><Filter size={15} /></button></div><div className="alert-list">{activeExceptions.slice(0, 3).map((exception) => {
-              const level = exceptionLevel(exception);
-              const Icon = exception.severity === "CRITICAL" ? AlertTriangle : exception.severity === "HIGH" ? Clock3 : ShieldCheck;
-              return (
-                <article className="alert-row" key={exception.id}>
-                  <span className={`alert-icon alert-${level.tone}`}><Icon size={16} /></span>
-                  <div className="alert-copy"><strong>{exception.title}</strong><span>{exception.sppg.name} · {relativeTime(exception.openedAt)}</span></div>
-                  <StatusPill tone={level.tone}>{level.label}</StatusPill>
+          <div className="dashboard-main-grid">
+            <section
+              ref={mapSectionRef}
+              className={`map-section ${mapExpanded ? "map-section-expanded" : ""}`}
+              id="live-map"
+              tabIndex={-1}
+              role={mapExpanded ? "dialog" : undefined}
+              aria-modal={mapExpanded || undefined}
+              aria-label="Peta situasi armada"
+            >
+              <div className="section-heading">
+                <div>
+                  <div className="section-title-row"><h2>Situasi armada</h2><span className="sample-tag"><span />GPS</span></div>
+                  <p>Lokasi terakhir yang diterima server · {locatedTrips.length} dari {trips.length} perjalanan memiliki koordinat</p>
+                </div>
+                <div className="map-actions">
+                  <button className="square-button map-expand-control" aria-label={mapExpanded ? "Tutup tampilan peta" : "Perluas peta"} aria-pressed={mapExpanded} onClick={() => setMapExpanded((expanded) => !expanded)}>
+                    {mapExpanded ? <X size={16} /> : <MapIcon size={16} />}
+                  </button>
+                </div>
+              </div>
+              <div className="map-frame">
+                <div className="map-visual" aria-label="Peta posisi armada berdasarkan GPS terakhir">
+                  <FleetMap
+                    trips={mapTrips}
+                    selectedTripId={selectedMapTripId}
+                    onSelectTrip={(trip) => setSelectedMapTripId(trip.id)}
+                    emptyMessage={locatedTrips.length && mapFilter !== "all" ? "Tidak ada perjalanan sesuai filter peta." : undefined}
+                    expanded={mapExpanded}
+                    geofenceCircles={platformGeofences}
+                  />
+                  <div className="map-top-label">
+                    <span className="map-live-icon"><Radio size={14} /></span>
+                    <span><strong>Lokasi terakhir diterima</strong><small>Marker bukan jaminan posisi saat ini · pilih marker untuk detail</small></span>
+                  </div>
+                </div>
+                <div className="map-legend" aria-label="Filter tampilan peta">
+                  <span className="legend-caption">Tampilkan</span>
+                  {MAP_FILTERS.map((filter) => (
+                    <button
+                      key={filter.value}
+                      type="button"
+                      className={`legend-chip ${mapFilter === filter.value ? "active" : ""}`}
+                      aria-pressed={mapFilter === filter.value}
+                      onClick={() => {
+                        setMapFilter(filter.value);
+                        setSelectedMapTripId(null);
+                      }}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                  {staleGpsTrips.length > 0 && <span className="legend-stale-count">{staleGpsTrips.length} GPS usang</span>}
+                  <span className="legend-divider" />
+                  <div className={`legend-freshness ${freshnessStale ? "is-stale" : ""}`}>
+                    <span className="freshness-dot" />{freshnessStale ? "GPS terakhir > 10 menit" : `Terakhir diterima ${latestPositionAt ? relativeTime(latestPositionAt) : "belum tersedia"}`}
+                  </div>
+                  {/* Geofence filter controls */}
+                  {platformGeofences.length > 0 && (
+                    <>
+                      <span className="legend-geofence-toggle">
+                        <input
+                          type="checkbox"
+                          checked={mapFilter !== "stale"}
+                          onChange={() => setMapFilter((prev) => (prev === "stale" ? "all" : prev))}
+                          id="geofence-legend-toggle"
+                          aria-label="Tampilkan geofence di peta"
+                        />
+                        <label htmlFor="geofence-legend-toggle">
+                          <span className="legend-geofence-dot" />
+                          Geofence
+                        </label>
+                      </span>
+                      {tenantFilter && (
+                        <span className="legend-geofence-filter-text">
+                          {platformTenants.find((t) => t.id === tenantFilter)?.tenantCode ?? "Semua tenant"}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+              {selectedMapTrip && selectedPosition && (
+                <article className="map-selection-panel" aria-live="polite">
+                  <div className="map-selection-heading">
+                    <div>
+                      <span className="map-selection-eyebrow">DETAIL MARKER TERPILIH</span>
+                      <strong>{selectedMapTrip.vehicle.plateNumber} · {selectedMapTrip.driver.name}</strong>
+                      <small>{selectedMapTrip.sppg.name} → {selectedMapTrip.deliveryLocation.name}</small>
+                    </div>
+                    <StatusPill tone={tripState(selectedMapTrip).tone}>{tripState(selectedMapTrip).label}</StatusPill>
+                  </div>
+                  <div className="map-selection-meta">
+                    <span><strong>GPS {trackingLabel(selectedMapTrip.trackingStatus)}</strong><small>{relativeTime(selectedPosition.serverReceivedAt)} · {formatClock(selectedPosition.serverReceivedAt)} WIB</small></span>
+                    <span><strong>Koordinat WGS84</strong><small>{formatCoordinate(selectedPosition.latitude)}, {formatCoordinate(selectedPosition.longitude)}</small></span>
+                    <span><strong>Akurasi</strong><small>{selectedPosition.accuracyMeters === null ? "Tidak tersedia" : `${Number(selectedPosition.accuracyMeters).toFixed(0)} m`}</small></span>
+                  </div>
+                  {canReadTrips && <Link className="map-selection-link" href={`/trips/${selectedMapTrip.id}`}>Buka detail perjalanan<ArrowRight size={14} /></Link>}
                 </article>
-              );
-            })}
-            {!activeExceptions.length && <p style={{ padding: "18px 2px", color: "#8a97a7", fontSize: 9 }}>Tidak ada exception aktif.</p>}
-            </div><Link className="alert-footer" href="/exceptions">Buka pusat risiko<ArrowRight size={14} /></Link></aside>}
+              )}
+            </section>
+
+            {canReadExceptions && (
+              <aside className="panel alert-panel" aria-label="Perlu perhatian">
+                <div className="panel-heading">
+                  <div>
+                    <div className="section-title-row"><h2>Perlu perhatian</h2><span className="alert-count">{activeExceptions.length}</span></div>
+                    <p>Prioritas tindak lanjut operasional</p>
+                  </div>
+                </div>
+                <div className="alert-list">
+                  {sortedExceptions.slice(0, 5).map((exception) => {
+                    const level = exceptionLevel(exception);
+                    const Icon = exception.severity === "CRITICAL" ? AlertTriangle : exception.severity === "HIGH" ? Clock3 : ShieldCheck;
+                    return (
+                      <Link className="alert-row" key={exception.id} href="/exceptions">
+                        <span className={`alert-icon alert-${level.tone}`}><Icon size={16} /></span>
+                        <div className="alert-copy">
+                          <strong>{exception.title}</strong>
+                          <span>{exception.sppg.name} · {relativeTime(exception.openedAt)}</span>
+                        </div>
+                        <StatusPill tone={level.tone}>{level.label}</StatusPill>
+                      </Link>
+                    );
+                  })}
+                  {!activeExceptions.length && <p className="alert-empty">Tidak ada exception aktif.</p>}
+                </div>
+                <Link className="alert-footer" href="/exceptions">Buka pusat risiko<ArrowRight size={14} /></Link>
+              </aside>
+            )}
+          </div>
+
+          <section className="panel trips-panel" aria-label="Perjalanan terkini">
+            <div className="panel-heading">
+              <div>
+                <div className="section-title-row"><h2>Perjalanan terkini</h2><span className="count-chip">{inTransitTrips.length} aktif</span></div>
+                <p>Diurutkan berdasarkan urgensi, lalu estimasi tiba.</p>
+              </div>
+              <Link className="text-link" href="/trips">Semua perjalanan<ArrowRight size={14} /></Link>
+            </div>
+            <div className="table-tabs" role="tablist" aria-label="Filter perjalanan">
+              <button type="button" role="tab" aria-selected={tripTab === "active"} className={`table-tab ${tripTab === "active" ? "active" : ""}`} onClick={() => setTripTab("active")}>Aktif <span>{activeTrips.length}</span></button>
+              <button type="button" role="tab" aria-selected={tripTab === "attention"} className={`table-tab ${tripTab === "attention" ? "active" : ""}`} onClick={() => setTripTab("attention")}>Perlu perhatian <span>{attentionTrips.length}</span></button>
+              <button type="button" role="tab" aria-selected={tripTab === "all"} className={`table-tab ${tripTab === "all" ? "active" : ""}`} onClick={() => setTripTab("all")}>Semua <span>{sortedTrips.length}</span></button>
+            </div>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>PERJALANAN</th><th>RUTE &amp; PENGEMUDI</th><th>STATUS</th><th>PORSI</th><th>ETA</th><th><span className="sr-only">Aksi</span></th></tr>
+                </thead>
+                <tbody>
+                  {visibleTrips.map((trip, index) => {
+                    const state = tripState(trip);
+                    return (
+                      <tr key={trip.id}>
+                        <td><Link className="trip-id trip-detail-link" href={`/trips/${trip.id}`}>TRP-{trip.id.slice(0, 8).toUpperCase()}</Link><span className="table-sub">{trip.vehicle.plateNumber} <i>·</i> {formatClock(trip.plannedDepartureAt)}</span></td>
+                        <td><div className="driver-cell"><span className={`driver-avatar ${avatarClasses[index % avatarClasses.length]}`}>{initials(trip.driver.name)}</span><span className="route-copy"><strong>{trip.sppg.name} → {trip.deliveryLocation.name}</strong><small>{trip.driver.name}</small></span></div></td>
+                        <td><StatusPill tone={state.tone}>{state.label}</StatusPill></td>
+                        <td><span className="portion-value">{trip.plannedQuantity} porsi</span></td>
+                        <td><span className="eta-value">{trip.status === "COMPLETED" ? "Selesai" : trip.status === "CANCELLED" ? "—" : formatClock(trip.plannedArrivalAt)}</span></td>
+                        <td><Link className="row-detail-link" href={`/trips/${trip.id}`}>Detail<ArrowRight size={13} /></Link></td>
+                      </tr>
+                    );
+                  })}
+                  {!visibleTrips.length && (
+                    <tr><td colSpan={6} className="table-empty">Belum ada perjalanan pada filter ini.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <Link className="mobile-all-link" href="/trips">Lihat semua perjalanan<ArrowRight size={14} /></Link>
           </section>
-          <footer className="page-footer"><span><span className="footer-dot" /> RADAR MBG <i>·</i> Data operasional</span><span>Zona waktu Asia/Jakarta <i>·</i> Dimuat {formatClock(dashboard.refreshedAt)} WIB</span></footer>
-        </div>
+
+          <section className="panel quick-panel">
+            <div className="panel-heading">
+              <div>
+                <div className="section-title-row"><h2>Aksi platform</h2></div>
+                <p>Pintasan tugas administrator platform dan operasional.</p>
+              </div>
+            </div>
+            <div className="app-link-row">
+              {platformAdmin && <Link href="/tenant" className="app-link-card"><Building2 size={20} /><span>Tenant</span></Link>}
+              <Link href="/sppg" className="app-link-card"><Utensils size={20} /><span>SPPG</span></Link>
+              {canAccessApprovals && <Link href="/approvals" className="app-link-card"><ClipboardCheck size={20} /><span>Persetujuan</span></Link>}
+              {canReadAudit && <Link href="/audit" className="app-link-card"><Activity size={20} /><span>Audit explorer</span></Link>}
+              <Link href="/reporting" className="app-link-card"><BarChart3 size={20} /><span>Laporan</span></Link>
+              <Link href="/register" className="app-link-card"><FilePlus size={20} /><span>Pendaftaran SPPG</span></Link>
+              <Link href="/register/status" className="app-link-card"><KeyRound size={20} /><span>Status pendaftaran</span></Link>
+              {canManageUsers && <Link href="/users" className="app-link-card"><Users size={20} /><span>Administrasi akun</span></Link>}
+              {canDrive && <Link href="/driver" className="app-link-card"><Navigation size={20} /><span>Mode pengemudi</span></Link>}
+            </div>
+          </section>
+
+          <footer className="page-footer">
+            <span><span className="footer-dot" /> RADAR MBG <i>·</i> Data operasional</span>
+            <span>Zona waktu Asia/Jakarta <i>·</i> Dimuat {formatClock(dashboard.refreshedAt)} WIB</span>
+          </footer>
+        </main>
       </section>
-    </main>
+    </div>
   );
 }

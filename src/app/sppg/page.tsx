@@ -26,9 +26,12 @@ import {
   Users,
   Utensils,
 } from "lucide-react";
-import { getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
+import { apiBaseUrl, getCurrentSession, hasPermission, hasPlatformPermission, type SessionUser } from "@/lib/api";
 
-const apiBase = process.env.NEXT_PUBLIC_RADAR_API_URL ?? "http://localhost:4000/api/v1";
+// Gunakan apiBaseUrl dari lib agar selalu berakhiran /api/v1. Sebelumnya halaman ini
+// memakai NEXT_PUBLIC_RADAR_API_URL mentah (tanpa /api/v1), sehingga request jatuh ke
+// rute Nest yang tidak ada dan mengembalikan HTML ("Cannot GET ...") -> JSON parse error.
+const apiBase = apiBaseUrl;
 
 type Sppg = {
   id: string;
@@ -79,6 +82,48 @@ export default function SppgPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const pageSize = 25;
+  const [registrations, setRegistrations] = useState<any[]>([]);
+  const [selectedReg, setSelectedReg] = useState<any>(null);
+  const [provisionResult, setProvisionResult] = useState<any>(null);
+  const [alreadyMsg, setAlreadyMsg] = useState<string | null>(null);
+
+  async function loadRegistrations() {
+    try {
+      const res = await fetch(`${apiBase}/admin/sppg-registrations`, { credentials: 'include', cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json().catch(() => null);
+      if (Array.isArray(data)) setRegistrations(data);
+    } catch {}
+  }
+
+  async function regAction(id: string, action: 'approve' | 'reject' | 'request-revision' | 'provision') {
+    const csrfRes = await fetch(`${apiBase}/auth/csrf`, { credentials: 'include' });
+    const csrfJson = await csrfRes.json().catch(() => null) as { csrfToken?: string } | null;
+    if (!csrfRes.ok || !csrfJson?.csrfToken) {
+      alert('Gagal memulai sesi keamanan. Muat ulang halaman lalu coba lagi.');
+      return;
+    }
+    const url = action === 'provision'
+      ? `${apiBase}/admin/sppg-registrations/${id}/provision`
+      : `${apiBase}/admin/sppg-registrations/${id}/${action}`;
+    const method = action === 'provision' ? 'POST' : 'PATCH';
+    const res = await fetch(url, {
+      method, credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfJson.csrfToken },
+      body: action === 'provision' ? undefined : JSON.stringify({ notes: 'review' }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      alert(body?.message ?? 'Gagal memproses pendaftaran');
+      return;
+    }
+    if (body?.alreadyProvisioned) {
+      setAlreadyMsg('Pendaftaran ini sudah diprovisi sebelumnya.');
+    } else if (action === 'provision') {
+      setProvisionResult(body);
+    }
+    await loadRegistrations();
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -86,15 +131,31 @@ export default function SppgPage() {
     try {
       const sessionRes = await getCurrentSession().catch(() => null);
       if (sessionRes) setUser(sessionRes);
+      if (sessionRes && !hasPlatformPermission(sessionRes, 'sppg:read') && !hasPlatformPermission(sessionRes, 'master:read')) {
+        setError('Akses ke halaman SPPG platform tidak diizinkan.');
+        setLoading(false);
+        return;
+      }
       const params = new URLSearchParams();
       params.set("page", String(page));
       params.set("pageSize", String(pageSize));
       if (statusFilter !== "ALL") params.set("status", statusFilter);
       const res = await fetch(`${apiBase}/admin/sppg?${params.toString()}`, { credentials: "include", cache: "no-store" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.message ?? "Gagal memuat data SPPG");
+      // Baca sebagai teks dulu supaya respons HTML (mis. halaman 404 Next/Nest) tidak
+      // memunculkan error mentah "Unexpected token '<'".
+      const raw = await res.text();
+      let json: { data?: Sppg[]; pagination?: { totalPages?: number }; message?: string } | null = null;
+      try {
+        json = raw ? JSON.parse(raw) : null;
+      } catch {
+        json = null;
+      }
+      if (!res.ok || !json) {
+        throw new Error(json?.message ?? `Gagal memuat data SPPG (HTTP ${res.status}). Pastikan API tersedia.`);
+      }
       setRows(json.data ?? []);
       setTotalPages(json.pagination?.totalPages ?? 1);
+      void loadRegistrations();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal memuat data SPPG");
     } finally {
@@ -219,7 +280,7 @@ export default function SppgPage() {
                 <button className="btn btn-ghost" onClick={() => load()} disabled={loading}>
                   <RefreshCw size={16} /> Muat ulang
                 </button>
-                {hasPermission(user, "master:manage") && (
+                {hasPlatformPermission(user, "master:manage") && (
                   <Link className="btn btn-primary" href="/sppg/new">
                     <Plus size={16} /> Tambah SPPG
                   </Link>
@@ -280,6 +341,36 @@ export default function SppgPage() {
                 </div>
                 <p className="kpi-subtitle">Distribusi pada hari berjalan</p>
               </article>
+            </section>
+
+            <section className="panel" style={{ marginBottom: 16 }}>
+              <div className="panel-header">
+                <div>
+                  <h2>Pendaftaran SPPG (Menunggu Review)</h2>
+                  <p>{registrations.filter((r) => r.status === 'SUBMITTED').length} baru</p>
+                </div>
+              </div>
+              <div className="table-wrap" style={{ maxHeight: 320, overflowY: 'auto' }}>
+                <table>
+                  <thead><tr><th>NOMOR</th><th>NAMA</th><th>STATUS</th><th>AKSI</th></tr></thead>
+                  <tbody>
+                    {registrations.map((r) => (
+                      <tr key={r.id} style={{ background: r.status === 'APPROVED' ? '#e8f7f0' : r.status === 'REJECTED' ? '#fff0ef' : undefined }}>
+                        <td>{r.registrationNumber}</td>
+                        <td>{r.sppgName}</td>
+                        <td><span className={`pill ${r.status === 'APPROVED' ? 'pill-active' : r.status === 'REJECTED' ? 'pill-danger' : r.status === 'REVISION_REQUIRED' ? 'pill-warning' : 'pill-info'}`}>{r.status}</span></td>
+                        <td className="space-x-2">
+                          <button className="btn btn-ghost" onClick={() => setSelectedReg(r)}>Detail</button>
+                          <button className="btn btn-primary" onClick={() => regAction(r.id, 'approve')}>Setujui</button>
+                          <button className="btn btn-danger" onClick={() => regAction(r.id, 'reject')}>Tolak</button>
+                          <button className="btn btn-warning" onClick={() => regAction(r.id, 'request-revision')}>Revisi</button>
+                          {r.status === 'APPROVED' && <button className="btn btn-success" onClick={() => regAction(r.id, 'provision')}>Provision</button>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </section>
 
             <section className="panel">
@@ -386,6 +477,77 @@ export default function SppgPage() {
           </div>
         </div>
       </section>
+
+    {provisionResult && (
+      <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(7,27,58,.45)', backdropFilter: 'blur(6px)', zIndex: 50 }}>
+        <div className="modal" style={{ width: 'min(560px, 92vw)', borderRadius: 14, background: '#fff', padding: 0, boxShadow: '0 24px 60px rgba(7,27,58,.25)', overflow: 'hidden' }}>
+          <div style={{ padding: 20, borderBottom: '1px solid var(--color-border)' }}>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 650 }}>Provisioning Berhasil</h2>
+            <p style={{ margin: '4px 0 0', color: '#62728a', fontSize: 12 }}>Tenant dan undangan aktivasi telah dibuat.</p>
+          </div>
+          <div style={{ padding: 20, display: 'grid', gap: 8, fontSize: 13 }}>
+            <div><strong>Tenant ID:</strong> {provisionResult.tenant?.id}</div>
+            <div><strong>Nama SPPG:</strong> {provisionResult.tenant?.name}</div>
+            <div><strong>Admin:</strong> {provisionResult.tenant?.tenantCode}</div>
+            <div><strong>Kanal:</strong> Email (dev: log)</div>
+            <div><strong>Pengiriman:</strong> SENT (dev)</div>
+            <div><strong>Kedaluwarsa:</strong> 24 jam</div>
+            <div><strong>Status tenant:</strong> {provisionResult.tenant?.status}</div>
+            <div><strong>Status akun:</strong> INVITED</div>
+            <div style={{ marginTop: 8, color: '#62728a', fontSize: 11 }}>Token dibuat oleh server, disimpan sebagai hash, dan hanya dapat digunakan satu kali.</div>
+          </div>
+          <div style={{ padding: 20, borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn btn-ghost" onClick={() => setProvisionResult(null)}>Tutup</button>
+            <button className="btn btn-primary" onClick={() => setProvisionResult(null)}>Lihat Detail Tenant</button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {alreadyMsg && (
+      <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(7,27,58,.45)', backdropFilter: 'blur(6px)', zIndex: 50 }}>
+        <div className="modal" style={{ width: 'min(480px, 92vw)', borderRadius: 14, background: '#fff', padding: 20, boxShadow: '0 24px 60px rgba(7,27,58,.25)' }}>
+          <h2 style={{ marginTop: 0 }}>Sudah Diprovisi</h2>
+          <p>{alreadyMsg}</p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+            <button className="btn btn-primary" onClick={() => setAlreadyMsg(null)}>Tutup</button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {selectedReg && (
+      <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(7,27,58,.45)', backdropFilter: 'blur(6px)', zIndex: 50 }}>
+        <div className="modal" style={{ width: 'min(640px, 92vw)', borderRadius: 14, background: '#fff', padding: 0, boxShadow: '0 24px 60px rgba(7,27,58,.25)', overflow: 'hidden' }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 650 }}>Detail Pendaftaran</h2>
+            <button onClick={() => setSelectedReg(null)} style={{ background: 'transparent', border: 0, cursor: 'pointer', fontSize: 18 }}>X</button>
+          </div>
+          <div style={{ padding: 20, display: 'grid', gap: 8, gridTemplateColumns: '1fr 1fr' }}>
+            <div><strong>Nomor:</strong> {selectedReg.registrationNumber}</div>
+            <div><strong>Status:</strong> {selectedReg.status}</div>
+            <div><strong>Nama SPPG:</strong> {selectedReg.sppgName}</div>
+            <div><strong>Kode Resmi:</strong> {selectedReg.officialCode ?? '-'}</div>
+            <div><strong>Wilayah:</strong> {selectedReg.provinceCode}/{selectedReg.regencyCode}/{selectedReg.districtCode}/{selectedReg.villageCode}</div>
+            <div><strong>Alamat:</strong> {selectedReg.fullAddress}</div>
+            <div><strong>PIC:</strong> {selectedReg.contactName}</div>
+            <div><strong>Email:</strong> {selectedReg.contactEmail}</div>
+            <div><strong>Telepon:</strong> {selectedReg.contactPhone}</div>
+            <div><strong>Submitted:</strong> {selectedReg.submittedAt}</div>
+            <div><strong>Reviewed:</strong> {selectedReg.reviewedAt ?? '-'}</div>
+            <div style={{ gridColumn: '1 / -1' }}><strong>Catatan:</strong> {selectedReg.reviewNotes ?? '-'}</div>
+          </div>
+          <div style={{ padding: '16px 20px', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn btn-primary" onClick={() => { regAction(selectedReg.id, 'approve'); setSelectedReg(null); }}>Setujui</button>
+            <button className="btn btn-danger" onClick={() => { regAction(selectedReg.id, 'reject'); setSelectedReg(null); }}>Tolak</button>
+            <button className="btn btn-warning" onClick={() => { regAction(selectedReg.id, 'request-revision'); setSelectedReg(null); }}>Revisi</button>
+            {selectedReg.status === 'APPROVED' && <button className="btn btn-success" onClick={() => { regAction(selectedReg.id, 'provision'); setSelectedReg(null); }}>Provision</button>}
+            <button className="btn btn-ghost" onClick={() => setSelectedReg(null)}>Tutup</button>
+          </div>
+        </div>
+      </div>
+    )}
+
     </main>
   );
 }

@@ -1,9 +1,9 @@
 {
-  "name": "RADAR MBG",
+  "name": "RADAR MBG Field App",
   "short_name": "RADAR MBG",
-  "description": "Aplikasi lapangan untuk pengemudi RADAR MBG",
+  "description": "Aplikasi lapangan RADAR MBG untuk Driver dan Penerima",
   "lang": "id-ID",
-  "start_url": "/",
+  "start_url": "/radarapp",
   "display": "standalone",
   "background_color": "#f5f7fa",
   "theme_color": "#061b41",
@@ -14,5 +14,8 @@
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "id": "/radarapp",
+  "scope": "/",
+  "orientation": "portrait"
 }

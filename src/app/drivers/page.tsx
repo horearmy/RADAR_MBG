@@ -2,386 +2,151 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { CheckCircle2, Plus, RefreshCw, Search, ShieldAlert, UserRound, Users, Ban, ChevronLeft, ChevronRight } from "lucide-react";
+import { DriverCard } from "@/app/drivers/DriverCard";
+import { getCurrentSession, hasPermission, hasPlatformPermission, apiBaseUrl, apiFetchUrl, type SessionUser } from "@/lib/api";
 
-import {
-  Activity,
-  AlertTriangle,
-  Building2,
-  ChevronDown,
-  ChevronRight,
-  ClipboardCheck,
-  Command,
-  Eye,
-  Filter,
+const apiBase = apiBaseUrl;
 
-  MapPin,
-  MapPinned,
-  Navigation,
-  Plus,
-  RefreshCw,
-  Search,
-  Settings2,
-  ShieldCheck,
-  Truck,
-  Users,
-  Utensils,
-} from "lucide-react";
-import { HeaderAccount } from "@/components/account-menu";
-import { getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
-
-const apiBase = process.env.NEXT_PUBLIC_RADAR_API_URL ?? "http://localhost:4000/api/v1";
-
-type Sppg = {
+type DriverRow = {
   id: string;
   code: string;
   name: string;
   status: string;
+  phone?: string | null;
   address?: string | null;
-  latitude?: string | number | null;
-  longitude?: string | number | null;
-  organization?: { id: string; code: string; name: string };
-  region?: { id: string; code: string; name: string };
-  updatedAt?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  region?: { name: string } | null;
+  organization?: { name: string } | null;
+  sppg?: { id: string; code: string; name: string } | null;
+  tenant?: { id: string; tenantCode: string; name: string } | null;
+  updatedAt: string;
 };
 
-type StatusFilter = "ALL" | "ACTIVE" | "PENDING" | "SUSPENDED" | "INACTIVE" | "ARCHIVED";
+type StatusFilter = "ALL" | "ACTIVE" | "SUSPENDED" | "INACTIVE" | "ARCHIVED";
 
-function formatDate(iso?: string | null) {
-  if (!iso) return "-";
-  try {
-    return new Date(iso).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
-  } catch {
-    return iso;
-  }
-}
+type DriverResponse = {
+  data?: DriverRow[];
+  pagination?: { total: number; totalPages: number };
+  message?: string;
+};
 
-function statusPill(status: string) {
-  const s = status?.toUpperCase();
-  if (s === "ACTIVE") return <span className="pill pill-active">Aktif</span>;
-  if (s === "PENDING") return <span className="pill pill-warning">Menunggu Persetujuan</span>;
-  if (s === "SUSPENDED") return <span className="pill pill-warning">Perlu Perhatian</span>;
-  if (s === "INACTIVE" || s === "ARCHIVED") return <span className="pill pill-neutral">Nonaktif</span>;
-  return <span className="pill pill-neutral">{status}</span>;
-}
+type DriverSummary = { total: number; active: number; suspended: number; inactive: number };
 
 export default function DriversPage() {
-
+  const router = useRouter();
   const [user, setUser] = useState<SessionUser | null>(null);
-  const [rows, setRows] = useState<Sppg[]>([]);
+  const [rows, setRows] = useState<DriverRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
-  const [showFilters, setShowFilters] = useState(false);
   const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [summary, setSummary] = useState<DriverSummary>({ total: 0, active: 0, suspended: 0, inactive: 0 });
   const pageSize = 25;
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const session = await getCurrentSession().catch(() => null);
-      if (session) setUser(session);
-      const params = new URLSearchParams();
-      params.set("page", String(page));
-      params.set("pageSize", String(pageSize));
-      const res = await fetch(`${apiBase}/admin/drivers?${params.toString()}`, { credentials: "include", cache: "no-store" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.message ?? "Gagal memuat Driver");
-      setRows(json.data ?? []);
-      setTotalPages(json.pagination?.totalPages ?? 1);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal memuat data");
+      const session = await getCurrentSession();
+      setUser(session);
+      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+      if (statusFilter !== "ALL") params.set("status", statusFilter);
+      const [response, summaryResponse] = await Promise.all([
+        apiFetchUrl(`${apiBase}/admin/drivers?${params}`, { credentials: "include", cache: "no-store" }),
+        apiFetchUrl(`${apiBase}/admin/drivers/summary`, { credentials: "include", cache: "no-store" }),
+      ]);
+      const body = await response.json().catch(() => null) as DriverResponse | null;
+      const summaryBody = await summaryResponse.json().catch(() => null) as DriverSummary | null;
+      if (!response.ok || !body) {
+        if (response.status === 401) throw new Error("Sesi Anda telah berakhir. Silakan masuk kembali.");
+        if (response.status === 403) throw new Error("Anda tidak memiliki izin untuk melihat direktori driver.");
+        throw new Error(body?.message ?? `Gagal memuat driver (HTTP ${response.status}).`);
+      }
+      setRows(body.data ?? []);
+      setTotal(body.pagination?.total ?? body.data?.length ?? 0);
+      setTotalPages(Math.max(1, body.pagination?.totalPages ?? 1));
+      if (summaryResponse.ok && summaryBody) setSummary(summaryBody);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Gagal memuat data driver.");
     } finally {
       setLoading(false);
     }
-  }, [page]);
+  }, [page, statusFilter]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+  const filteredRows = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase("id-ID");
     return rows.filter((row) => {
-      if (statusFilter !== "ALL" && row.status?.toUpperCase() !== statusFilter) return false;
-      if (!q) return true;
-      return (
-        row.code.toLowerCase().includes(q) ||
-        row.name.toLowerCase().includes(q) ||
-        row.address?.toLowerCase().includes(q) ||
-        row.region?.name.toLowerCase().includes(q) ||
-        row.organization?.name.toLowerCase().includes(q)
-      );
+      if (!query) return true;
+      return [row.name, row.code, row.phone, row.sppg?.name, row.sppg?.code, row.tenant?.name, row.tenant?.tenantCode]
+        .some((value) => value?.toLocaleLowerCase("id-ID").includes(query));
     });
-  }, [rows, search, statusFilter]);
+  }, [rows, search]);
 
-  const stats = useMemo(() => {
-    const total = rows.length;
-    const aktif = rows.filter((r) => r.status?.toUpperCase() === "ACTIVE").length;
-    const perhatian = rows.filter((r) => r.status?.toUpperCase() === "SUSPENDED").length;
-    const nonaktif = rows.filter((r) => {
-      const s = r.status?.toUpperCase();
-      return s === "INACTIVE" || s === "ARCHIVED";
-    }).length;
-    return { total, aktif, perhatian, nonaktif };
-  }, [rows]);
+  const stats = summary;
 
-  const canReadAudit = user ? hasPermission(user, "audit:read") : false;
-  const canManageUsers = user ? hasPermission(user, "admin:manage_users") : false;
-  const canAccessApprovals = user ? (hasPermission(user, "drivers:manage") || hasPermission(user, "approval:review")) : false;
-  const canDrive = user ? (hasPermission(user, "trip:start") && hasPermission(user, "trip:location:update")) : false;
-  const canAccessGeofences = user ? (hasPermission(user, "geofence:read") || hasPermission(user, "geofence:manage")) : false;
-  const canManageAdmin = user ? (hasPermission(user, "admin:manage_users") || hasPermission(user, "admin:manage_roles")) : false;
-  if (user && !hasPermission(user, "master:read") && !hasPermission(user, "drivers:read")) {
-    return (
-      <main className="app-shell">
-        <aside className="sidebar">
-          <Link className="brand" href="/" aria-label="RADAR MBG beranda">
-            <span className="brand-mark"><span /><span /><span /></span>
-            <span className="brand-copy"><strong>RADAR<span>MBG</span></strong><small>Operational intelligence</small></span>
-          </Link>
-          <div className="workspace-switcher">
-            <span className="workspace-icon"><Command size={17} /></span>
-            <span className="workspace-copy"><small>WORKSPACE</small><strong>Pusat Operasional</strong></span>
-            <ChevronDown size={15} className="muted-icon" />
-          </div>
-          <nav className="side-nav" aria-label="Navigasi utama">
-            <p className="nav-caption">MONITORING</p>
-            <Link className="nav-item nav-link" href="/"><Activity size={17} strokeWidth={1.8} /><span>Ringkasan</span></Link>
-            <Link className="nav-item nav-link" href="/trips"><Navigation size={17} strokeWidth={1.8} /><span>Perjalanan</span></Link>
-            <Link className="nav-item nav-link" href="/exceptions"><AlertTriangle size={17} strokeWidth={1.8} /><span>Pusat risiko</span></Link>
-            <p className="nav-caption nav-caption-spaced">OPERASIONAL</p>
-            <Link className="nav-item nav-link" href="/sppg"><Utensils size={17} strokeWidth={1.8} /><span>SPPG</span></Link>
-            <Link className="nav-item nav-link nav-active" href="/drivers"><Users size={17} strokeWidth={1.8} /><span>Driver</span></Link>
-            <Link className="nav-item nav-link" href="/vehicles"><Truck size={17} strokeWidth={1.8} /><span>Kendaraan</span></Link>
-            {canReadAudit && <Link className="nav-item nav-link" href="/audit"><Activity size={17} strokeWidth={1.8} /><span>Audit explorer</span></Link>}
-            {canManageUsers && <Link className="nav-item nav-link" href="/users"><Users size={17} strokeWidth={1.8} /><span>Administrasi akun</span></Link>}
-            {canAccessGeofences && <Link className="nav-item nav-link" href="/geofences"><MapPinned size={17} strokeWidth={1.8} /><span>Geofence</span></Link>}
-            {user?.mfaEnabled === false && <Link className="nav-item nav-link" href="/security/mfa"><ShieldCheck size={17} strokeWidth={1.8} /><span>Daftarkan MFA</span></Link>}
-            {canAccessApprovals && <Link className="nav-item nav-link" href="/approvals"><ClipboardCheck size={17} strokeWidth={1.8} /><span>Persetujuan</span></Link>}
-            {canDrive && (<><p className="nav-caption nav-caption-spaced">PENGEMUDI</p><Link className="nav-item nav-link" href="/driver"><Navigation size={17} strokeWidth={1.8} /><span>Mode pengemudi</span></Link></>)}
-          </nav>
-          <div className="sidebar-bottom">
-            <div className="sidebar-help"><div className="help-icon"><Activity size={17} /></div><div><strong>Data operasional</strong><span>Terhubung ke API RADAR MBG</span></div></div>
-            {canManageAdmin && <button className="nav-item settings-item nav-item-soon" disabled title="Pengaturan segera hadir"><Settings2 size={17} /><span>Pengaturan</span><small className="nav-soon-tag">Segera</small></button>}
+  const canRead = user ? hasPlatformPermission(user, "master:read") || hasPermission(user, "master:read") : false;
+  const canManage = user ? hasPermission(user, "master:manage") : false;
+  const canAdd = canManage;
+  const chips: Array<{ value: StatusFilter; label: string }> = [
+    { value: "ALL", label: "Semua" },
+    { value: "ACTIVE", label: "Aktif" },
+    { value: "SUSPENDED", label: "Perhatian" },
+    { value: "INACTIVE", label: "Nonaktif" },
+  ];
 
-          </div>
-        </aside>
-        <section className="main-column">
-          <header className="topbar">
-            <div className="breadcrumb"><span>Workspace</span><ChevronRight size={14} /><strong>Driver</strong></div>
-            <HeaderAccount user={user} />
-          </header>
-          <div className="content-area">
-            <div className="page">
-              <header className="page-header">
-                <div>
-                  <p className="page-breadcrumb">Operasional &gt; Driver</p>
-                  <h1 className="page-title">Manajemen Driver</h1>
-                  <p className="page-subtitle">Kelola profil, lokasi, status operasional, dan aktivitas distribusi setiap Driver.</p>
-                </div>
-              </header>
-              <div className="panel"><p className="text-secondary">Akses terbatas.</p></div>
-            </div>
-          </div>
-        </section>
-      </main>
-    );
+  if (!loading && user && !canRead) {
+    return <main className="page"><header className="page-header"><div><p className="page-breadcrumb">Operasional &gt; Manajemen &gt; Driver</p><h1 className="page-title">Manajemen Driver</h1></div></header><div className="panel"><p className="text-secondary">Anda tidak memiliki izin untuk melihat data driver.</p></div></main>;
   }
 
   return (
-    <main className="app-shell">
-      <aside className="sidebar">
-        <Link className="brand" href="/" aria-label="RADAR MBG beranda">
-          <span className="brand-mark"><span /><span /><span /></span>
-          <span className="brand-copy"><strong>RADAR<span>MBG</span></strong><small>Operational intelligence</small></span>
-        </Link>
-        <div className="workspace-switcher">
-          <span className="workspace-icon"><Command size={17} /></span>
-          <span className="workspace-copy"><small>WORKSPACE</small><strong>Pusat Operasional</strong></span>
-          <ChevronDown size={15} className="muted-icon" />
+    <main className="page drivers-page">
+      <header className="drivers-hero">
+        <div className="drivers-hero-copy">
+          <p className="page-breadcrumb">Operasional <span>/</span> Manajemen <span>/</span> Driver</p>
+          <div className="drivers-title-row">
+            <div className="drivers-title-icon"><Users size={21} /></div>
+            <div><h1>Direktori Driver</h1><p>Telusuri driver dari seluruh tenant dan buka profil operasionalnya.</p></div>
+          </div>
         </div>
-        <nav className="side-nav" aria-label="Navigasi utama">
-          <p className="nav-caption">MONITORING</p>
-          <Link className="nav-item nav-link" href="/"><Activity size={17} strokeWidth={1.8} /><span>Ringkasan</span></Link>
-          <Link className="nav-item nav-link" href="/trips"><Navigation size={17} strokeWidth={1.8} /><span>Perjalanan</span></Link>
-          <Link className="nav-item nav-link" href="/exceptions"><AlertTriangle size={17} strokeWidth={1.8} /><span>Pusat risiko</span></Link>
-          <p className="nav-caption nav-caption-spaced">OPERASIONAL</p>
-          <Link className="nav-item nav-link" href="/sppg"><Utensils size={17} strokeWidth={1.8} /><span>SPPG</span></Link>
-          <Link className="nav-item nav-link nav-active" href="/drivers"><Users size={17} strokeWidth={1.8} /><span>Driver</span></Link>
-          <Link className="nav-item nav-link" href="/vehicles"><Truck size={17} strokeWidth={1.8} /><span>Kendaraan</span></Link>
-          {canReadAudit && <Link className="nav-item nav-link" href="/audit"><Activity size={17} strokeWidth={1.8} /><span>Audit explorer</span></Link>}
-          {canManageUsers && <Link className="nav-item nav-link" href="/users"><Users size={17} strokeWidth={1.8} /><span>Administrasi akun</span></Link>}
-          {canAccessGeofences && <Link className="nav-item nav-link" href="/geofences"><MapPinned size={17} strokeWidth={1.8} /><span>Geofence</span></Link>}
-          {user?.mfaEnabled === false && <Link className="nav-item nav-link" href="/security/mfa"><ShieldCheck size={17} strokeWidth={1.8} /><span>Daftarkan MFA</span></Link>}
-          {canAccessApprovals && <Link className="nav-item nav-link" href="/approvals"><ClipboardCheck size={17} strokeWidth={1.8} /><span>Persetujuan</span></Link>}
-          {canDrive && (<><p className="nav-caption nav-caption-spaced">PENGEMUDI</p><Link className="nav-item nav-link" href="/driver"><Navigation size={17} strokeWidth={1.8} /><span>Mode pengemudi</span></Link></>)}
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="sidebar-help"><div className="help-icon"><Activity size={17} /></div><div><strong>Data operasional</strong><span>Terhubung ke API RADAR MBG</span></div></div>
-          {canManageAdmin && <button className="nav-item settings-item nav-item-soon" disabled title="Pengaturan segera hadir"><Settings2 size={17} /><span>Pengaturan</span><small className="nav-soon-tag">Segera</small></button>}
+        <div className="drivers-hero-actions">
+          <button className="drivers-refresh" onClick={() => void load()} disabled={loading} aria-label="Muat ulang data"><RefreshCw size={16} className={loading ? "drivers-spinning" : ""} /><span>Muat ulang</span></button>
+          {canAdd && <Link className="drivers-add" href="/drivers/new"><Plus size={17} /><span>Tambah driver</span></Link>}
         </div>
-      </aside>
-      <section className="main-column">
-        <header className="topbar">
-          <div className="breadcrumb"><span>Workspace</span><ChevronRight size={14} /><strong>Driver</strong></div>
-          <HeaderAccount user={user} />
-        </header>
-        <div className="content-area">
-          <div className="page">
-            <header className="page-hero">
-              <div className="page-hero-content">
-                <p className="page-breadcrumb">Operasional &gt; Manajemen &gt; Driver</p>
-                <div className="page-hero-title-row">
-                  <div className="page-hero-icon"><Users size={20} /></div>
-                  <div>
-                    <h1 className="page-title">Manajemen Driver</h1>
-                    <p className="page-subtitle">Kelola profil, lokasi, status operasional, relasi driver & kendaraan, serta aktivitas distribusi setiap unit Driver.</p>
-                  </div>
-                </div>
-              </div>
-              <div className="page-actions">
-                <button className="btn btn-ghost" onClick={() => load()} disabled={loading}>
-                  <RefreshCw size={16} /> Muat ulang
-                </button>
-                <Link className="btn btn-primary" href="/drivers/new">
-                  <Plus size={16} /> Tambah Driver
-                </Link>
-              </div>
-            </header>
+      </header>
 
-            <section className="kpi-grid kpi-grid-4">
-        <article className="kpi-card kpi-card-enhanced">
-          <div className="kpi-header">
-            <div className="kpi-icon-wrap kpi-icon-navy"><Users size={18} /></div>
-            <span className="kpi-label">Total Driver</span>
-          </div>
-          <div className="kpi-value-row">
-            <div className="kpi-value">{stats.total}</div>
-          </div>
-          <p className="kpi-subtitle">Jumlah unit sesuai lingkup akses</p>
-        </article>
-        <article className="kpi-card kpi-card-enhanced">
-          <div className="kpi-header">
-            <div className="kpi-icon-wrap kpi-icon-green"><Building2 size={18} /></div>
-            <span className="kpi-label">Aktif</span>
-          </div>
-          <div className="kpi-value-row">
-            <div className="kpi-value">{stats.aktif}</div>
-            <span className="kpi-trend-pill trend-up">Beroperasi</span>
-          </div>
-          <p className="kpi-subtitle">Unit dengan status aktif</p>
-        </article>
-        <article className="kpi-card kpi-card-enhanced">
-          <div className="kpi-header">
-            <div className="kpi-icon-wrap kpi-icon-amber"><AlertTriangle size={18} /></div>
-            <span className="kpi-label">Perlu Perhatian</span>
-          </div>
-          <div className="kpi-value-row">
-            <div className="kpi-value">{stats.perhatian}</div>
-            <span className="kpi-trend-pill trend-warn">Tindak lanjut</span>
-          </div>
-          <p className="kpi-subtitle">Butuh pemeriksaan operasional</p>
-        </article>
-        <article className="kpi-card kpi-card-enhanced">
-          <div className="kpi-header">
-            <div className="kpi-icon-wrap kpi-icon-slate"><MapPin size={18} /></div>
-            <span className="kpi-label">Nonaktif</span>
-          </div>
-          <div className="kpi-value-row">
-            <div className="kpi-value">{stats.nonaktif}</div>
-          </div>
-          <p className="kpi-subtitle">Tidak beroperasi saat ini</p>
-        </article>
+      <section className="drivers-stats" aria-label="Ringkasan driver">
+        <article className="drivers-stat"><span className="drivers-stat-icon drivers-stat-blue"><Users size={17} /></span><div><span>Total driver</span><strong>{stats.total}</strong><small>Seluruh tenant</small></div></article>
+        <article className="drivers-stat"><span className="drivers-stat-icon drivers-stat-green"><CheckCircle2 size={17} /></span><div><span>Aktif</span><strong>{stats.active}</strong><small>Siap bertugas</small></div></article>
+        <article className="drivers-stat"><span className="drivers-stat-icon drivers-stat-amber"><ShieldAlert size={17} /></span><div><span>Perhatian</span><strong>{stats.suspended}</strong><small>Ditangguhkan</small></div></article>
+        <article className="drivers-stat"><span className="drivers-stat-icon drivers-stat-slate"><Ban size={17} /></span><div><span>Nonaktif</span><strong>{stats.inactive}</strong><small>Tidak beroperasi</small></div></article>
       </section>
 
-      <section className="panel">
-        <div className="panel-header">
-          <div className="search-group">
-            <Search size={16} />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nama, kode, alamat, wilayah, atau penanggung jawab..." />
-          </div>
-          <div className="panel-actions">
-            <button className="btn btn-ghost" onClick={() => setShowFilters((v) => !v)}>
-              <Filter size={16} /> Filter
-            </button>
+      <section className="drivers-panel">
+        <div className="drivers-panel-heading"><div><h2>Semua driver</h2><p>{total.toLocaleString("id-ID")} profil lintas tenant</p></div><span className="drivers-page-count">{filteredRows.length} ditampilkan</span></div>
+        <div className="drivers-toolbar">
+          <label className="drivers-search"><Search size={17} /><input aria-label="Cari driver" placeholder="Cari nama, kode, nomor telepon…" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /><kbd>/</kbd></label>
+          <div className="drivers-filters" role="group" aria-label="Filter status driver">
+            {chips.map((chip) => <button key={chip.value} type="button" className={`drivers-filter${statusFilter === chip.value ? " is-selected" : ""}`} aria-pressed={statusFilter === chip.value} onClick={() => { setStatusFilter(chip.value); setPage(1); }}>{chip.label}{chip.value === "ALL" && <span>{total}</span>}</button>)}
           </div>
         </div>
-        {showFilters && (
-          <div className="filter-bar">
-            <div className="filter-field">
-              <label>Status</label>
-              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}>
-                <option value="ALL">Semua</option>
-                <option value="ACTIVE">Aktif</option>
-                <option value="PENDING">Menunggu Persetujuan</option>
-                <option value="SUSPENDED">Perlu Perhatian</option>
-                <option value="INACTIVE">Nonaktif</option>
-                <option value="ARCHIVED">Diarsipkan</option>
-              </select>
-            </div>
-            <button className="btn btn-ghost" onClick={() => { setSearch(""); setStatusFilter("ALL"); setPage(1); }}>Reset Filter</button>
-          </div>
-        )}
 
-        {loading && <div className="table-state">Memuat data Driver...</div>}
-        {error && <div className="table-state error">{error}</div>}
-        {!loading && !error && (
-          <div className="table-wrapper">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Kode Driver</th>
-                  <th>Nama Driver</th>
-                  <th>Lokasi</th>
-                  <th>Wilayah</th>
-                  <th>Organisasi</th>
-                  <th>Status</th>
-                  <th>Diperbarui</th>
-                  <th className="col-actions">Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 && <tr><td colSpan={8} className="empty-row">Tidak ada Driver</td></tr>}
-                {filtered.map((row) => (
-                  <tr key={row.id}>
-                    <td><span className="mono">{row.code}</span></td>
-                    <td><strong>{row.name}</strong></td>
-                    <td>
-                      <div className="cell-stack">
-                        <span>{row.address ?? "-"}</span>
-                        <span className="text-muted">{row.latitude && row.longitude ? `${row.latitude}, ${row.longitude}` : "Koordinat belum diisi"}</span>
-                      </div>
-                    </td>
-                    <td>{row.region?.name ?? "-"}</td>
-                    <td>{row.organization?.name ?? "-"}</td>
-                    <td>{statusPill(row.status)}</td>
-                    <td className="text-muted">{formatDate(row.updatedAt)}</td>
-                    <td className="col-actions">
-                      <div className="row-actions">
-                        <Link className="icon-btn" href={`/drivers/${row.id}`} title="Detail"><Eye size={16} /></Link>
-                        {hasPermission(user!, "master:manage") && <Link className="icon-btn" href={`/drivers/${row.id}/edit`} title="Edit"><MapPin size={16} /></Link>}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {!loading && !error && totalPages > 1 && (
-          <div className="pagination">
-            <button className="btn btn-ghost" disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Sebelumnya</button>
-            <span className="pagination-info">Halaman {page} / {totalPages}</span>
-            <button className="btn btn-ghost" disabled={page === totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>Selanjutnya</button>
-          </div>
-        )}
-          </section>
-        </div>
-      </div>
-    </section>
-  </main>
-);
+        {error && <div className="drivers-error" role="alert"><span>{error}</span><button onClick={() => void load()}>Coba lagi</button></div>}
+        {loading && <div className="drivers-loading" role="status"><span className="session-spinner" />Memuat daftar driver…</div>}
+        {!loading && !error && filteredRows.length === 0 && <div className="drivers-empty"><span className="drivers-empty-icon"><UserRound size={22} /></span><h3>{rows.length ? "Driver tidak ditemukan" : "Belum ada driver"}</h3><p>{rows.length ? "Coba kata kunci atau status yang berbeda." : "Driver akan muncul di sini setelah terdaftar pada tenant."}</p>{!rows.length && canAdd && <Link className="drivers-add" href="/drivers/new"><Plus size={17} />Tambah driver</Link>}</div>}
+        {!loading && !error && filteredRows.length > 0 && <div className="drivers-list">{filteredRows.map((row) => <DriverCard key={row.id} row={row} onView={(id) => router.push(`/drivers/${id}`)} hasManagePermission={canManage} />)}</div>}
+
+        {!loading && !error && totalPages > 1 && <div className="drivers-pagination"><span>Halaman <strong>{page}</strong> dari <strong>{totalPages}</strong></span><div><button aria-label="Halaman sebelumnya" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}><ChevronLeft size={17} />Sebelumnya</button><button aria-label="Halaman berikutnya" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>Berikutnya<ChevronRight size={17} /></button></div></div>}
+      </section>
+    </main>
+  );
 }

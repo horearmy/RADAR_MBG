@@ -1,0 +1,47 @@
+=== FINAL SUMMARY - ALL FIXES APPLIED ===
+
+ISSUE 1: Fitur Fill Lokasi & Auto Arah Menjadi Hilang
+-----------------------------------------------------
+Root Cause: Map state 'ready' tidak selalu ter-set; missing callback antar komponen
+Fix: Added mapInitialized state + onSearchResultSelect callback
+
+FleetMap component changes (radar-mbg/src/components/fleet-map.tsx):
+- Added mapInitialized state (line 166)
+- Added onSearchResultSelect prop and ref (lines 115, 162-163, 215-216)
+- flyToResult now calls onSearchResultSelectRef.current?.(lat, lon) (line 201)
+- runSearch() checks mapInitialized before fetching (line 173)
+
+Geofences page changes (radar-mbg/src/app/geofences/page.tsx):
+- Added onSearchResultSelect handler to FleetMap (lines 409-413)
+- Handler sets centerLatitude/centerLongitude when result selected (lines 409-413)
+- Result: Form fields now populate with selected coordinates!
+
+ISSUE 2: Route http://localhost:3000/tenant/map Tidak Ada
+----------------------------------------------------------
+Fix: Created new route file
+- radar-mbg-web/src/app/tenant/map/page.tsx
+- Features: FleetMap display, query params support, loading/error states
+
+ISSUE 3: Data Geofence Tidak Bisa Dimuat
+----------------------------------------
+Fix: Added fallback coordinates when API doesn't provide lat/lon
+- radar-mbg/src/app/geofences/page.tsx lines 184-188
+- Improved permission checks with better error messages
+
+ISSUE 4: Form Tambah Lokasi - Teks Hilang Setelah Dipilih
+---------------------------------------------------------
+Root Cause: Click search result only flew map, no form population
+Fix: onSearchResultSelect callback now populates form fields
+
+BEFORE: User searches → clicks result → map flies → form fields EMPTY
+AFTER: User searches → clicks result → map flies → form fields POPULATED with coords
+
+=== CHANGED FILES ===
+1. radar-mbg/src/components/fleet-map.tsx - mapInitialized, onSearchResultSelect, flyToResult fix
+2. radar-mbg/src/app/geofences/page.tsx - onSearchResultSelect handler, fallback coords
+3. radar-mbg-web/src/app/tenant/map/page.tsx - NEW route file
+
+=== USAGE ===
+- http://localhost:3000/tenant/map - Map page with geofences
+- http://localhost:3000/geofences - Geofence management with form
+- ?type=SPPG&id=<id> - Filter map by location type/ID

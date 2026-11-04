@@ -26,8 +26,11 @@ async function bootstrapAdmin() {
   if (!verifyTotp(totpSecret, totpCode)) {
     throw new Error('Bootstrap MFA code is invalid');
   }
-  if (await prisma.user.findUnique({ where: { username }, select: { id: true } })) {
-    throw new Error('Bootstrap username already exists; refusing to modify it');
+  const existingUser = await prisma.user.findUnique({ where: { username }, select: { id: true, status: true } });
+  if (existingUser) {
+    console.log('User already exists, skipping bootstrap');
+    await prisma.$disconnect();
+    return;
   }
 
   const passwordHash = await argon2.hash(password, { type: argon2.argon2id });

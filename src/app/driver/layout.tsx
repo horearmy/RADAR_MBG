@@ -1,10 +1,9 @@
-import { Suspense } from "react";
-import { DriverShell } from "@/components/driver-shell";
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import { getCurrentSession, type SessionUser } from "@/lib/api";
 
 export default function DriverLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <Suspense fallback={<div>Memuat...</div>}>
-      <DriverShell>{children}</DriverShell>
-    </Suspense>
-  );
+  return <>{children}</>;
 }

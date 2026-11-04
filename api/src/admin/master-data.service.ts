@@ -91,13 +91,17 @@ export class MasterDataService {
     const where: Prisma.SppgWhereInput = {
       ...(scope.global
         ? {}
-        : {
-            OR: [
-              { organizationId: { in: scope.directOrganizationIds } },
-              { regionId: { in: scope.regionIds } },
-              { id: { in: scope.sppgIds } },
-            ],
-          }),
+        : principal.tenantRole && scope.sppgIds.length
+          // Pengguna tenant hanya boleh melihat SPPG miliknya sendiri (legacySppgId),
+          // bukan seluruh SPPG yang kebetulan berada di organisasi/region yang sama.
+          ? { id: { in: scope.sppgIds } }
+          : {
+              OR: [
+                { organizationId: { in: scope.directOrganizationIds } },
+                { regionId: { in: scope.regionIds } },
+                { id: { in: scope.sppgIds } },
+              ],
+            }),
       ...(query.organizationId ? { organizationId: query.organizationId } : {}),
       ...(query.regionId ? { regionId: query.regionId } : {}),
       ...(query.sppgId ? { id: query.sppgId } : {}),
@@ -128,7 +132,7 @@ export class MasterDataService {
     return this.page(data, total, query);
   }
 
-  async listDeliveryLocations(principal: SessionPrincipal, query: MasterDataListDto) {
+  async listDeliveryLocations(principal: SessionPrincipal, query: MasterDataListDto, tenantContext?: { tenantId: string } | null) {
     const scope = await this.resolveScope(principal);
     const isDriver = principal.driverId !== null || principal.roles.some((role) => role.code === 'DRIVER');
     let sppgOrganizationId: string | undefined;
@@ -143,7 +147,10 @@ export class MasterDataService {
       sppgOrganizationId = sppg.organizationId;
     }
     const where: Prisma.DeliveryLocationWhereInput = {
-      ...(scope.global
+      ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}),
+      ...(tenantContext
+        ? {}
+        : scope.global
         ? {}
         : isDriver
           ? { id: { in: [] } }
@@ -185,11 +192,14 @@ export class MasterDataService {
     return this.page(data, total, query);
   }
 
-  async listVehicles(principal: SessionPrincipal, query: MasterDataListDto) {
+  async listVehicles(principal: SessionPrincipal, query: MasterDataListDto, tenantContext?: { tenantId: string } | null) {
     const scope = await this.resolveScope(principal);
     const isDriver = principal.driverId !== null || principal.roles.some((role) => role.code === 'DRIVER');
     const where: Prisma.VehicleWhereInput = {
-      ...(scope.global
+      ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}),
+      ...(tenantContext
+        ? {}
+        : scope.global
         ? {}
         : isDriver
           ? { id: { in: [] } }
@@ -227,11 +237,14 @@ export class MasterDataService {
     return this.page(data, total, query);
   }
 
-  async listDrivers(principal: SessionPrincipal, query: MasterDataListDto) {
+  async listDrivers(principal: SessionPrincipal, query: MasterDataListDto, tenantContext?: { tenantId: string } | null, includeAllTenants = false) {
     const scope = await this.resolveScope(principal);
     const isDriver = principal.driverId !== null || principal.roles.some((role) => role.code === 'DRIVER');
     const where: Prisma.DriverWhereInput = {
-      ...(scope.global
+      ...(!includeAllTenants && tenantContext ? { tenantId: tenantContext.tenantId } : {}),
+      ...(!includeAllTenants && tenantContext
+        ? {}
+        : scope.global
         ? {}
         : isDriver
           ? principal.driverId ? { id: principal.driverId } : { id: { in: [] } }
@@ -253,6 +266,7 @@ export class MasterDataService {
           }
         : {}),
       ...(query.sppgId ? { sppgId: query.sppgId } : {}),
+      ...(query.status ? { status: query.status } : {}),
     };
     const [data, total] = await Promise.all([
       this.prisma.db.driver.findMany({
@@ -262,6 +276,7 @@ export class MasterDataService {
         take: query.pageSize,
         select: {
           id: true,
+          tenantId: true,
           sppgId: true,
           userId: true,
           code: true,
@@ -269,11 +284,88 @@ export class MasterDataService {
           status: true,
           createdAt: true,
           updatedAt: true,
+          phone: true,
+          sppg: { select: { id: true, code: true, name: true } },
         },
       }),
       this.prisma.db.driver.count({ where }),
     ]);
-    return this.page(data, total, query);
+    const tenants = await this.prisma.db.tenant.findMany({
+      where: { id: { in: [...new Set(data.map((driver) => driver.tenantId))] } },
+      select: { id: true, tenantCode: true, name: true },
+    });
+    const tenantById = new Map(tenants.map((tenant) => [tenant.id, tenant]));
+    return this.page(data.map((driver) => ({ ...driver, tenant: tenantById.get(driver.tenantId) ?? null })), total, query);
+  }
+
+  async countDrivers(principal: SessionPrincipal, tenantContext?: { tenantId: string } | null, includeAllTenants = false) {
+    const scope = await this.resolveScope(principal);
+    const isDriver = principal.driverId !== null || principal.roles.some((role) => role.code === 'DRIVER');
+    const base: Prisma.DriverWhereInput = {
+      ...(!includeAllTenants && tenantContext ? { tenantId: tenantContext.tenantId } : {}),
+      ...(!includeAllTenants && (tenantContext || scope.global)
+        ? {}
+        : isDriver
+          ? principal.driverId ? { id: principal.driverId } : { id: { in: [] } }
+          : { OR: [
+              { sppgId: { in: scope.sppgIds } },
+              { sppg: { is: { regionId: { in: scope.regionIds } } } },
+              { sppg: { is: { organizationId: { in: scope.directOrganizationIds } } } },
+            ] }),
+    };
+    const [total, active, suspended, inactive] = await Promise.all([
+      this.prisma.db.driver.count({ where: base }),
+      this.prisma.db.driver.count({ where: { ...base, status: DriverStatus.ACTIVE } }),
+      this.prisma.db.driver.count({ where: { ...base, status: DriverStatus.SUSPENDED } }),
+      this.prisma.db.driver.count({ where: { ...base, status: DriverStatus.INACTIVE } }),
+    ]);
+    return { total, active, suspended, inactive };
+  }
+
+  async getDriver(id: string, principal: SessionPrincipal, tenantContext?: { tenantId: string } | null, includeAllTenants = false) {
+    const driver = await this.prisma.db.driver.findFirst({
+      where: { id, ...(!includeAllTenants && tenantContext ? { tenantId: tenantContext.tenantId } : {}) },
+      include: {
+        sppg: { select: { id: true, code: true, name: true, organizationId: true, regionId: true } },
+        user: { select: { id: true, username: true, displayName: true, status: true } },
+      },
+    });
+    if (!driver) throw new NotFoundException({ code: 'DRIVER_NOT_FOUND' });
+    this.assertSppgAccess(principal, driver.sppg);
+    const tenant = await this.prisma.db.tenant.findUnique({ where: { id: driver.tenantId }, select: { id: true, tenantCode: true, name: true } });
+    return { ...driver, tenant };
+  }
+
+  async nextDriverCode(sppgId: string, principal: SessionPrincipal) {
+    const sppg = await this.prisma.db.sppg.findUnique({
+      where: { id: sppgId },
+      select: { id: true, organizationId: true, regionId: true, status: true },
+    });
+    if (!sppg || sppg.status === SppgStatus.SUSPENDED || sppg.status === SppgStatus.ARCHIVED) {
+      throw new NotFoundException({ code: 'SPPG_NOT_FOUND' });
+    }
+    this.assertSppgAccess(principal, sppg);
+
+    const existing = await this.prisma.db.driver.findMany({
+      where: { sppgId },
+      select: { code: true },
+    });
+    const used = new Set(existing.map((row) => row.code.toUpperCase()));
+    let maxSeq = 0;
+    for (const row of existing) {
+      const match = row.code.match(/^DRV[-_]?(\d+)$/i);
+      if (match) {
+        const value = Number(match[1]);
+        if (Number.isFinite(value) && value > maxSeq) maxSeq = value;
+      }
+    }
+    let seq = Math.max(1, maxSeq + 1);
+    let code = `DRV-${String(seq).padStart(3, '0')}`;
+    while (used.has(code.toUpperCase())) {
+      seq += 1;
+      code = `DRV-${String(seq).padStart(3, '0')}`;
+    }
+    return { code };
   }
 
   createOrganization(
@@ -372,12 +464,14 @@ export class MasterDataService {
     input: CreateDeliveryLocationDto,
     principal: SessionPrincipal,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
     const region = await this.prisma.db.region.findFirst({
       where: { id: input.regionId, organizationId: input.organizationId, active: true },
       select: { id: true, organizationId: true },
     });
     if (!region) throw new NotFoundException({ code: 'REGION_NOT_FOUND' });
+    if (tenantContext) throw new NotFoundException({ code: 'REGION_NOT_FOUND' });
     await this.assertRegionAccess(region.id, region.organizationId, principal);
 
     try {
@@ -415,6 +509,7 @@ export class MasterDataService {
     input: CreateVehicleDto,
     principal: SessionPrincipal,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
     const sppg = await this.prisma.db.sppg.findUnique({
       where: { id: input.sppgId },
@@ -423,11 +518,18 @@ export class MasterDataService {
     if (!sppg || sppg.status === SppgStatus.SUSPENDED || sppg.status === SppgStatus.ARCHIVED) {
       throw new NotFoundException({ code: 'SPPG_NOT_FOUND' });
     }
+    if (tenantContext && await this.prisma.db.tenant.findFirst({ where: { id: tenantContext.tenantId, legacySppgId: sppg.id }, select: { id: true } }) === null) {
+      throw new NotFoundException({ code: 'SPPG_NOT_FOUND' });
+    }
     this.assertSppgAccess(principal, sppg);
+
+    const tenant = await this.prisma.db.tenant.findUnique({ where: { legacySppgId: sppg.id } });
+    if (!tenant) throw new NotFoundException({ code: 'TENANT_NOT_FOUND' });
 
     return this.createWithAudit(
       (tx) => tx.vehicle.create({
         data: {
+          tenantId: tenant.id,
           organizationId: sppg.organizationId,
           sppgId: sppg.id,
           plateNumber: input.plateNumber.trim().toUpperCase(),
@@ -447,6 +549,7 @@ export class MasterDataService {
     input: CreateDriverDto,
     principal: SessionPrincipal,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
     const sppg = await this.prisma.db.sppg.findUnique({
       where: { id: input.sppgId },
@@ -457,9 +560,14 @@ export class MasterDataService {
     }
     this.assertSppgAccess(principal, sppg);
 
+    const tenant = await this.prisma.db.tenant.findUnique({ where: { legacySppgId: sppg.id } });
+    if (!tenant) throw new NotFoundException({ code: 'TENANT_NOT_FOUND' });
+    if (tenantContext && tenant.id !== tenantContext.tenantId) throw new NotFoundException({ code: 'SPPG_NOT_FOUND' });
+
     return this.createWithAudit(
       (tx) => tx.driver.create({
         data: {
+          tenantId: tenant.id,
           sppgId: sppg.id,
           code: input.code.trim().toUpperCase(),
           name: input.name.trim(),
@@ -788,8 +896,9 @@ export class MasterDataService {
     input: UpdateDeliveryLocationDto,
     principal: SessionPrincipal,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
-    const before = await this.prisma.db.deliveryLocation.findUnique({ where: { id } });
+    const before = await this.prisma.db.deliveryLocation.findFirst({ where: { id, ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}) } });
     if (!before) throw new NotFoundException({ code: 'DELIVERY_LOCATION_NOT_FOUND' });
     await this.assertRegionAccess(before.regionId, before.organizationId, principal);
 
@@ -852,9 +961,10 @@ export class MasterDataService {
     input: UpdateVehicleDto,
     principal: SessionPrincipal,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
     const before = await this.prisma.db.vehicle.findUnique({
-      where: { id },
+      where: { id, ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}) },
       include: { sppg: { select: { id: true, organizationId: true, regionId: true } } },
     });
     if (!before) throw new NotFoundException({ code: 'VEHICLE_NOT_FOUND' });
@@ -889,23 +999,26 @@ export class MasterDataService {
     input: UpdateDriverDto,
     principal: SessionPrincipal,
     requestId: string,
+    tenantContext?: { tenantId: string } | null,
   ) {
     const before = await this.prisma.db.driver.findUnique({
-      where: { id },
+      where: { id, ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}) },
       include: { sppg: { select: { id: true, organizationId: true, regionId: true } } },
     });
     if (!before) throw new NotFoundException({ code: 'DRIVER_NOT_FOUND' });
     this.assertSppgAccess(principal, before.sppg);
 
     return this.prisma.db.$transaction(async (tx) => {
-      const after = await tx.driver.update({
-        where: { id },
+      const after = await tx.driver.updateMany({
+        where: { id, ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}) },
         data: {
           ...(input.name !== undefined ? { name: input.name.trim() } : {}),
           ...(input.phone !== undefined ? { phone: input.phone?.trim() ?? null } : {}),
           ...(input.status !== undefined ? { status: input.status } : {}),
         },
       });
+      if (after.count !== 1) throw new NotFoundException({ code: 'DRIVER_NOT_FOUND' });
+      const updated = await tx.driver.findUniqueOrThrow({ where: { id } });
       await this.writeAudit(
         tx,
         principal,
@@ -914,10 +1027,10 @@ export class MasterDataService {
         id,
         input.reason,
         { name: before.name, phone: before.phone, status: before.status },
-        { name: after.name, phone: after.phone, status: after.status },
+        { name: updated.name, phone: updated.phone, status: updated.status },
         requestId,
       );
-      return after;
+      return updated;
     });
   }
 
@@ -931,6 +1044,32 @@ export class MasterDataService {
         sppgIds: [],
         sppgRegionIds: [],
       };
+    }
+
+    // Tenant users: resolve scope from tenant's SPPG
+    if (principal.tenantRole) {
+      if (principal.tenantId) {
+        const tenant = await this.prisma.db.tenant.findUnique({
+          where: { id: principal.tenantId },
+          select: { legacySppgId: true },
+        });
+        if (tenant?.legacySppgId) {
+          const sppg = await this.prisma.db.sppg.findUnique({
+            where: { id: tenant.legacySppgId },
+            select: { id: true, regionId: true, organizationId: true },
+          });
+          if (sppg) {
+            return {
+              global: false,
+              organizationIds: [sppg.organizationId],
+              directOrganizationIds: [sppg.organizationId],
+              regionIds: [sppg.regionId],
+              sppgIds: [sppg.id],
+              sppgRegionIds: [sppg.regionId],
+            };
+          }
+        }
+      }
     }
 
     const directOrganizationIds = principal.roles.flatMap(

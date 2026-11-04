@@ -68,7 +68,7 @@ export class ApprovalService {
   ) {
     const before = await this.prisma.db.sppg.findUnique({ where: { id: sppgId } });
     if (!before) throw new NotFoundException({ code: 'SPPG_NOT_FOUND' });
-    this.assertSppgAccess(principal, before);
+    await this.assertSppgAccess(principal, before);
     if (before.version !== input.version) {
       throw new ConflictException({ code: 'MASTER_DATA_VERSION_CONFLICT' });
     }
@@ -132,7 +132,7 @@ export class ApprovalService {
       }
       const sppg = await tx.sppg.findUnique({ where: { id: approval.targetId } });
       if (!sppg) throw new NotFoundException({ code: 'SPPG_NOT_FOUND' });
-      this.assertSppgAccess(principal, sppg);
+      await this.assertSppgAccess(principal, sppg);
       assertApprovalReviewer(approval.status, approval.requestedBy, principal.id);
 
       const payloadBefore = approval.payloadBefore as Prisma.JsonObject | null;
@@ -142,9 +142,10 @@ export class ApprovalService {
         throw new ConflictException({ code: 'APPROVAL_PAYLOAD_INVALID' });
       }
 
-      const stale = approval.objectVersion !== sppg.version ||
-        payloadBefore?.status !== sppg.status || sppg.status === requestedStatus;
-      if (stale) {
+      if (input.decision === ApprovalDecisionInput.APPROVED && (
+        approval.objectVersion !== sppg.version ||
+        payloadBefore?.status !== sppg.status || sppg.status === requestedStatus
+      )) {
         const failed = await tx.approvalRequest.update({
           where: { id: approval.id },
           data: { status: ApprovalStatus.FAILED },
@@ -166,7 +167,6 @@ export class ApprovalService {
       const decisionStatus = input.decision === ApprovalDecisionInput.APPROVED
         ? ApprovalStatus.APPROVED
         : ApprovalStatus.REJECTED;
-      await tx.approvalRequest.update({ where: { id: approval.id }, data: { status: decisionStatus } });
       await tx.approvalDecision.create({
         data: {
           approvalRequestId: approval.id,
@@ -185,6 +185,8 @@ export class ApprovalService {
           input.reason, { status: approval.status }, { status: rejected.status, targetId: approval.targetId }, requestId);
         return rejected;
       }
+
+      await tx.approvalRequest.update({ where: { id: approval.id }, data: { status: decisionStatus } });
 
       const updatedSppg = await tx.sppg.updateMany({
         where: { id: sppg.id, version: approval.objectVersion!, status: sppg.status },
@@ -221,7 +223,7 @@ export class ApprovalService {
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,
         include: {
-          requestedByUser: { select: { id: true, username: true, displayName: true } },
+          requester: { select: { id: true, username: true, displayName: true } },
           decisions: {
             orderBy: { decidedAt: 'asc' },
             include: { approver: { select: { id: true, username: true, displayName: true } } },
@@ -238,7 +240,7 @@ export class ApprovalService {
       : [];
     const sppgById = new Map(sppgs.map((sppg) => [sppg.id, sppg]));
     return {
-      data: data.map((request) => ({ ...request, target: sppgById.get(request.targetId) ?? null })),
+      data: data.map((request) => ({ ...request, requestedByUser: request.requester, target: sppgById.get(request.targetId) ?? null })),
       pagination: {
         page: query.page,
         pageSize: query.pageSize,
@@ -253,6 +255,13 @@ export class ApprovalService {
     const organizationIds = [...new Set(principal.roles.flatMap((role) => role.organizationId ? [role.organizationId] : []))];
     const regionIds = [...new Set(principal.roles.flatMap((role) => role.regionId ? [role.regionId] : []))];
     const sppgIds = [...new Set(principal.roles.flatMap((role) => role.sppgId ? [role.sppgId] : []))];
+    if (principal.tenantId) {
+      const tenant = await this.prisma.db.tenant.findFirst({
+        where: { id: principal.tenantId, status: 'ACTIVE' },
+        select: { legacySppgId: true },
+      });
+      if (tenant?.legacySppgId) sppgIds.push(tenant.legacySppgId);
+    }
     const OR: Prisma.SppgWhereInput[] = [
       ...(organizationIds.length ? [{ organizationId: { in: organizationIds } }] : []),
       ...(regionIds.length ? [{ regionId: { in: regionIds } }] : []),
@@ -261,14 +270,21 @@ export class ApprovalService {
     return OR.length ? { OR } : {};
   }
 
-  private assertSppgAccess(
+  private async assertSppgAccess(
     principal: SessionPrincipal,
     sppg: { id: string; organizationId: string; regionId: string },
   ) {
-    const allowed = principal.roles.some((role) =>
+    let allowed = principal.roles.some((role) =>
       role.isGlobal || role.organizationId === sppg.organizationId ||
       role.regionId === sppg.regionId || role.sppgId === sppg.id,
     );
+    if (!allowed && principal.tenantId) {
+      const tenant = await this.prisma.db.tenant.findFirst({
+        where: { id: principal.tenantId, legacySppgId: sppg.id, status: 'ACTIVE' },
+        select: { id: true },
+      });
+      allowed = Boolean(tenant);
+    }
     if (!allowed) throw new NotFoundException({ code: 'SPPG_NOT_FOUND' });
   }
 

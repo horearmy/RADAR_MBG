@@ -14,11 +14,12 @@ import { RequirePermissions } from '../auth/permissions.js';
 import type { AuthenticatedRequest } from '../auth/session.guard.js';
 import { PermissionGuard } from '../auth/permission.guard.js';
 import { SessionGuard } from '../auth/session.guard.js';
+import { TenantGuard } from '../auth/tenant.guard.js';
 import { ArrivalService } from './arrival.service.js';
 import { IssueQrTokenDto, OverrideArrivalDto, VerifyArrivalDto } from './arrival.dto.js';
 
 @Controller('trips/:tripId')
-@UseGuards(SessionGuard, PermissionGuard)
+@UseGuards(SessionGuard, TenantGuard, PermissionGuard)
 export class ArrivalController {
   constructor(private readonly arrivals: ArrivalService) {}
 
@@ -34,6 +35,7 @@ export class ArrivalController {
       request.principal!,
       input,
       this.requestId(request),
+      request.tenantContext ?? null,
     );
   }
 
@@ -54,6 +56,7 @@ export class ArrivalController {
       input,
       idempotencyKey,
       this.requestId(request),
+      request.tenantContext ?? null,
     );
   }
 
@@ -74,6 +77,7 @@ export class ArrivalController {
       input,
       idempotencyKey,
       this.requestId(request),
+      request.tenantContext ?? null,
     );
   }
 
