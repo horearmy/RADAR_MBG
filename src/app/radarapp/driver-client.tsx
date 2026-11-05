@@ -5,8 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Navigation } from "lucide-react";
 import {
   completeTrip,
+  getSelectedTenantId,
   getTripDetail,
   getTrips,
+  setSelectedTenantId,
   startTrip,
   startTripDelivery,
   type SessionUser,
@@ -143,6 +145,9 @@ export default function DriverClient() {
             return;
           }
           setUser(resolved.user);
+          if (!getSelectedTenantId() && (resolved.user.tenantMemberships?.length ?? 0) === 1) {
+            setSelectedTenantId(resolved.user.tenantMemberships![0].tenantId);
+          }
         }
         const result = await getTrips({ page: 1, pageSize: 100 });
         if (requestId !== tripsRequestIdRef.current) return;
@@ -339,7 +344,7 @@ export default function DriverClient() {
       if (kind === "start") {
         const fix = await tracker.requestPermission();
         if (!fix) {
-          showNotice("danger", "Lokasi perangkat belum tersedia. Izinkan lokasi dan pastikan GPS aktif sebelum memulai perjalanan.");
+          showNotice("danger", "Lokasi perangkat belum tersedia. Aktifkan GPS, izinkan akses lokasi, lalu coba lagi. Perjalanan baru dapat dimulai dari area SPPG.");
           return;
         }
         await startTrip(trip.id, {
@@ -765,7 +770,7 @@ export default function DriverClient() {
           }
           description={
             confirm.kind === "start"
-              ? "Lokasi perangkat akan dikirim selama perjalanan aktif untuk memantau kendaraan dan mendeteksi kedatangan. Lokasi berhenti dikirim saat perjalanan selesai atau dibatalkan. Tindakan ini tercatut."
+              ? "GPS wajib aktif dan kendaraan harus berada di area SPPG. Lokasi akan dikirim selama perjalanan aktif untuk memantau kendaraan dan mendeteksi kedatangan. Pelacakan berhenti saat perjalanan selesai atau dibatalkan. Tindakan ini tercatat."
               : confirm.kind === "delivery"
                 ? "Pastikan kendaraan sudah tiba di lokasi penerima. Setelah ini Anda dapat membuat POD. Tindakan ini tercatat."
                 : "Perjalanan akan ditutup dan pelacakan lokasi dihentikan. Tindakan ini tercatat dan tidak dapat dibatalkan."

@@ -197,6 +197,7 @@ export default function RecipientClient() {
   // Pengiriman yang sudah tampil di "hari ini" tidak diulang pada daftar menunggu konfirmasi.
   const awaitingOther = awaiting.filter((d) => !todayDeliveries.some((t) => t.stopId === d.stopId));
   const recentDone = scoped.filter((d) => DONE.has(d.status) || ISSUE.has(d.status)).slice(0, 3);
+  const activeMapDelivery = scoped.find((d) => IN_TRANSIT.has(d.status) && d.lastLatitude != null && d.lastLongitude != null) ?? null;
 
   async function openDelivery(d: RecipientDelivery) {
     setSelected(d);
@@ -384,6 +385,24 @@ export default function RecipientClient() {
                   <div className="field-stat"><strong>{inTransit.length}</strong><span>Menuju lokasi</span></div>
                   <div className="field-stat"><strong>{awaiting.length}</strong><span>Menunggu konfirmasi</span></div>
                 </section>
+                {activeMapDelivery && (
+                  <section className="field-card field-stack" aria-label="Peta kendaraan menuju lokasi">
+                    <h2 className="field-section-title">Kendaraan menuju lokasi</h2>
+                    <p className="field-caption">
+                      {activeMapDelivery.tripReference} · {activeMapDelivery.siteName ?? siteName}
+                      {activeMapDelivery.lastLocationAt ? ` · diperbarui ${formatDateTime(activeMapDelivery.lastLocationAt)}` : ""}
+                    </p>
+                    <iframe
+                      title="Lokasi terakhir kendaraan"
+                      src={`https://www.openstreetmap.org/export/embed.html?bbox=${activeMapDelivery.lastLongitude! - 0.01},${activeMapDelivery.lastLatitude! - 0.01},${activeMapDelivery.lastLongitude! + 0.01},${activeMapDelivery.lastLatitude! + 0.01}&layer=mapnik&marker=${activeMapDelivery.lastLatitude},${activeMapDelivery.lastLongitude}`}
+                      style={{ width: "100%", height: 180, border: 0, borderRadius: 8 }}
+                      loading="lazy"
+                    />
+                    <p className="field-caption" style={{ marginTop: 4 }}>
+                      Peta menunjukkan lokasi terakhir yang diterima server, bukan posisi real-time.
+                    </p>
+                  </section>
+                )}
                 <h2 className="field-section-title">Pengiriman hari ini</h2>
                 {todayDeliveries.length === 0 ? (
                   <EmptyState title="Belum ada pengiriman untuk lokasi ini." />
@@ -480,7 +499,7 @@ export default function RecipientClient() {
               <div><dt>SPPG</dt><dd>{selected.sppgName ?? "-"}</dd></div>
               <div><dt>Lokasi</dt><dd>{selected.siteName ?? siteName}</dd></div>
               <div><dt>Kendaraan / driver</dt><dd>{[selected.vehiclePlate, selected.driverName].filter(Boolean).join(" · ") || "-"}</dd></div>
-              <div><dt>Jadwal / ETA</dt><dd>{selected.eta ? formatDateTime(selected.eta) : selected.scheduledAt ? formatDateTime(selected.scheduledAt) : "Belum tersedia"}</dd></div>
+              <div><dt>Estimasi tiba</dt><dd>{selected.eta ? formatDateTime(selected.eta) : selected.scheduledAt ? formatDateTime(selected.scheduledAt) : "Belum tersedia"}</dd></div>
               <div>
                 <dt>Geofence</dt>
                 <dd>
@@ -508,6 +527,19 @@ export default function RecipientClient() {
                    )}
                  </dd>
                </div>
+               {selected.lastLatitude != null && selected.lastLongitude != null && (
+                 <div style={{ marginTop: 8 }}>
+                   <iframe
+                     title="Lokasi terakhir kendaraan"
+                     src={`https://www.openstreetmap.org/export/embed.html?bbox=${selected.lastLongitude - 0.01},${selected.lastLatitude - 0.01},${selected.lastLongitude + 0.01},${selected.lastLatitude + 0.01}&layer=mapnik&marker=${selected.lastLatitude},${selected.lastLongitude}`}
+                     style={{ width: "100%", height: 180, border: 0, borderRadius: 8 }}
+                     loading="lazy"
+                   />
+                   <p className="field-caption" style={{ marginTop: 4 }}>
+                     Peta menunjukkan lokasi terakhir yang diterima server, bukan posisi real-time.
+                   </p>
+                 </div>
+               )}
                {selected.lastLatitude != null && selected.lastLongitude != null && (
                  <div style={{ marginTop: 8 }}>
                    <iframe
