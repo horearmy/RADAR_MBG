@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
 
 @Injectable()
@@ -19,6 +19,81 @@ export class PlatformService {
         updatedAt: true,
       },
     });
+  }
+
+  async suspendTenant(id: string, principal: { id: string }, requestId: string, reason?: string) {
+    const tenant = await this.prisma.db.tenant.findUnique({ where: { id } });
+    if (!tenant) throw new NotFoundException({ code: 'TENANT_NOT_FOUND' });
+    if (tenant.status !== 'ACTIVE') throw new BadRequestException({ code: 'TENANT_STATUS_INVALID' });
+
+    const updated = await this.prisma.db.tenant.update({
+      where: { id },
+      data: { status: 'SUSPENDED', suspendedAt: new Date() },
+    });
+
+    await this.prisma.db.auditLog.create({
+      data: {
+        actorUserId: principal.id,
+        action: 'tenant.suspend',
+        entityType: 'tenant',
+        entityId: id,
+        result: 'SUCCESS',
+        reason: reason ?? null,
+        requestId,
+      },
+    });
+
+    return updated;
+  }
+
+  async archiveTenant(id: string, principal: { id: string }, requestId: string, reason?: string) {
+    const tenant = await this.prisma.db.tenant.findUnique({ where: { id } });
+    if (!tenant) throw new NotFoundException({ code: 'TENANT_NOT_FOUND' });
+    if (tenant.status === 'ARCHIVED') throw new BadRequestException({ code: 'TENANT_STATUS_INVALID' });
+
+    const updated = await this.prisma.db.tenant.update({
+      where: { id },
+      data: { status: 'ARCHIVED' },
+    });
+
+    await this.prisma.db.auditLog.create({
+      data: {
+        actorUserId: principal.id,
+        action: 'tenant.archive',
+        entityType: 'tenant',
+        entityId: id,
+        result: 'SUCCESS',
+        reason: reason ?? null,
+        requestId,
+      },
+    });
+
+    return updated;
+  }
+
+  async reactivateTenant(id: string, principal: { id: string }, requestId: string, reason?: string) {
+    const tenant = await this.prisma.db.tenant.findUnique({ where: { id } });
+    if (!tenant) throw new NotFoundException({ code: 'TENANT_NOT_FOUND' });
+    if (tenant.status === 'ACTIVE') throw new BadRequestException({ code: 'TENANT_STATUS_INVALID' });
+
+    const updated = await this.prisma.db.tenant.update({
+      where: { id },
+      data: { status: 'ACTIVE', suspendedAt: null, activatedAt: new Date() },
+    });
+
+    await this.prisma.db.auditLog.create({
+      data: {
+        actorUserId: principal.id,
+        action: 'tenant.reactivate',
+        entityType: 'tenant',
+        entityId: id,
+        result: 'SUCCESS',
+        reason: reason ?? null,
+        requestId,
+      },
+    });
+
+    return updated;
   }
 
   async listGeofences(tenantId?: string, activeOnly?: boolean) {
