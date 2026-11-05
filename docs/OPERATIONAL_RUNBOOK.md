@@ -236,3 +236,87 @@ Eskalasi:
 
 ## 15. Catatan
 Runbook ini harus diperbarui setiap ada perubahan arsitektur, env, atau prosedur operasional.
+
+## 16. Rollback detail
+
+### 16.1 Prinsip rollback
+- Jangan hapus tabel/kolom yang berisi data produksi.
+- Jangan hapus event audit/notifikasi.
+- Gunakan feature flag untuk mematikan fitur baru.
+- Utamakan forward-fix dibanding rollback database.
+
+### 16.2 Rollback aplikasi
+1. Matikan feature flag fitur baru.
+2. Deploy versi sebelumnya jika diperlukan.
+3. Verifikasi login dan akses dasar.
+4. Verifikasi data tidak hilang.
+
+### 16.3 Rollback migration
+- Hindari rollback migration destruktif.
+- Jika migration gagal:
+  1. tandai rolled-back dengan `prisma migrate resolve --rolled-back`
+  2. perbaiki migration
+  3. deploy ulang
+- Jangan drop tabel/kolom yang sudah berisi data.
+
+### 16.4 Rollback tenant/recipient
+- Jangan hapus tenant yang sudah aktif.
+- Jangan hapus recipient membership yang sudah aktif.
+- Jika perlu, nonaktifkan fitur via flag.
+- Simpan token/undangan lama untuk audit.
+
+### 16.5 Verifikasi setelah rollback
+- [ ] Login berfungsi.
+- [ ] Tenant context berfungsi.
+- [ ] Driver workspace berfungsi.
+- [ ] Recipient workspace berfungsi.
+- [ ] Data tidak hilang.
+- [ ] Audit log tersedia.
+
+## 17. Incident response detail
+
+### 17.1 Klasifikasi insiden
+- **P1**: sistem down / data leakage / keamanan.
+- **P2**: fitur utama tidak berfungsi.
+- **P3**: gangguan minor.
+- **P4**: perbaikan non-urgent.
+
+### 17.2 Langkah awal
+1. Identifikasi gejala.
+2. Cek log API dan database.
+3. Cek status service.
+4. Isolasi tenant jika perlu.
+5. Komunikasikan ke pengguna.
+6. Pulihkan service.
+7. Dokumentasikan insiden.
+
+### 17.3 Isolasi tenant
+Jika ada dugaan data leakage:
+1. Nonaktifkan tenant context untuk tenant terdampak.
+2. Matikan fitur baru via feature flag.
+3. Audit akses tenant tersebut.
+4. Jangan hapus data sebelum investigasi selesai.
+
+### 17.4 Recovery
+1. Pulihkan service.
+2. Verifikasi login.
+3. Verifikasi tenant scope.
+4. Verifikasi data.
+5. Verifikasi audit log.
+
+### 17.5 Post-incident
+1. Buat laporan insiden.
+2. Identifikasi root cause.
+3. Buat action item.
+4. Update runbook.
+5. Review dengan tim.
+
+## 18. Checklist final
+- [ ] Backup tersedia.
+- [ ] Migration status clean.
+- [ ] Feature flag siap.
+- [ ] Rollback plan siap.
+- [ ] Audit log aktif.
+- [ ] Monitoring aktif.
+- [ ] Runbook terbaru.
+- [ ] Tim mengetahui prosedur insiden.
