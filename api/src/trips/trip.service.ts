@@ -1182,13 +1182,21 @@ export class TripService {
         type: status === 'DELIVERED' ? 'POD_SUBMITTED' : 'SCHEDULE_CHANGED',
         title,
         body: `Perjalanan ${tripRef} · ${stop.site.name}`,
-        status: 'QUEUED',
+        status: 'SENT',
         stopId: stop.id,
         tripId,
       })),
     );
     if (notifications.length > 0) {
-      await tx.notificationEvent.createMany({ data: notifications });
+      const existing = await tx.notificationEvent.findMany({
+        where: { tripId, stopId: { in: notifications.map((n) => n.stopId).filter((id): id is string => Boolean(id)) } },
+        select: { userId: true, stopId: true, type: true },
+      });
+      const existingKeys = new Set(existing.map((n) => `${n.userId}:${n.stopId}:${n.type}`));
+      const unique = notifications.filter((n) => !existingKeys.has(`${n.userId}:${n.stopId}:${n.type}`));
+      if (unique.length > 0) {
+        await tx.notificationEvent.createMany({ data: unique });
+      }
     }
   }
 }
