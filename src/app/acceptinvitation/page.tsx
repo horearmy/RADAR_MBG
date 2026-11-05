@@ -1,10 +1,12 @@
 'use client';
-import { useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { KeyRound, Eye, EyeOff } from 'lucide-react';
 import { apiBaseUrl } from "@/lib/api";
 const apiBase = apiBaseUrl;
 
-export default function AcceptInvitationPage() {
+function AcceptInvitationContent() {
+  const searchParams = useSearchParams();
   const [token, setToken] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -12,6 +14,11 @@ export default function AcceptInvitationPage() {
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const queryToken = searchParams.get('token');
+    if (queryToken) setToken(queryToken);
+  }, [searchParams]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -68,5 +75,13 @@ export default function AcceptInvitationPage() {
       </div>
       <style>{`@keyframes fadeIn { from { opacity: .6; transform: translateY(8px); } to { opacity: 1; transform: none; } }`}</style>
     </div>
+  );
+}
+
+export default function AcceptInvitationPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}>Memuat...</div>}>
+      <AcceptInvitationContent />
+    </Suspense>
   );
 }

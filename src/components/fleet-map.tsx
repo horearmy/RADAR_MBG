@@ -159,6 +159,7 @@ export function FleetMap({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
+  const geofenceFitDoneRef = useRef(false);
   const markersRef = useRef<MapLibreMarker[]>([]);
   const fittedSignatureRef = useRef("");
   const onSelectTripRef = useRef(onSelectTrip);
@@ -550,6 +551,34 @@ export function FleetMap({
       source.setData({ type: "FeatureCollection", features });
     }
   }, [draftGeofence, geofenceCircles, polygonPoints, ready, showGeofences]);
+
+  useEffect(() => {
+    if (!ready || !mapRef.current || geofenceCircles.length === 0 || geofenceFitDoneRef.current) return;
+    const map = mapRef.current;
+    let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+    for (const geofence of geofenceCircles) {
+      if (geofence.shapeType === "POLYGON" && geofence.polygonCoordinates && geofence.polygonCoordinates.length >= 3) {
+        for (const point of geofence.polygonCoordinates) {
+          const lng = Number(point.longitude);
+          const lat = Number(point.latitude);
+          if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
+          minLng = Math.min(minLng, lng); minLat = Math.min(minLat, lat);
+          maxLng = Math.max(maxLng, lng); maxLat = Math.max(maxLat, lat);
+        }
+      } else {
+        const lng = Number(geofence.centerLongitude);
+        const lat = Number(geofence.centerLatitude);
+        if (Number.isFinite(lng) && Number.isFinite(lat)) {
+          minLng = Math.min(minLng, lng); minLat = Math.min(minLat, lat);
+          maxLng = Math.max(maxLng, lng); maxLat = Math.max(maxLat, lat);
+        }
+      }
+    }
+    if (Number.isFinite(minLng)) {
+      map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 64, maxZoom: 13, duration: 600 });
+      geofenceFitDoneRef.current = true;
+    }
+  }, [ready, geofenceCircles]);
 
   useEffect(() => {
     let cancelled = false;
