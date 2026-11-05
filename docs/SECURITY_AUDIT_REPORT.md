@@ -79,5 +79,24 @@ Audit keamanan read-only terhadap RADAR MBG multi-tenant. Fokus: tenant isolatio
 7. Tambahkan test cross-tenant dan cross-recipient-site.
 8. Dokumentasikan scope resolver sebagai single source of truth.
 
-## 5. Kesimpulan
+## 5. Verifikasi IDOR/BOLA
+
+### 5.1 Recipient
+- `getStop`, `getPod`, `confirm`, `reportIssue` memvalidasi membership sebelum akses.
+- Status: **aman untuk scope site**.
+
+### 5.2 Master data
+- `getDriver`, `createVehicle`, `createDriver` memvalidasi SPPG access.
+- `countDrivers` diperbaiki agar scope global konsisten dengan list.
+- Status: **aman dengan catatan perlu test by ID**.
+
+### 5.3 Geofence
+- `listForLocation` dan `create` memvalidasi lokasi dan tenant scope.
+- Status: **aman**.
+
+### 5.4 User admin
+- Scope user admin perlu diaudit lebih lanjut untuk cross-tenant.
+- Status: **perlu review**.
+
+## 6. Kesimpulan
 Keamanan dasar sudah cukup baik, tetapi perlu hardening pada permission, tenant context, dan akses resource by ID sebelum production.
