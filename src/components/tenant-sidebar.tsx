@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Activity, LayoutDashboard, Navigation, Truck, UserRound, Users, Building2, FilePlus, ClipboardCheck, KeyRound, BarChart3, MapPinned, MapPin, LogOut } from 'lucide-react';
+import { Activity, LayoutDashboard, Navigation, Truck, UserRound, Users, Building2, FilePlus, ClipboardCheck, KeyRound, BarChart3, MapPinned, MapPin, LogOut, QrCode } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { apiBaseUrl, getCurrentSession, getSelectedTenantId, hasPermission, setSelectedTenantId, type SessionUser } from '@/lib/api';
 
@@ -13,6 +13,7 @@ const items = [
   { href: '/tenant/vehicles', label: 'Kendaraan', icon: Truck, permission: 'master:read' },
   { href: '/tenant/users', label: 'Pengguna', icon: Users, permission: 'tenant:read' },
   { href: '/tenant/recipients', label: 'Penerima', icon: MapPin, permission: 'tenant:manage' },
+  { href: '/tenant/recipient-registrations', label: 'Registrasi Penerima', icon: QrCode, permission: 'tenant:manage' },
   { href: '/tenant/audit', label: 'Audit Aktivitas', icon: Activity, permission: 'tenant:read' },
   { href: '/tenant/profile', label: 'Profil SPPG', icon: Building2, permission: 'tenant:read' },
   { href: '/tenant/map', label: 'Peta', icon: MapPinned, permission: 'master:read' },
