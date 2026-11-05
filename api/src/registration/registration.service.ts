@@ -63,72 +63,90 @@ export class RegistrationService {
 
   async provision(id: string) {
     try {
-      const reg = await this.prisma.db.tenantRegistration.findUnique({ where: { id } });
-      if (!reg) throw new NotFoundException({ code: 'REGISTRATION_NOT_FOUND' });
-      if (reg.status !== 'APPROVED') throw new BadRequestException({ code: 'REGISTRATION_NOT_APPROVED' });
-      if (reg.tenantId) {
-        const tenant = await this.prisma.db.tenant.findUnique({ where: { id: reg.tenantId } });
-        return { tenant, alreadyProvisioned: true };
-      }
+      return await this.prisma.db.$transaction(async (tx) => {
+        const reg = await tx.tenantRegistration.findUnique({ where: { id } });
+        if (!reg) throw new NotFoundException({ code: 'REGISTRATION_NOT_FOUND' });
+        if (reg.status !== 'APPROVED') throw new BadRequestException({ code: 'REGISTRATION_NOT_APPROVED' });
+        if (reg.tenantId) {
+          const tenant = await tx.tenant.findUnique({ where: { id: reg.tenantId } });
+          return { tenant, alreadyProvisioned: true };
+        }
 
-      const tenantCode = `SPPG-${reg.registrationNumber}`;
-      let tenant = await this.prisma.db.tenant.findUnique({ where: { tenantCode } });
-      if (!tenant) {
-        const org = await this.prisma.db.organization.findFirst();
-        const region = await this.prisma.db.region.findFirst({ where: org ? { organizationId: org.id } : undefined });
-        const sppg = await this.prisma.db.sppg.create({
-          data: {
-            organizationId: org!.id,
-            regionId: region!.id,
-            code: reg.registrationNumber.slice(0, 32),
-            name: reg.sppgName,
-            address: reg.fullAddress,
+        const tenantCode = `SPPG-${reg.registrationNumber}`;
+        let tenant = await tx.tenant.findUnique({ where: { tenantCode } });
+        let sppg = tenant?.legacySppgId
+          ? await tx.sppg.findUnique({ where: { id: tenant.legacySppgId } })
+          : null;
+
+        if (!tenant) {
+          const org = await tx.organization.findFirst();
+          if (!org) throw new BadRequestException({ code: 'ORGANIZATION_NOT_FOUND', message: 'Organisasi dasar belum tersedia.' });
+          const region = await tx.region.findFirst({ where: { organizationId: org.id, active: true } });
+          if (!region) throw new BadRequestException({ code: 'REGION_NOT_FOUND', message: 'Wilayah dasar belum tersedia.' });
+          sppg = await tx.sppg.create({
+            data: {
+              organizationId: org.id,
+              regionId: region.id,
+              code: reg.registrationNumber.slice(0, 32),
+              name: reg.sppgName,
+              address: reg.fullAddress,
+              latitude: reg.latitude,
+              longitude: reg.longitude,
+              status: 'ACTIVE',
+            },
+          });
+          tenant = await tx.tenant.create({
+            data: { tenantCode, name: reg.sppgName, status: 'ACTIVE', legacySppgId: sppg.id },
+          });
+        }
+
+        await tx.sppgProfile.upsert({
+          where: { tenantId: tenant.id },
+          update: { sppgName: reg.sppgName },
+          create: {
+            tenantId: tenant.id,
+            sppgName: reg.sppgName,
+            officialCode: reg.officialCode,
+            fullAddress: reg.fullAddress,
             latitude: reg.latitude,
             longitude: reg.longitude,
-            status: 'ACTIVE',
+            contactPhone: reg.contactPhone,
           },
         });
-        tenant = await this.prisma.db.tenant.create({
-          data: { tenantCode, name: reg.sppgName, status: 'ACTIVE', legacySppgId: sppg.id },
+
+        const username = reg.contactEmail || `admin-${reg.registrationNumber}`;
+        let user = await tx.user.findUnique({ where: { username } });
+        if (!user) {
+          user = await tx.user.create({
+            data: { username, displayName: reg.contactName || 'Admin SPPG', passwordHash: '', status: 'INVITED' },
+          });
+        }
+
+        const membership = await tx.tenantMembership.upsert({
+          where: { tenantId_userId: { tenantId: tenant.id, userId: user.id } },
+          update: { role: 'TENANT_ADMIN', status: 'INVITED' },
+          create: { tenantId: tenant.id, userId: user.id, role: 'TENANT_ADMIN', status: 'INVITED' },
         });
-      }
-    await this.prisma.db.sppgProfile.upsert({
-      where: { tenantId: tenant.id },
-      update: { sppgName: reg.sppgName },
-      create: {
-        tenantId: tenant.id,
-        sppgName: reg.sppgName,
-        officialCode: reg.officialCode,
-        fullAddress: reg.fullAddress,
-        latitude: reg.latitude,
-        longitude: reg.longitude,
-        contactPhone: reg.contactPhone,
-      },
-    });
 
-    const username = reg.contactEmail || `admin-${reg.registrationNumber}`;
-    let user = await this.prisma.db.user.findUnique({ where: { username } });
-    if (!user) {
-      user = await this.prisma.db.user.create({
-        data: { username, displayName: reg.contactName || 'Admin SPPG', passwordHash: '', status: 'INVITED' },
+        const { createHash, randomBytes } = await import('node:crypto');
+        const rawToken = randomBytes(32).toString('base64url');
+        const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        await tx.accountAccessToken.create({
+          data: { userId: user.id, tokenHash, purpose: 'INVITATION', expiresAt, createdBy: user.id },
+        });
+
+        await tx.tenantRegistration.update({ where: { id }, data: { tenantId: tenant.id } });
+
+        return {
+          tenant,
+          membership,
+          adminUsername: user.username,
+          invitationToken: rawToken,
+          invitationExpiresAt: expiresAt.toISOString(),
+          alreadyProvisioned: false,
+        };
       });
-    }
-    const membership = await this.prisma.db.tenantMembership.upsert({
-      where: { tenantId_userId: { tenantId: tenant.id, userId: user.id } },
-      update: { role: 'TENANT_ADMIN', status: 'INVITED' },
-      create: { tenantId: tenant.id, userId: user.id, role: 'TENANT_ADMIN', status: 'INVITED' },
-    });
-
-    const { createHash, randomBytes } = await import('node:crypto');
-    const rawToken = randomBytes(32).toString('base64url');
-    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
-    await this.prisma.db.accountAccessToken.create({
-      data: { userId: user.id, tokenHash, purpose: 'INVITATION', expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), createdBy: user.id },
-    });
-
-    await this.prisma.db.tenantRegistration.update({ where: { id }, data: { tenantId: tenant.id } });
-
-    return { tenant, membership, invitationToken: rawToken, alreadyProvisioned: false };
     } catch (e: any) {
       throw new BadRequestException({ code: 'PROVISION_FAILED', message: e?.message ?? 'Provision failed' });
     }

@@ -303,7 +303,9 @@ export class MasterDataService {
     const isDriver = principal.driverId !== null || principal.roles.some((role) => role.code === 'DRIVER');
     const base: Prisma.DriverWhereInput = {
       ...(!includeAllTenants && tenantContext ? { tenantId: tenantContext.tenantId } : {}),
-      ...(!includeAllTenants && (tenantContext || scope.global)
+      ...(!includeAllTenants && tenantContext
+        ? {}
+        : scope.global
         ? {}
         : isDriver
           ? principal.driverId ? { id: principal.driverId } : { id: { in: [] } }

@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
-const apiBase = process.env.NEXT_PUBLIC_RADAR_API_URL ?? 'http://localhost:4000/api/v1';
+import { apiBaseUrl } from '@/lib/api';
+const apiBase = apiBaseUrl;
 
 export default function ReportingPage() {
   const [data, setData] = useState<any>(null);

@@ -403,6 +403,12 @@ export class AuthService {
       if (updated.count !== 1) {
         throw new UnauthorizedException({ code: 'ACCOUNT_TOKEN_INVALID_OR_EXPIRED' });
       }
+      if (isInvitation) {
+        await tx.tenantMembership.updateMany({
+          where: { userId: accountToken.userId, status: 'INVITED' },
+          data: { status: 'ACTIVE' },
+        });
+      }
       const revoked = await tx.session.updateMany({
         where: { userId: accountToken.userId, revokedAt: null },
         data: { revokedAt: now },

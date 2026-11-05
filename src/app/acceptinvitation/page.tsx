@@ -1,7 +1,8 @@
 'use client';
 import { useState } from 'react';
 import { KeyRound, Eye, EyeOff } from 'lucide-react';
-const apiBase = process.env.NEXT_PUBLIC_RADAR_API_URL ?? 'http://localhost:4000/api/v1';
+import { apiBaseUrl } from "@/lib/api";
+const apiBase = apiBaseUrl;
 
 export default function AcceptInvitationPage() {
   const [token, setToken] = useState('');
@@ -16,17 +17,21 @@ export default function AcceptInvitationPage() {
     e.preventDefault();
     setError('');
     setMsg('');
-    if (password.length < 8) { setError('Password minimal 8 karakter.'); return; }
+    if (token.trim().length < 32) { setError('Token undangan tidak valid.'); return; }
+    if (password.length < 14) { setError('Password minimal 14 karakter.'); return; }
     if (password !== confirm) { setError('Konfirmasi password tidak cocok.'); return; }
     setSaving(true);
     try {
-      const csrf = await fetch(`${apiBase}/auth/csrf`, { credentials: 'include' }).then((r) => r.json());
+      const csrfRes = await fetch(`${apiBase}/auth/csrf`, { credentials: 'include' });
+      const csrf = await csrfRes.json().catch(() => null);
+      if (!csrfRes.ok || !csrf?.csrfToken) throw new Error('Gagal memulai sesi keamanan.');
       const res = await fetch(`${apiBase}/auth/account-access/consume`, {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf.csrfToken },
-        body: JSON.stringify({ token, password }),
+        body: JSON.stringify({ token: token.trim(), password }),
       });
-      if (!res.ok) throw new Error(`Gagal (${res.status})`);
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.message ?? `Gagal (${res.status})`);
       setMsg('Akun aktif. Silakan login.');
     } catch (err: any) {
       setError(err.message);
@@ -48,7 +53,7 @@ export default function AcceptInvitationPage() {
         <form onSubmit={submit} style={{ display: 'grid', gap: 12 }}>
           <textarea className="date-button" placeholder="Token undangan" value={token} onChange={(e) => setToken(e.target.value)} required rows={3} style={{ minHeight: 80, resize: 'vertical' }} />
           <div style={{ position: 'relative' }}>
-            <input type={showPass ? 'text' : 'password'} className="date-button" placeholder="Password baru (min. 8 karakter)" value={password} onChange={(e) => setPassword(e.target.value)} required style={{ paddingRight: 40 }} />
+            <input type={showPass ? 'text' : 'password'} className="date-button" placeholder="Password baru (min. 14 karakter)" value={password} onChange={(e) => setPassword(e.target.value)} required style={{ paddingRight: 40 }} />
             <button type="button" onClick={() => setShowPass(!showPass)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 0, cursor: 'pointer', color: '#62728a' }}>
               {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>

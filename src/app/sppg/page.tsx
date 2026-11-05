@@ -364,7 +364,8 @@ export default function SppgPage() {
                           <button className="btn btn-primary" onClick={() => regAction(r.id, 'approve')}>Setujui</button>
                           <button className="btn btn-danger" onClick={() => regAction(r.id, 'reject')}>Tolak</button>
                           <button className="btn btn-warning" onClick={() => regAction(r.id, 'request-revision')}>Revisi</button>
-                          {r.status === 'APPROVED' && <button className="btn btn-success" onClick={() => regAction(r.id, 'provision')}>Provision</button>}
+                          {r.status === 'APPROVED' && !r.tenantId && <button className="btn btn-success" onClick={() => regAction(r.id, 'provision')}>Provision</button>}
+{r.tenantId && <span className="pill pill-active" style={{ marginLeft: 6 }}>Diprovisi</span>}
                         </td>
                       </tr>
                     ))}
@@ -488,13 +489,20 @@ export default function SppgPage() {
           <div style={{ padding: 20, display: 'grid', gap: 8, fontSize: 13 }}>
             <div><strong>Tenant ID:</strong> {provisionResult.tenant?.id}</div>
             <div><strong>Nama SPPG:</strong> {provisionResult.tenant?.name}</div>
+            <div><strong>Username admin:</strong> {provisionResult.adminUsername ?? '-'}</div>
             <div><strong>Admin:</strong> {provisionResult.tenant?.tenantCode}</div>
-            <div><strong>Kanal:</strong> Email (dev: log)</div>
-            <div><strong>Pengiriman:</strong> SENT (dev)</div>
-            <div><strong>Kedaluwarsa:</strong> 24 jam</div>
+            <div><strong>Kanal:</strong> Undangan aplikasi (token satu kali)</div>
+            <div><strong>Kedaluwarsa:</strong> 7 hari</div>
             <div><strong>Status tenant:</strong> {provisionResult.tenant?.status}</div>
             <div><strong>Status akun:</strong> INVITED</div>
-            <div style={{ marginTop: 8, color: '#62728a', fontSize: 11 }}>Token dibuat oleh server, disimpan sebagai hash, dan hanya dapat digunakan satu kali.</div>
+            <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
+              <strong>Token undangan:</strong>
+              <textarea readOnly value={provisionResult.invitationToken ?? ''} rows={3} style={{ width: '100%', fontFamily: 'monospace', fontSize: 11, resize: 'vertical' }} />
+              <button className="btn btn-ghost" type="button" onClick={() => { if (provisionResult?.invitationToken) void navigator.clipboard?.writeText(provisionResult.invitationToken); }}>
+                Salin token
+              </button>
+            </div>
+            <div style={{ marginTop: 8, color: '#62728a', fontSize: 11 }}>Serahkan username dan token ini kepada admin SPPG. Aktivasi dilakukan di /acceptinvitation, lalu gunakan tenant ID {provisionResult.tenant?.id} untuk konteks tenant.</div>
           </div>
           <div style={{ padding: 20, borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button className="btn btn-ghost" onClick={() => setProvisionResult(null)}>Tutup</button>

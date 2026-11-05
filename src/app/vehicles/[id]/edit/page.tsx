@@ -3,9 +3,8 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Save, Truck } from "lucide-react";
-import { getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
-
-const apiBase = process.env.NEXT_PUBLIC_RADAR_API_URL ?? "http://localhost:4000/api/v1";
+import { apiBaseUrl, getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
+const apiBase = apiBaseUrl;
 
 function VehicleEditContent() {
   const params = useParams<{ id: string }>();
