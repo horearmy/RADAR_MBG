@@ -259,16 +259,22 @@ export default function Home() {
       if (!active) return;
       setSessionUser(user);
 
+      const tenantRoles = [
+        user.tenantRole,
+        ...(user.tenantMemberships?.map((membership) => membership.role) ?? []),
+      ].filter(Boolean) as string[];
+      const isDriver = user.driverId !== null || tenantRoles.includes("TENANT_DRIVER");
+      // Fallback: akun tanpa izin platform diarahkan ke workspace yang sesuai.
       if (!hasPermission(user, "trip:read") && !hasPermission(user, "exception:read")) {
-        if (user.tenantRole) {
-          router.replace(user.tenantRole === "TENANT_DRIVER" ? "/radarapp/driver" : "/tenant");
+        if (isDriver) {
+          router.replace("/radarapp/driver");
           return;
         }
-        if (user.tenantMemberships?.length) {
+        if ((user.tenantMemberships?.length ?? 0) > 0) {
           router.replace("/tenant");
           return;
         }
-        setSessionState("forbidden");
+        router.replace("/radarapp/recipient");
         return;
       }
 
