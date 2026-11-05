@@ -24,7 +24,22 @@ export class TenantGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest<AuthenticatedRequest>();
-    if (req.tenantContext) return true;
+    if (req.tenantContext) {
+      const isGlobal = req.principal?.roles.some((role) => role.isGlobal) ?? false;
+      if (isGlobal && req.principal?.id) {
+        this.prisma.db.auditLog.create({
+          data: {
+            actorUserId: req.principal.id,
+            action: 'tenant.support_access',
+            entityType: 'tenant',
+            entityId: req.tenantContext.tenantId,
+            result: 'SUCCESS',
+            reason: 'Platform admin mengakses tenant context.',
+          },
+        }).catch(() => {});
+      }
+      return true;
+    }
 
     const requiresTenant = this.reflector.getAllAndOverride<boolean>(TENANT_REQUIRED, [
       context.getHandler(),

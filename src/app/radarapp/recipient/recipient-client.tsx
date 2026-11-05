@@ -16,7 +16,7 @@ import {
   type RecipientNotification,
   type RecipientPod,
 } from "@/lib/field-api";
-import type { SessionUser } from "@/lib/api";
+import { getSelectedTenantId, setSelectedTenantId, type SessionUser } from "@/lib/api";
 import { formatDateTime, safeErrorMessage } from "@/lib/field-status";
 import { useOnlineStatus } from "@/lib/use-online-status";
 import {
@@ -133,6 +133,9 @@ export default function RecipientClient() {
             return;
           }
           setUser(resolved.user);
+          if (!getSelectedTenantId() && (resolved.user.tenantMemberships?.length ?? 0) === 1) {
+            setSelectedTenantId(resolved.user.tenantMemberships![0].tenantId);
+          }
           setMe(await recipientApi.me());
         }
         // Server membatasi data pada recipient site milik membership pengguna.
@@ -488,7 +491,22 @@ export default function RecipientClient() {
               </div>
               <div>
                 <dt>Lokasi kendaraan</dt>
-                <dd>{selected.lastLocationAt ? `Lokasi terakhir diperbarui ${formatDateTime(selected.lastLocationAt)}` : "Lokasi belum tersedia"}</dd>
+                <dd>
+                   {selected.lastLocationAt ? `Lokasi terakhir diperbarui ${formatDateTime(selected.lastLocationAt)}` : "Lokasi belum tersedia"}
+                   {selected.lastLatitude != null && selected.lastLongitude != null && (
+                     <>
+                       {" · "}
+                       <a href={`https://www.google.com/maps?q=${selected.lastLatitude},${selected.lastLongitude}`} target="_blank" rel="noreferrer">
+                         Buka di peta
+                       </a>
+                     </>
+                   )}
+                   {selected.lastLocationAccuracy != null && (
+                     <span className="field-caption" style={{ display: "block", marginTop: 4 }}>
+                       Akurasi ±{Math.round(selected.lastLocationAccuracy)} m
+                     </span>
+                   )}
+                 </dd>
               </div>
             </dl>
             {selected.arrivedAt && !pod && (

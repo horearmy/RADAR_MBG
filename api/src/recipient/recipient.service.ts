@@ -56,6 +56,7 @@ export class RecipientService {
             vehicle: true,
             driver: true,
             deliveryRecords: { orderBy: { createdAt: 'desc' }, take: 1 },
+            positions: { orderBy: { serverReceivedAt: 'desc' }, take: 1 },
           },
         },
       },
@@ -78,7 +79,10 @@ export class RecipientService {
         deliveredQuantity: rec?.receivedQuantity ?? s.trip.receivedQuantity ?? null,
         vehiclePlate: s.trip.vehicle?.plateNumber ?? null,
         driverName: s.trip.driver?.name ?? null,
-        lastLocationAt: null,
+        lastLatitude: s.trip.positions?.[0]?.latitude ? Number(s.trip.positions[0].latitude) : null,
+        lastLongitude: s.trip.positions?.[0]?.longitude ? Number(s.trip.positions[0].longitude) : null,
+        lastLocationAt: s.trip.positions?.[0]?.serverReceivedAt?.toISOString() ?? null,
+        lastLocationAccuracy: s.trip.positions?.[0]?.accuracyMeters ? Number(s.trip.positions[0].accuracyMeters) : null,
       };
     });
   }
@@ -95,6 +99,7 @@ export class RecipientService {
             vehicle: true,
             driver: true,
             deliveryRecords: { orderBy: { createdAt: 'desc' }, take: 1 },
+            positions: { orderBy: { serverReceivedAt: 'desc' }, take: 1 },
           },
         },
       },
@@ -117,7 +122,10 @@ export class RecipientService {
       deliveredQuantity: rec?.receivedQuantity ?? stop.trip.receivedQuantity ?? null,
       vehiclePlate: stop.trip.vehicle?.plateNumber ?? null,
       driverName: stop.trip.driver?.name ?? null,
-      lastLocationAt: null,
+      lastLatitude: stop.trip.positions?.[0]?.latitude ? Number(stop.trip.positions[0].latitude) : null,
+      lastLongitude: stop.trip.positions?.[0]?.longitude ? Number(stop.trip.positions[0].longitude) : null,
+      lastLocationAt: stop.trip.positions?.[0]?.serverReceivedAt?.toISOString() ?? null,
+      lastLocationAccuracy: stop.trip.positions?.[0]?.accuracyMeters ? Number(stop.trip.positions[0].accuracyMeters) : null,
     };
   }
 

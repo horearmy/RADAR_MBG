@@ -226,11 +226,11 @@ export default function DriverClient() {
   );
 
   const navItems: NavItem[] = [
-    { key: "home", label: "Beranda", href: "/radarapp?tab=home" },
-    { key: "tasks", label: "Tugas", href: "/radarapp?tab=tasks" },
-    { key: "history", label: "Riwayat", href: "/radarapp?tab=history" },
-    { key: "navigasi", label: "Navigasi", href: "/radarapp?tab=navigasi", badge: navigatingTripId ? 1 : undefined },
-    { key: "profile", label: "Profil", href: "/radarapp?tab=profile" },
+    { key: "home", label: "Beranda", href: "/radarapp/driver?tab=home" },
+    { key: "tasks", label: "Tugas", href: "/radarapp/driver?tab=tasks" },
+    { key: "history", label: "Riwayat", href: "/radarapp/driver?tab=history" },
+    { key: "navigasi", label: "Navigasi", href: "/radarapp/driver?tab=navigasi", badge: navigatingTripId ? 1 : undefined },
+    { key: "profile", label: "Profil", href: "/radarapp/driver?tab=profile" },
   ];
 
   // Track GPS position when navigating
@@ -253,7 +253,7 @@ export default function DriverClient() {
     setNavigatingTripId(trip.id);
     setCurrentPosition(null);
     // Switch to navigation tab
-    router.push("/radarapp?tab=navigasi");
+    router.push("/radarapp/driver?tab=navigasi");
   }
 
   const loadDetail = useCallback(

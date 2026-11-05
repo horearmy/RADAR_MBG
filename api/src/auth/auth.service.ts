@@ -408,6 +408,10 @@ export class AuthService {
           where: { userId: accountToken.userId, status: 'INVITED' },
           data: { status: 'ACTIVE' },
         });
+        await tx.recipientMembership.updateMany({
+          where: { userId: accountToken.userId, status: 'INVITED' },
+          data: { status: 'ACTIVE' },
+        });
       }
       const revoked = await tx.session.updateMany({
         where: { userId: accountToken.userId, revokedAt: null },

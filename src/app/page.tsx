@@ -261,7 +261,7 @@ export default function Home() {
 
       if (!hasPermission(user, "trip:read") && !hasPermission(user, "exception:read")) {
         if (user.tenantRole) {
-          router.replace(user.tenantRole === "TENANT_DRIVER" ? "/radarapp" : "/tenant");
+          router.replace(user.tenantRole === "TENANT_DRIVER" ? "/radarapp/driver" : "/tenant");
           return;
         }
         if (user.tenantMemberships?.length) {

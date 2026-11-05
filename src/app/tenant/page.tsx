@@ -211,7 +211,7 @@ export default function TenantPage() {
           return;
         }
         if (!hasPermission(user, "tenant:read")) {
-          router.replace(user.tenantRole === "TENANT_DRIVER" ? "/radarapp" : "/login");
+          router.replace(user.tenantRole === "TENANT_DRIVER" ? "/radarapp/driver" : "/login");
           return;
         }
         setSessionUser(user);

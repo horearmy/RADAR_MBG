@@ -26,14 +26,16 @@ export type ResolvedWorkspaces = {
 };
 
 export const WORKSPACE_HOME: Record<FieldWorkspace, string> = {
-  driver: "/radarapp",
+  driver: "/radarapp/driver",
   recipient: "/radarapp/recipient",
 };
 
 export function isDriver(user: SessionUser): boolean {
-  // Driver punya driverId DAN/ATAU tenantRole TENANT_DRIVER dengan permission yang sesuai
+  // Driver punya driverId atau membership tenant role TENANT_DRIVER dengan permission yang sesuai.
+  // tenantRole top-level sering null, jadi membership juga harus diperiksa.
   const hasDriverRecord = Boolean(user.driverId);
-  const hasDriverRole = user.tenantRole === "TENANT_DRIVER" &&
+  const hasDriverMembership = (user.tenantMemberships ?? []).some((membership) => membership.role === "TENANT_DRIVER");
+  const hasDriverRole = (user.tenantRole === "TENANT_DRIVER" || hasDriverMembership) &&
     hasPermission(user, "trip:start") &&
     hasPermission(user, "trip:location:update");
   return hasDriverRecord || hasDriverRole;
@@ -124,7 +126,10 @@ export type RecipientDelivery = {
   deliveredQuantity?: number | null;
   vehiclePlate?: string | null;
   driverName?: string | null;
+  lastLatitude?: number | null;
+  lastLongitude?: number | null;
   lastLocationAt?: string | null;
+  lastLocationAccuracy?: number | null;
 };
 
 export type RecipientPod = {
