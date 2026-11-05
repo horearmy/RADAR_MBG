@@ -507,7 +507,20 @@ export default function RecipientClient() {
                      </span>
                    )}
                  </dd>
-              </div>
+               </div>
+               {selected.lastLatitude != null && selected.lastLongitude != null && (
+                 <div style={{ marginTop: 8 }}>
+                   <iframe
+                     title="Lokasi terakhir kendaraan"
+                     src={`https://www.openstreetmap.org/export/embed.html?bbox=${selected.lastLongitude - 0.01},${selected.lastLatitude - 0.01},${selected.lastLongitude + 0.01},${selected.lastLatitude + 0.01}&layer=mapnik&marker=${selected.lastLatitude},${selected.lastLongitude}`}
+                     style={{ width: "100%", height: 180, border: 0, borderRadius: 8 }}
+                     loading="lazy"
+                   />
+                   <p className="field-caption" style={{ marginTop: 4 }}>
+                     Peta menunjukkan lokasi terakhir yang diterima server, bukan posisi real-time.
+                   </p>
+                 </div>
+               )}
             </dl>
             {selected.arrivedAt && !pod && (
               <Banner tone="info">Deteksi area hanya indikator kedatangan, bukan konfirmasi barang diterima.</Banner>
