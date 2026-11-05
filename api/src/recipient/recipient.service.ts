@@ -33,6 +33,7 @@ export class RecipientService {
     if (memberships.length === 0) throw new NotFoundException({ code: 'RECIPIENT_NOT_FOUND' });
     return {
       displayName: user.displayName ?? user.username,
+      photoUrl: user.photoUrl ?? null,
       role: 'RECIPIENT',
       sites: memberships.map((m) => ({
         id: m.site.id,
@@ -40,6 +41,19 @@ export class RecipientService {
         organizationName: m.site.organization?.name,
       })),
     };
+  }
+
+  async updateProfile(userId: string, input: { photoUrl?: string | null }) {
+    const user = await this.prisma.db.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException({ code: 'USER_NOT_FOUND' });
+    const memberships = await this.getMemberships(userId);
+    if (memberships.length === 0) throw new NotFoundException({ code: 'RECIPIENT_NOT_FOUND' });
+    const updated = await this.prisma.db.user.update({
+      where: { id: userId },
+      data: { photoUrl: input.photoUrl === undefined ? user.photoUrl : input.photoUrl },
+      select: { id: true, username: true, displayName: true, photoUrl: true },
+    });
+    return updated;
   }
 
   async listDeliveries(userId: string) {
@@ -122,6 +136,10 @@ export class RecipientService {
       deliveredQuantity: rec?.receivedQuantity ?? stop.trip.receivedQuantity ?? null,
       vehiclePlate: stop.trip.vehicle?.plateNumber ?? null,
       driverName: stop.trip.driver?.name ?? null,
+      sppgLatitude: stop.trip.sppg?.latitude ? Number(stop.trip.sppg.latitude) : null,
+      sppgLongitude: stop.trip.sppg?.longitude ? Number(stop.trip.sppg.longitude) : null,
+      deliveryLatitude: stop.trip.deliveryLocation?.latitude ? Number(stop.trip.deliveryLocation.latitude) : null,
+      deliveryLongitude: stop.trip.deliveryLocation?.longitude ? Number(stop.trip.deliveryLocation.longitude) : null,
       lastLatitude: stop.trip.positions?.[0]?.latitude ? Number(stop.trip.positions[0].latitude) : null,
       lastLongitude: stop.trip.positions?.[0]?.longitude ? Number(stop.trip.positions[0].longitude) : null,
       lastLocationAt: stop.trip.positions?.[0]?.serverReceivedAt?.toISOString() ?? null,

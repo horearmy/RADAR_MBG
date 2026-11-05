@@ -360,6 +360,11 @@ export class UpdateDriverDto {
   phone?: string;
 
   @IsOptional()
+  @IsString()
+  @Length(0, 500)
+  photoUrl?: string;
+
+  @IsOptional()
   @IsEnum(DriverStatus)
   status?: DriverStatus;
 
@@ -385,6 +390,11 @@ export class CreateDriverDto {
   @IsString()
   @Length(6, 32)
   phone?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 500)
+  photoUrl?: string;
 
   @IsString()
   @Length(3, 2000)

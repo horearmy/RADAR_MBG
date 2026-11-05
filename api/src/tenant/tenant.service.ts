@@ -94,10 +94,10 @@ export class TenantService {
     });
   }
 
-  async createDriver(tenantId: string, input: { code: string; name: string; phone?: string }) {
+  async createDriver(tenantId: string, input: { code: string; name: string; phone?: string; photoUrl?: string }) {
     const sppgId = await this.legacySppg(tenantId);
     return this.prisma.db.driver.create({
-      data: { tenantId, sppgId, code: input.code.trim().toUpperCase(), name: input.name.trim(), phone: input.phone?.trim(), status: 'ACTIVE' },
+      data: { tenantId, sppgId, code: input.code.trim().toUpperCase(), name: input.name.trim(), phone: input.phone?.trim(), photoUrl: input.photoUrl?.trim() ?? null, status: 'ACTIVE' },
     });
   }
 
@@ -326,6 +326,36 @@ async getUser(tenantId: string, userId: string) {
     });
     if (!membership) throw new Error('USER_NOT_FOUND');
     return { ...membership.user, role: membership.role, membershipId: membership.id, membershipStatus: membership.status };
+  }
+
+  async activateInvitedUser(tenantId: string, userId: string, password: string, actorUserId: string) {
+    const membership = await this.prisma.db.tenantMembership.findFirst({ where: { tenantId, userId } });
+    if (!membership) throw new Error('USER_NOT_FOUND');
+    const user = await this.prisma.db.user.findUnique({ where: { id: userId }, select: { id: true, status: true } });
+    if (!user || user.status !== 'INVITED') throw new Error('USER_NOT_INVITED');
+
+    const passwordHash = await argon2.hash(password);
+    await this.prisma.db.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: { passwordHash, passwordChangedAt: new Date(), status: 'ACTIVE', disabledAt: null },
+      });
+      await tx.tenantMembership.update({
+        where: { id: membership.id },
+        data: { status: 'ACTIVE' },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorUserId,
+          action: 'tenant.user.activate',
+          entityType: 'user',
+          entityId: userId,
+          result: 'success',
+          reason: 'Aktivasi akun undangan oleh admin tenant.',
+        },
+      });
+    });
+    return { success: true };
   }
 
   async updateUser(tenantId: string, userId: string, data: { displayName?: string; role?: 'TENANT_ADMIN' | 'TENANT_OPERATOR' | 'TENANT_DRIVER' | 'TENANT_VIEWER'; status?: 'ACTIVE' | 'SUSPENDED' | 'INACTIVE'; password?: string }, actorUserId: string) {

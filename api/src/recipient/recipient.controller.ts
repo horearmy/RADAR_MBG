@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { SessionGuard } from '../auth/session.guard.js';
 import type { AuthenticatedRequest } from '../auth/session.guard.js';
 import { Req } from '@nestjs/common';
@@ -12,6 +12,11 @@ export class RecipientController {
   @Get('me')
   me(@Req() req: AuthenticatedRequest) {
     return this.service.getMe(req.principal!.id);
+  }
+
+  @Patch('profile')
+  updateProfile(@Req() req: AuthenticatedRequest, @Body() body: { photoUrl?: string | null }) {
+    return this.service.updateProfile(req.principal!.id, body);
   }
 
   @Get('deliveries')

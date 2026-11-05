@@ -13,6 +13,7 @@ const items = [
   { href: '/tenant/vehicles', label: 'Kendaraan', icon: Truck, permission: 'master:read' },
   { href: '/tenant/users', label: 'Pengguna', icon: Users, permission: 'tenant:read' },
   { href: '/tenant/recipients', label: 'Penerima', icon: MapPin, permission: 'tenant:manage' },
+  { href: '/tenant/activation', label: 'Aktivasi Akun', icon: KeyRound, permission: 'tenant:manage' },
   { href: '/tenant/recipient-registrations', label: 'Registrasi Penerima', icon: QrCode, permission: 'tenant:manage' },
   { href: '/tenant/audit', label: 'Audit Aktivitas', icon: Activity, permission: 'tenant:read' },
   { href: '/tenant/profile', label: 'Profil SPPG', icon: Building2, permission: 'tenant:read' },

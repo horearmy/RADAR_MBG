@@ -101,6 +101,8 @@ export default function RecipientClient() {
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("today");
   const [siteId, setSiteId] = useState<string | null>(null);
+  const [photoUrl, setPhotoUrl] = useState("");
+  const [photoSaving, setPhotoSaving] = useState(false);
 
   const [selected, setSelected] = useState<RecipientDelivery | null>(null);
   const [pod, setPod] = useState<RecipientPod | null>(null);
@@ -136,7 +138,9 @@ export default function RecipientClient() {
           if (!getSelectedTenantId() && (resolved.user.tenantMemberships?.length ?? 0) === 1) {
             setSelectedTenantId(resolved.user.tenantMemberships![0].tenantId);
           }
-          setMe(await recipientApi.me());
+          const meData = await recipientApi.me();
+          setMe(meData);
+          setPhotoUrl(meData.photoUrl ?? "");
         }
         // Server membatasi data pada recipient site milik membership pengguna.
         setDeliveries(await recipientApi.deliveries());
@@ -277,6 +281,20 @@ export default function RecipientClient() {
     router.replace("/radarapp/login");
   }
 
+  async function savePhoto() {
+    setPhotoSaving(true);
+    try {
+      const updated = await recipientApi.updateProfile({ photoUrl: photoUrl.trim() || null });
+      setMe((prev) => (prev ? { ...prev, photoUrl: updated.photoUrl ?? null } : prev));
+      setPhotoUrl(updated.photoUrl ?? "");
+      setNotice({ tone: "success", text: "Foto profil diperbarui." });
+    } catch (error) {
+      setNotice({ tone: "danger", text: safeErrorMessage(error) });
+    } finally {
+      setPhotoSaving(false);
+    }
+  }
+
   const navItems: NavItem[] = [
     { key: "home", label: "Beranda", href: "/radarapp/recipient?tab=home" },
     { key: "deliveries", label: "Pengiriman", href: "/radarapp/recipient?tab=deliveries" },
@@ -398,9 +416,6 @@ export default function RecipientClient() {
                       style={{ width: "100%", height: 180, border: 0, borderRadius: 8 }}
                       loading="lazy"
                     />
-                    <p className="field-caption" style={{ marginTop: 4 }}>
-                      Peta menunjukkan lokasi terakhir yang diterima server, bukan posisi real-time.
-                    </p>
                   </section>
                 )}
                 <h2 className="field-section-title">Pengiriman hari ini</h2>
@@ -473,7 +488,28 @@ export default function RecipientClient() {
             {tab === "profile" && (
               <section className="field-card field-stack">
                 <h2 className="field-section-title">Profil</h2>
-                <dl className="field-dl">
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  {me?.photoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={me.photoUrl} alt={me?.displayName ?? "Foto profil"} style={{ width: 64, height: 64, borderRadius: 32, objectFit: "cover" }} />
+                  ) : (
+                    <div style={{ width: 64, height: 64, borderRadius: 32, background: "#EAF2FF", display: "grid", placeItems: "center", color: "#1677FF", fontWeight: 700 }}>
+                      {(me?.displayName ?? user?.displayName ?? "P").slice(0, 1).toUpperCase()}
+                    </div>
+                  )}
+                  <div style={{ flex: 1, display: "grid", gap: 6 }}>
+                    <input type="url" value={photoUrl} onChange={(e) => setPhotoUrl(e.target.value)} placeholder="URL foto profil" />
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button type="button" className="field-btn" onClick={() => void savePhoto()} disabled={photoSaving}>
+                        {photoSaving ? "Menyimpan..." : "Simpan Foto"}
+                      </button>
+                      <button type="button" className="field-btn" onClick={() => { setPhotoUrl(""); void savePhoto(); }} disabled={photoSaving}>
+                        Hapus
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <dl className="field-dl" style={{ marginTop: 10 }}>
                   <div><dt>Nama</dt><dd>{me?.displayName ?? user?.displayName ?? "-"}</dd></div>
                   <div><dt>Lokasi / organisasi</dt><dd>{sites.map((s) => s.name).join(", ") || "-"}</dd></div>
                   <div><dt>Peran</dt><dd>{me?.role ?? "Penerima"}</dd></div>
@@ -539,19 +575,17 @@ export default function RecipientClient() {
                      Peta menunjukkan lokasi terakhir yang diterima server, bukan posisi real-time.
                    </p>
                  </div>
-               )}
-               {selected.lastLatitude != null && selected.lastLongitude != null && (
-                 <div style={{ marginTop: 8 }}>
-                   <iframe
-                     title="Lokasi terakhir kendaraan"
-                     src={`https://www.openstreetmap.org/export/embed.html?bbox=${selected.lastLongitude - 0.01},${selected.lastLatitude - 0.01},${selected.lastLongitude + 0.01},${selected.lastLatitude + 0.01}&layer=mapnik&marker=${selected.lastLatitude},${selected.lastLongitude}`}
-                     style={{ width: "100%", height: 180, border: 0, borderRadius: 8 }}
-                     loading="lazy"
-                   />
-                   <p className="field-caption" style={{ marginTop: 4 }}>
-                     Peta menunjukkan lokasi terakhir yang diterima server, bukan posisi real-time.
-                   </p>
-                 </div>
+                )}
+                    {selected.sppgLatitude != null && selected.sppgLongitude != null && selected.deliveryLatitude != null && selected.deliveryLongitude != null && (
+                      <a
+                        href={`https://www.google.com/maps/dir/?api=1&origin=${selected.sppgLatitude},${selected.sppgLongitude}&destination=${selected.deliveryLatitude},${selected.deliveryLongitude}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="field-btn"
+                        style={{ marginTop: 8, justifyContent: "center" }}
+                      >
+                        Lihat rute di Google Maps
+                      </a>
                )}
             </dl>
             {selected.arrivedAt && !pod && (

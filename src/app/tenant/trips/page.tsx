@@ -7,9 +7,11 @@ import { HeaderAccount } from "@/components/account-menu";
 import { TenantSidebar } from "@/components/tenant-sidebar";
 import {
   apiBaseUrl,
+  cancelTrip,
   createTenantTrip,
   getCurrentSession,
   hasPermission,
+  rescheduleTrip,
   type SessionUser,
   apiFetchUrl,
 } from "@/lib/api";
@@ -19,6 +21,7 @@ const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
 type Trip = {
   id: string;
   status: string;
+  version?: number;
   plannedDepartureAt: string | null;
   plannedArrivalAt: string | null;
   plannedQuantity?: number;
@@ -113,6 +116,8 @@ export default function TenantTripsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
+  const [editForm, setEditForm] = useState({ plannedDepartureAt: "", plannedArrivalAt: "", reason: "Perubahan jadwal" });
   const [form, setForm] = useState<TripFormState>({ deliveryLocationId: "", vehicleId: "", driverId: "", plannedDepartureAt: "", plannedArrivalAt: "", plannedQuantity: "" });
   const [drivers, setDrivers] = useState<DriverOption[]>([]);
   const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
@@ -195,6 +200,45 @@ export default function TenantTripsPage() {
     })();
     return () => { active = false; };
   }, []);
+
+  const openEdit = (trip: Trip) => {
+    setEditingTrip(trip);
+    setEditForm({
+      plannedDepartureAt: trip.plannedDepartureAt ? toWibInput(new Date(trip.plannedDepartureAt)) : "",
+      plannedArrivalAt: trip.plannedArrivalAt ? toWibInput(new Date(trip.plannedArrivalAt)) : "",
+      reason: "Perubahan jadwal",
+    });
+  };
+
+  const handleReschedule = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!editingTrip) return;
+    try {
+      const plannedDepartureAt = wibInputToIso(editForm.plannedDepartureAt);
+      const plannedArrivalAt = wibInputToIso(editForm.plannedArrivalAt);
+      if (!plannedDepartureAt || !plannedArrivalAt) throw new Error("INVALID_TRIP_SCHEDULE");
+      await rescheduleTrip(editingTrip.id, {
+        plannedDepartureAt,
+        plannedArrivalAt,
+        version: editingTrip.version ?? 1,
+        reason: editForm.reason.trim() || "Perubahan jadwal",
+      });
+      setEditingTrip(null);
+      await loadTrips(true);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Gagal mengubah jadwal");
+    }
+  };
+
+  const handleCancel = async (trip: Trip) => {
+    if (!confirm("Batalkan perjalanan ini?")) return;
+    try {
+      await cancelTrip(trip.id, trip.version ?? 1, "Pembatalan oleh tenant");
+      await loadTrips(true);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Gagal membatalkan perjalanan");
+    }
+  };
 
   const handleRefresh = async (silent = true) => {
     setRefreshing(true);
@@ -296,6 +340,28 @@ export default function TenantTripsPage() {
               <div className="kpi-foot">Menunggu keberangkatan</div>
             </article>
           </section>
+          {editingTrip && (
+            <div className="modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(7,27,58,.45)", zIndex: 50 }}>
+              <div className="modal" style={{ width: "min(480px, 92vw)", background: "#fff", borderRadius: 14, padding: 24 }}>
+                <h2>Ubah Jadwal Perjalanan</h2>
+                <form onSubmit={handleReschedule} style={{ display: "grid", gap: 12 }}>
+                  <label>Keberangkatan
+                    <input type="datetime-local" value={editForm.plannedDepartureAt} onChange={(e) => setEditForm((f) => ({ ...f, plannedDepartureAt: e.target.value }))} required />
+                  </label>
+                  <label>Kedatangan
+                    <input type="datetime-local" value={editForm.plannedArrivalAt} onChange={(e) => setEditForm((f) => ({ ...f, plannedArrivalAt: e.target.value }))} required />
+                  </label>
+                  <label>Alasan
+                    <input value={editForm.reason} onChange={(e) => setEditForm((f) => ({ ...f, reason: e.target.value }))} required />
+                  </label>
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                    <button type="button" className="btn btn-ghost" onClick={() => setEditingTrip(null)}>Batal</button>
+                    <button type="submit" className="btn btn-primary">Simpan</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
 
           {showForm && (
             <div className="trip-modal-backdrop" onClick={() => !submitting && setShowForm(false)}>
@@ -411,7 +477,7 @@ export default function TenantTripsPage() {
             <div className="table-wrap">
               <table>
                 <thead>
-                  <tr><th>PERJALANAN</th><th>RUTE &amp; PENGEMUDI</th><th>STATUS</th><th>PORSI</th><th>ETA</th></tr>
+                  <tr><th>PERJALANAN</th><th>RUTE &amp; PENGEMUDI</th><th>STATUS</th><th>PORSI</th><th>ETA</th><th>AKSI</th></tr>
                 </thead>
                 <tbody>
                   {trips.map((trip) => {
@@ -423,10 +489,20 @@ export default function TenantTripsPage() {
                         <td><span className={`status-pill status-${state.tone}`}><span className="status-dot" />{state.label}</span></td>
                         <td><span className="portion-value">{trip.plannedQuantity ?? "—"} porsi</span></td>
                         <td><span className="eta-value">{trip.status === "COMPLETED" ? "Selesai" : trip.status === "CANCELLED" ? "—" : formatClock(trip.plannedArrivalAt)}</span></td>
+                       <td>
+                         <div style={{ display: "flex", gap: 6 }}>
+                           {trip.status !== "COMPLETED" && trip.status !== "CANCELLED" && (
+                             <button className="btn btn-ghost" onClick={() => openEdit(trip)}>Ubah Jadwal</button>
+                           )}
+                           {trip.status !== "COMPLETED" && trip.status !== "CANCELLED" && (
+                             <button className="btn btn-danger" onClick={() => void handleCancel(trip)}>Batalkan</button>
+                           )}
+                         </div>
+                       </td>
                       </tr>
                     );
                   })}
-                  {!trips.length && <tr><td colSpan={5} className="table-empty">Belum ada perjalanan.</td></tr>}
+                  {!trips.length && <tr><td colSpan={6} className="table-empty">Belum ada perjalanan.</td></tr>}
                 </tbody>
               </table>
             </div>

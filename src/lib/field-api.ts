@@ -106,6 +106,7 @@ export async function logoutField(): Promise<void> {
 
 export type RecipientMe = {
   displayName?: string;
+  photoUrl?: string | null;
   role?: string;
   sites?: Array<{ id: string; name: string; organizationName?: string }>;
 };
@@ -126,6 +127,10 @@ export type RecipientDelivery = {
   deliveredQuantity?: number | null;
   vehiclePlate?: string | null;
   driverName?: string | null;
+  sppgLatitude?: number | null;
+  sppgLongitude?: number | null;
+  deliveryLatitude?: number | null;
+  deliveryLongitude?: number | null;
   lastLatitude?: number | null;
   lastLongitude?: number | null;
   lastLocationAt?: string | null;
@@ -167,6 +172,8 @@ function toList<T>(payload: unknown): T[] {
 
 export const recipientApi = {
   me: () => apiGet<RecipientMe>("/recipient/me"),
+  updateProfile: (input: { photoUrl?: string | null }) =>
+    apiMutate<RecipientMe>("/recipient/profile", "PATCH", input),
   deliveries: async () => toList<RecipientDelivery>(await apiGet<unknown>("/recipient/deliveries")),
   stop: (stopId: string) => apiGet<RecipientDelivery>(`/recipient/stops/${encodeURIComponent(stopId)}`),
   pod: (stopId: string) => apiGet<RecipientPod>(`/recipient/stops/${encodeURIComponent(stopId)}/pod`),
