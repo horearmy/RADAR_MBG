@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -30,6 +30,7 @@ import {
 import { HeaderAccount } from "@/components/account-menu";
 import { AppSidebar } from "@/components/app-sidebar";
 import { FleetMap } from "@/components/fleet-map";
+import { RecipientReviewPanel } from "@/components/recipient-review-panel";
 import {
   apiBaseUrl,
   getCurrentSession,
@@ -52,6 +53,18 @@ import {
 
 type MapFilter = "all" | "active" | "attention" | "stale" | "verified";
 type TripTab = "active" | "attention" | "all";
+type DashboardTab = "ringkasan" | "review" | "tautan";
+
+const DASHBOARD_TABS: Array<{ value: DashboardTab; label: string; adminOnly?: boolean }> = [
+  { value: "ringkasan", label: "Ringkasan" },
+  { value: "review", label: "Review", adminOnly: true },
+  { value: "tautan", label: "Tautan" },
+];
+
+function normalizeDashboardTab(value: string | null): DashboardTab {
+  if (value === "review" || value === "tautan" || value === "ringkasan") return value;
+  return "ringkasan";
+}
 
 const activeTripStatuses = new Set([
   "IN_TRANSIT",
@@ -187,7 +200,7 @@ function StatusPill({ tone, children }: { tone: string; children: ReactNode }) {
 function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [dashboardTab, setDashboardTab] = useState<"ringkasan" | "review" | "tautan">("ringkasan");
+  const [dashboardTab, setDashboardTab] = useState<DashboardTab>(() => normalizeDashboardTab(searchParams.get("tab")));
   const mapSectionRef = useRef<HTMLElement>(null);
   const [mapFilter, setMapFilter] = useState<MapFilter>("all");
   const [selectedMapTripId, setSelectedMapTripId] = useState<string | null>(null);
@@ -203,6 +216,30 @@ function HomeContent() {
   const tenantFilter: string | undefined = undefined;
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const platformAdmin = isPlatformAdmin(sessionUser);
+
+  const changeDashboardTab = useCallback((next: DashboardTab) => {
+    setDashboardTab(next);
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === "ringkasan") {
+      params.delete("tab");
+    } else {
+      params.set("tab", next);
+    }
+    const query = params.toString();
+    router.replace(query ? `/?${query}` : "/", { scroll: false });
+  }, [router, searchParams]);
+
+  // Tab mengikuti URL agar tautan langsung (?tab=review) tetap konsisten.
+  useEffect(() => {
+    setDashboardTab(normalizeDashboardTab(searchParams.get("tab")));
+  }, [searchParams]);
+
+  // Tab review hanya tersedia untuk administrator platform.
+  useEffect(() => {
+    if (!sessionUser || platformAdmin || dashboardTab !== "review") return;
+    changeDashboardTab("ringkasan");
+  }, [changeDashboardTab, dashboardTab, platformAdmin, sessionUser]);
 
   const loadDashboard = useCallback(async (user: SessionUser, silent: boolean) => {
     if (!silent) setSessionState("checking");
@@ -456,8 +493,34 @@ function HomeContent() {
   const canAccessApprovals = hasPermission(sessionUser, "sppg:manage") || hasPermission(sessionUser, "approval:review");
   const canReadAudit = hasPermission(sessionUser, "audit:read");
   const canManageUsers = hasPermission(sessionUser, "admin:manage_users");
-  const platformAdmin = isPlatformAdmin(sessionUser);
-  const kpiCount = [canReadMaster, canReadTrips, canReadTrips, canReadExceptions].filter(Boolean).length;
+  const visibleDashboardTabs = DASHBOARD_TABS.filter((tab) => !tab.adminOnly || platformAdmin);
+  const activeDashboardTab = visibleDashboardTabs.find((tab) => tab.value === dashboardTab) ?? visibleDashboardTabs[0];
+
+  const handleDashboardTabKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const currentIndex = visibleDashboardTabs.findIndex((tab) => tab.value === activeDashboardTab.value);
+    if (currentIndex < 0) return;
+    let nextIndex: number;
+    switch (event.key) {
+      case "ArrowRight":
+        nextIndex = (currentIndex + 1) % visibleDashboardTabs.length;
+        break;
+      case "ArrowLeft":
+        nextIndex = (currentIndex - 1 + visibleDashboardTabs.length) % visibleDashboardTabs.length;
+        break;
+      case "Home":
+        nextIndex = 0;
+        break;
+      case "End":
+        nextIndex = visibleDashboardTabs.length - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    const nextTab = visibleDashboardTabs[nextIndex];
+    changeDashboardTab(nextTab.value);
+    document.getElementById(`dashboard-tab-${nextTab.value}`)?.focus();
+  };
 
   const sortedTrips = [...trips].sort(
     (a, b) => tripUrgencyScore(b, dashboardNow) - tripUrgencyScore(a, dashboardNow)
@@ -475,7 +538,11 @@ function HomeContent() {
 
       <section className="main-column" id="overview">
         <header className="topbar">
-          <div className="breadcrumb"><span>Platform</span><ChevronRight size={14} /><strong>Ringkasan</strong></div>
+          <div className="breadcrumb">
+            <span>Platform</span>
+            <ChevronRight size={14} />
+            <strong>{activeDashboardTab.label}</strong>
+          </div>
           <div className="topbar-actions">
             <span className="environment"><span className="live-dot" />DATA OPERASIONAL</span>
             {canReadExceptions && (
@@ -511,35 +578,57 @@ function HomeContent() {
             </div>
           </div>
 
-          <div className="table-tabs" role="tablist" aria-label="Tab dashboard" style={{ marginBottom: 16 }}>
-            <button type="button" role="tab" aria-selected={dashboardTab === "ringkasan"} className={`table-tab ${dashboardTab === "ringkasan" ? "active" : ""}`} onClick={() => setDashboardTab("ringkasan")}>Ringkasan</button>
-            <button type="button" role="tab" aria-selected={dashboardTab === "review"} className={`table-tab ${dashboardTab === "review" ? "active" : ""}`} onClick={() => setDashboardTab("review")}>Review</button>
-            <button type="button" role="tab" aria-selected={dashboardTab === "tautan"} className={`table-tab ${dashboardTab === "tautan" ? "active" : ""}`} onClick={() => setDashboardTab("tautan")}>Tautan</button>
+          <div className="page-tabs" role="tablist" aria-label="Bagian dashboard" onKeyDown={handleDashboardTabKeyDown}>
+            {visibleDashboardTabs.map((tab) => (
+              <button
+                key={tab.value}
+                type="button"
+                role="tab"
+                id={`dashboard-tab-${tab.value}`}
+                aria-selected={activeDashboardTab.value === tab.value}
+                aria-controls={`dashboard-panel-${tab.value}`}
+                tabIndex={activeDashboardTab.value === tab.value ? 0 : -1}
+                className={`page-tab ${activeDashboardTab.value === tab.value ? "active" : ""}`}
+                onClick={() => changeDashboardTab(tab.value)}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
 
           <div className="demo-notice">
             <span className="notice-mark">i</span>
             <span><strong>Data operasional</strong> — diperbarui otomatis setiap 60 detik. Terakhir dimuat {formatClock(dashboard.refreshedAt)} WIB.</span>
-            {refreshError && (
+          </div>
+          {refreshError && (
+            <p className="refresh-warning" role="status">
+              <span>{refreshError}</span>
               <button type="button" onClick={() => setRefreshError(null)} aria-label="Tutup peringatan pembaruan">
                 <X size={14} />
               </button>
-            )}
-          </div>
-          {refreshError && <p className="refresh-warning" role="status">{refreshError}</p>}
-
-          {canReadExceptions && criticalExceptions.length > 0 && (
-            <section className="critical-banner" role="alert">
-              <span className="critical-banner-icon"><AlertTriangle size={18} /></span>
-              <div>
-                <strong>{criticalExceptions.length} exception kritis belum ditangani</strong>
-                <span>Prioritaskan penanganan sebelum menutup shift operasional.</span>
-              </div>
-              <Link className="btn btn-primary btn-sm" href="/exceptions">Tangani</Link>
-            </section>
+            </p>
           )}
 
-          <section className={`kpi-grid kpi-grid-${kpiCount}`} aria-label="Ringkasan operasional">
+          {activeDashboardTab.value === "ringkasan" && (
+            <div
+              className="dashboard-tabpanel"
+              id="dashboard-panel-ringkasan"
+              role="tabpanel"
+              aria-labelledby="dashboard-tab-ringkasan"
+              tabIndex={0}
+            >
+              {canReadExceptions && criticalExceptions.length > 0 && (
+                <section className="critical-banner" role="alert">
+                  <span className="critical-banner-icon"><AlertTriangle size={18} /></span>
+                  <div>
+                    <strong>{criticalExceptions.length} exception kritis belum ditangani</strong>
+                    <span>Prioritaskan penanganan sebelum menutup shift operasional.</span>
+                  </div>
+                  <Link className="btn btn-primary btn-sm" href="/exceptions">Tangani</Link>
+                </section>
+              )}
+
+              <section className="kpi-grid" aria-label="Ringkasan operasional">
             {canReadMaster && (
               <article className="kpi-card">
                 <div className="kpi-top"><span className="kpi-icon icon-navy"><Utensils size={17} /></span><span className="kpi-trend trend-neutral">Data master</span></div>
@@ -736,79 +825,90 @@ function HomeContent() {
             )}
           </div>
 
-            {dashboardTab === "ringkasan" && <section className="panel trips-panel" aria-label="Perjalanan terkini">
-            <div className="panel-heading">
-              <div>
-                <div className="section-title-row"><h2>Perjalanan terkini</h2><span className="count-chip">{inTransitTrips.length} aktif</span></div>
-                <p>Diurutkan berdasarkan urgensi, lalu estimasi tiba.</p>
-              </div>
-              <Link className="text-link" href="/trips">Semua perjalanan<ArrowRight size={14} /></Link>
-            </div>
-            <div className="table-tabs" role="tablist" aria-label="Filter perjalanan">
-              <button type="button" role="tab" aria-selected={tripTab === "active"} className={`table-tab ${tripTab === "active" ? "active" : ""}`} onClick={() => setTripTab("active")}>Aktif <span>{activeTrips.length}</span></button>
-              <button type="button" role="tab" aria-selected={tripTab === "attention"} className={`table-tab ${tripTab === "attention" ? "active" : ""}`} onClick={() => setTripTab("attention")}>Perlu perhatian <span>{attentionTrips.length}</span></button>
-              <button type="button" role="tab" aria-selected={tripTab === "all"} className={`table-tab ${tripTab === "all" ? "active" : ""}`} onClick={() => setTripTab("all")}>Semua <span>{sortedTrips.length}</span></button>
-            </div>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr><th>PERJALANAN</th><th>RUTE &amp; PENGEMUDI</th><th>STATUS</th><th>PORSI</th><th>ETA</th><th><span className="sr-only">Aksi</span></th></tr>
-                </thead>
-                <tbody>
-                  {visibleTrips.map((trip, index) => {
-                    const state = tripState(trip);
-                    return (
-                      <tr key={trip.id}>
-                        <td><Link className="trip-id trip-detail-link" href={`/trips/${trip.id}`}>TRP-{trip.id.slice(0, 8).toUpperCase()}</Link><span className="table-sub">{trip.vehicle.plateNumber} <i>·</i> {formatClock(trip.plannedDepartureAt)}</span></td>
-                        <td><div className="driver-cell"><span className={`driver-avatar ${avatarClasses[index % avatarClasses.length]}`}>{initials(trip.driver.name)}</span><span className="route-copy"><strong>{trip.sppg.name} → {trip.deliveryLocation.name}</strong><small>{trip.driver.name}</small></span></div></td>
-                        <td><StatusPill tone={state.tone}>{state.label}</StatusPill></td>
-                        <td><span className="portion-value">{trip.plannedQuantity} porsi</span></td>
-                        <td><span className="eta-value">{trip.status === "COMPLETED" ? "Selesai" : trip.status === "CANCELLED" ? "—" : formatClock(trip.plannedArrivalAt)}</span></td>
-                        <td><Link className="row-detail-link" href={`/trips/${trip.id}`}>Detail<ArrowRight size={13} /></Link></td>
-                      </tr>
-                    );
-                  })}
-                  {!visibleTrips.length && (
-                    <tr><td colSpan={6} className="table-empty">Belum ada perjalanan pada filter ini.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <Link className="mobile-all-link" href="/trips">Lihat semua perjalanan<ArrowRight size={14} /></Link>
-            </section>}
-
-            {dashboardTab === "review" && (
-              <section className="panel" aria-label="Review penerima" style={{ minHeight: 240 }}>
+              <section className="panel trips-panel" aria-label="Perjalanan terkini">
                 <div className="panel-heading">
                   <div>
-                    <div className="section-title-row"><h2>Review Penerima</h2></div>
-                    <p>Ringkasan rating dan distribusi review.</p>
+                    <div className="section-title-row"><h2>Perjalanan terkini</h2><span className="count-chip">{inTransitTrips.length} aktif</span></div>
+                    <p>Diurutkan berdasarkan urgensi, lalu estimasi tiba.</p>
                   </div>
-                  <Link className="text-link" href="/previews">Detail review<ArrowRight size={14} /></Link>
+                  <Link className="text-link" href="/trips">Semua perjalanan<ArrowRight size={14} /></Link>
                 </div>
-                <h3 style={{ margin: "0 0 8px" }}>Review Penerima (Tab Review)</h3>
-                <iframe title="Review Penerima" src="/previews" style={{ width: "100%", height: 600, border: 0, borderRadius: 8 }} loading="lazy" />
+                <div className="table-tabs" role="tablist" aria-label="Filter perjalanan">
+                  <button type="button" role="tab" aria-selected={tripTab === "active"} className={`table-tab ${tripTab === "active" ? "active" : ""}`} onClick={() => setTripTab("active")}>Aktif <span>{activeTrips.length}</span></button>
+                  <button type="button" role="tab" aria-selected={tripTab === "attention"} className={`table-tab ${tripTab === "attention" ? "active" : ""}`} onClick={() => setTripTab("attention")}>Perlu perhatian <span>{attentionTrips.length}</span></button>
+                  <button type="button" role="tab" aria-selected={tripTab === "all"} className={`table-tab ${tripTab === "all" ? "active" : ""}`} onClick={() => setTripTab("all")}>Semua <span>{sortedTrips.length}</span></button>
+                </div>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr><th>PERJALANAN</th><th>RUTE &amp; PENGEMUDI</th><th>STATUS</th><th>PORSI</th><th>ETA</th><th><span className="sr-only">Aksi</span></th></tr>
+                    </thead>
+                    <tbody>
+                      {visibleTrips.map((trip, index) => {
+                        const state = tripState(trip);
+                        return (
+                          <tr key={trip.id}>
+                            <td><Link className="trip-id trip-detail-link" href={`/trips/${trip.id}`}>TRP-{trip.id.slice(0, 8).toUpperCase()}</Link><span className="table-sub">{trip.vehicle.plateNumber} <i>·</i> {formatClock(trip.plannedDepartureAt)}</span></td>
+                            <td><div className="driver-cell"><span className={`driver-avatar ${avatarClasses[index % avatarClasses.length]}`}>{initials(trip.driver.name)}</span><span className="route-copy"><strong>{trip.sppg.name} → {trip.deliveryLocation.name}</strong><small>{trip.driver.name}</small></span></div></td>
+                            <td><StatusPill tone={state.tone}>{state.label}</StatusPill></td>
+                            <td><span className="portion-value">{trip.plannedQuantity} porsi</span></td>
+                            <td><span className="eta-value">{trip.status === "COMPLETED" ? "Selesai" : trip.status === "CANCELLED" ? "—" : formatClock(trip.plannedArrivalAt)}</span></td>
+                            <td><Link className="row-detail-link" href={`/trips/${trip.id}`}>Detail<ArrowRight size={13} /></Link></td>
+                          </tr>
+                        );
+                      })}
+                      {!visibleTrips.length && (
+                        <tr><td colSpan={6} className="table-empty">Belum ada perjalanan pada filter ini.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <Link className="mobile-all-link" href="/trips">Lihat semua perjalanan<ArrowRight size={14} /></Link>
               </section>
-            )}
-            {dashboardTab === "tautan" && <section className="panel quick-panel">
-            <div className="panel-heading">
-              <div>
-                <div className="section-title-row"><h2>Aksi platform</h2></div>
-                <p>Pintasan tugas administrator platform dan operasional.</p>
-              </div>
             </div>
-            <div className="app-link-row">
-              {platformAdmin && <Link href="/tenant" className="app-link-card"><Building2 size={20} /><span>Tenant</span></Link>}
-              <Link href="/sppg" className="app-link-card"><Utensils size={20} /><span>SPPG</span></Link>
-              {canAccessApprovals && <Link href="/approvals" className="app-link-card"><ClipboardCheck size={20} /><span>Persetujuan</span></Link>}
-              {canReadAudit && <Link href="/audit" className="app-link-card"><Activity size={20} /><span>Audit explorer</span></Link>}
-              <Link href="/reporting" className="app-link-card"><BarChart3 size={20} /><span>Laporan</span></Link>
-              <Link href="/register" className="app-link-card"><FilePlus size={20} /><span>Pendaftaran SPPG</span></Link>
-              <Link href="/register/status" className="app-link-card"><KeyRound size={20} /><span>Status pendaftaran</span></Link>
-              {canManageUsers && <Link href="/users" className="app-link-card"><Users size={20} /><span>Administrasi akun</span></Link>}
-              {canDrive && <Link href="/driver" className="app-link-card"><Navigation size={20} /><span>Mode pengemudi</span></Link>}
+          )}
+
+          {activeDashboardTab.value === "review" && platformAdmin && (
+            <div
+              className="dashboard-tabpanel"
+              id="dashboard-panel-review"
+              role="tabpanel"
+              aria-labelledby="dashboard-tab-review"
+              tabIndex={0}
+            >
+              <RecipientReviewPanel />
             </div>
-            </section>}
+          )}
+
+          {activeDashboardTab.value === "tautan" && (
+            <div
+              className="dashboard-tabpanel"
+              id="dashboard-panel-tautan"
+              role="tabpanel"
+              aria-labelledby="dashboard-tab-tautan"
+              tabIndex={0}
+            >
+              <section className="panel quick-panel" aria-label="Aksi platform">
+                <div className="panel-heading">
+                  <div>
+                    <div className="section-title-row"><h2>Aksi platform</h2></div>
+                    <p>Pintasan tugas administrator platform dan operasional.</p>
+                  </div>
+                </div>
+                <div className="app-link-row">
+                  {platformAdmin && <Link href="/tenant" className="app-link-card"><Building2 size={20} /><span>Tenant</span></Link>}
+                  <Link href="/sppg" className="app-link-card"><Utensils size={20} /><span>SPPG</span></Link>
+                  {canAccessApprovals && <Link href="/approvals" className="app-link-card"><ClipboardCheck size={20} /><span>Persetujuan</span></Link>}
+                  {canReadAudit && <Link href="/audit" className="app-link-card"><Activity size={20} /><span>Audit explorer</span></Link>}
+                  <Link href="/reporting" className="app-link-card"><BarChart3 size={20} /><span>Laporan</span></Link>
+                  <Link href="/register" className="app-link-card"><FilePlus size={20} /><span>Pendaftaran SPPG</span></Link>
+                  <Link href="/register/status" className="app-link-card"><KeyRound size={20} /><span>Status pendaftaran</span></Link>
+                  {canManageUsers && <Link href="/users" className="app-link-card"><Users size={20} /><span>Administrasi akun</span></Link>}
+                  {canDrive && <Link href="/driver" className="app-link-card"><Navigation size={20} /><span>Mode pengemudi</span></Link>}
+                </div>
+              </section>
+            </div>
+          )}
 
           <footer className="page-footer">
             <span><span className="footer-dot" /> RADAR MBG <i>·</i> Data operasional</span>

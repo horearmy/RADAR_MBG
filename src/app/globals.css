@@ -1879,3 +1879,294 @@ a.gov-card:hover { background: #f7faff; }
 .user-management-tab.active { color: #285f9d; background: #fff; box-shadow: 0 1px 3px rgb(30 58 90 / 10%); }
 .user-management-tab:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 @media (max-width: 600px) { .user-management-tabs { margin: 12px 13px 0; }.user-management-tab { flex: 1; } }
+
+/* ==========================================================================
+   Dashboard UX pass (P0–P3)
+   Tabs, review workspace, map alignment, contrast, and responsive fixes.
+   ========================================================================== */
+
+/* --- Utility containment ------------------------------------------------ */
+.sr-only { left: 0; top: 0; }
+.table-wrap,
+.table-wrapper { position: relative; }
+
+/* --- Page level tabs ----------------------------------------------------- */
+.page-tabs {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  gap: 4px;
+  margin: 0 0 16px;
+  padding: 4px;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: #eef2f7;
+  scrollbar-width: thin;
+}
+.page-tab {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 7px;
+  color: #5b6b82;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background .15s ease, color .15s ease;
+}
+.page-tab:hover { color: #26364d; background: rgb(255 255 255 / 55%); }
+.page-tab.active { color: #0f5fd6; background: #fff; box-shadow: 0 1px 3px rgb(16 36 64 / 12%); }
+.page-tab:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.dashboard-tabpanel { min-width: 0; }
+.dashboard-tabpanel:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 4px; border-radius: 8px; }
+
+/* --- Refresh warning (single source of the notice) ----------------------- */
+.refresh-warning {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -6px 0 14px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.refresh-warning > span { flex: 1; min-width: 0; }
+.refresh-warning button {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+.refresh-warning button:hover { background: rgb(138 90 31 / 14%); }
+
+/* --- KPI grid: fluid columns regardless of card count -------------------- */
+.kpi-grid,
+.kpi-grid-3,
+.kpi-grid-4,
+.kpi-grid-5 {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+/* --- Dashboard map aligned with the alert panel ------------------------- */
+.dashboard-main-grid .map-section {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  margin-bottom: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(27 48 74 / 2%);
+}
+.dashboard-main-grid .map-section > .section-heading { margin: 0; padding: 15px 16px 12px; }
+.dashboard-main-grid .map-section .map-frame { border: 0; border-radius: 0; box-shadow: none; }
+.dashboard-main-grid .map-section.map-section-expanded { overflow: auto; }
+.dashboard-main-grid .map-section.map-section-expanded > .section-heading { padding: 0 0 12px; }
+
+/* --- Map legend: wrap instead of clipping ------------------------------- */
+.map-legend { flex-wrap: wrap; gap: 8px 14px; padding: 8px 14px; }
+.legend-divider { margin-left: 0; }
+.map-legend .legend-freshness { margin-left: auto; }
+
+/* --- Contrast & legibility ---------------------------------------------- */
+th,
+.data-table th {
+  color: #5a6b80;
+  font-size: 10px;
+  letter-spacing: .06em;
+}
+.page-heading p,
+.section-heading p,
+.panel-heading p { color: #53647a; font-size: 12px; line-height: 1.5; }
+.breadcrumb { color: #5f7086; }
+.environment { font-size: 10px; }
+.table-sub { color: #5f7086; font-size: 10px; }
+.table-sub i { color: #9aa7b6; }
+.trip-id { font-size: 11px; }
+.route-copy strong { color: #34445a; font-size: 11px; }
+.route-copy small { color: #61728a; font-size: 10px; }
+.alert-copy strong { color: #34445a; font-size: 11px; }
+.alert-copy span { color: #61728a; font-size: 10px; }
+.alert-footer { font-size: 11px; }
+.sample-tag { color: #5b6b82; font-size: 10px; letter-spacing: .06em; }
+.sample-tag span { background: #6b8fb5; }
+.text-link { color: #2f6cb0; font-size: 11px; }
+.count-chip,
+.alert-count { font-size: 10px; }
+.kpi-label { color: #5f7086; font-size: 11px; }
+.kpi-foot { flex-wrap: wrap; row-gap: 2px; color: #5f7086; font-size: 10px; white-space: normal; overflow-wrap: anywhere; }
+.gov-copy small { color: #5f7086; }
+.gov-copy > span { color: #62728a; }
+.legend-freshness { color: #5f7086; font-size: 11px; }
+.legend-geofence-toggle { color: #45566d; font-size: 10px; }
+.legend-geofence-filter-text { color: #61728a; font-size: 10px; }
+.page-footer { color: #6b7b90; font-size: 10px; }
+.status-pill { padding: 4px 7px; font-size: 10px; font-weight: 600; }
+.status-blue { color: #1d5ea8; }
+.status-amber { color: #8a5510; }
+.status-violet { color: #59459c; }
+.status-green { color: #116348; }
+.status-red { color: #a03d34; }
+.alert-row .status-pill { font-size: 9px; }
+
+/* --- Review workspace (dashboard tab + /previews) ----------------------- */
+.review-content { display: flex; min-width: 0; flex-direction: column; gap: 16px; }
+.review-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(27 48 74 / 2%);
+}
+.review-filter { display: flex; min-width: 220px; flex-direction: column; gap: 6px; }
+.review-filter > span { color: #5f7086; font-size: 11px; font-weight: 650; }
+.review-filter select {
+  height: 36px;
+  min-width: 220px;
+  max-width: 100%;
+  padding: 0 30px 0 10px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  color: #34445a;
+  background: #fff;
+  font: inherit;
+  font-size: 12px;
+}
+.review-summary-grid { margin-bottom: 0; }
+.review-block {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(27 48 74 / 2%);
+}
+.review-block-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 14px;
+  margin-bottom: 14px;
+}
+.review-block-head h3 { margin: 0; color: #1f2d42; font-size: 14px; font-weight: 650; }
+.review-block-head p { margin: 0; color: #62728a; font-size: 11px; }
+.review-bars { display: flex; flex-direction: column; gap: 10px; }
+.review-bar-row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 12px;
+}
+.review-bar-label { display: inline-flex; align-items: center; gap: 5px; color: #34445a; font-size: 12px; font-weight: 600; }
+.review-bar-label svg { color: #d97706; }
+.review-bar-track { height: 10px; overflow: hidden; border-radius: 999px; background: #eef2f7; }
+.review-bar-fill { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #1677ff, #5aa2ff); }
+.review-bar-count { color: #34445a; font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
+.review-emoji-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #eef2f7;
+}
+.review-emoji-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: #f8fafc;
+  font-size: 14px;
+}
+.review-emoji-chip strong { color: #5f7086; font-size: 10px; font-weight: 650; }
+.review-comment { min-width: 220px; max-width: 420px; white-space: normal; line-height: 1.5; }
+.review-content .table-wrap { border: 1px solid var(--color-border); border-radius: 10px; }
+.review-content .table-state { border: 1px solid var(--color-border); border-radius: 12px; background: #fff; }
+
+/* --- Standalone /previews page ----------------------------------------- */
+.platform-reviews-page { width: min(100%, 1320px); margin: 0 auto; padding: 24px 20px 40px; }
+.platform-reviews-page .page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.platform-reviews-page .page-title {
+  margin: 6px 0 4px;
+  color: #15243a;
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -.04em;
+}
+.platform-reviews-page .page-subtitle { margin: 0; color: #53647a; font-size: 12px; }
+.platform-reviews-page .review-panel { padding: 0; overflow: visible; border: 0; background: transparent; box-shadow: none; }
+
+/* --- Responsive tweaks -------------------------------------------------- */
+@media (max-width: 1050px) {
+  .dashboard-main-grid .map-section > .section-heading { padding: 13px 14px 10px; }
+  .map-legend .legend-freshness { margin-left: 0; }
+}
+@media (max-width: 760px) {
+  .page-tabs { width: 100%; }
+  .page-tab { flex: 1; justify-content: center; padding: 0 10px; }
+  .page-heading { flex-direction: column; align-items: stretch; gap: 12px; }
+  .page-heading-actions { width: 100%; }
+  .kpi-grid,
+  .kpi-grid-3,
+  .kpi-grid-4,
+  .kpi-grid-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard-content .map-visual { height: 280px; min-height: 280px; }
+  .dashboard-main-grid .map-visual { min-height: 280px; }
+  .map-top-label { display: none; }
+  .page-heading p,
+  .section-heading p,
+  .panel-heading p { font-size: 11px; }
+  .review-toolbar { align-items: stretch; flex-direction: column; }
+  .review-filter,
+  .review-filter select { min-width: 0; width: 100%; }
+  .review-bar-row { grid-template-columns: 54px minmax(0, 1fr) 38px; gap: 8px; }
+  .platform-reviews-page { padding: 18px 14px 32px; }
+}
+
+/* Very small screens: keep the topbar within the viewport. */
+@media (max-width: 520px) {
+  .environment { display: none; }
+  .breadcrumb { min-width: 0; overflow: hidden; white-space: nowrap; }
+  .breadcrumb strong { overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* --- Print -------------------------------------------------------------- */
+@media print {
+  .page-tabs,
+  .page-heading-actions,
+  .review-toolbar,
+  .refresh-warning,
+  .demo-notice { display: none !important; }
+  .dashboard-content .map-visual,
+  .dashboard-main-grid .map-visual { height: 250px !important; min-height: 250px !important; }
+  .review-block,
+  .review-content .table-wrap { break-inside: avoid; }
+}
