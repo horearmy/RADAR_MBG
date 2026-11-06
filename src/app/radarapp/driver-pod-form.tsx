@@ -59,6 +59,7 @@ export function PodForm({
   const [submitted, setSubmitted] = useState<DeliverySubmitResult | null>(null);
   const [uploadFailed, setUploadFailed] = useState(false);
   const [done, setDone] = useState(false);
+  const [podStage, setPodStage] = useState<"idle" | "submitting" | "uploading" | "done">("idle");
   const submitKey = useRef<string | null>(null);
   const uploadKey = useRef<string | null>(null);
 
@@ -170,10 +171,12 @@ export function PodForm({
 
   async function doUpload(recordTripId: string, photo: File) {
     uploadKey.current ??= crypto.randomUUID();
+    setPodStage("uploading");
     try {
       await uploadTripProof(recordTripId, photo, uploadKey.current);
       setUploadFailed(false);
       setDone(true);
+      setPodStage("done");
       try {
         window.localStorage.removeItem(`${FIELD_STORAGE_PREFIX}pod_draft_${trip.id}`);
       } catch {
@@ -202,6 +205,7 @@ export function PodForm({
 
     setBusy(true);
     submitKey.current ??= crypto.randomUUID();
+    setPodStage("submitting");
     try {
       const receiverNote = `Penerima di lokasi: ${draft.receiver.trim()}.`;
       const note = draft.note.trim() ? `${receiverNote} ${draft.note.trim()}` : receiverNote;
@@ -218,8 +222,10 @@ export function PodForm({
       );
       setSubmitted(result);
       if (file) {
+        setPodStage("uploading");
         await doUpload(trip.id, file);
       } else {
+        setPodStage("done");
         setDone(true);
         onSubmitted();
       }
@@ -455,14 +461,20 @@ export function PodForm({
         </div>
       )}
 
-      {busy && (
-        <div>
-          <div className="field-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={step === "photo" ? 30 : 90}>
-            <div style={{ width: step === "photo" ? "30%" : "90%" }} />
-          </div>
-          <small className="field-hint">Mengirim POD...</small>
-        </div>
-      )}
+       {busy && (
+         <div>
+           <div className="field-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuetext={podStage === "submitting" ? "Mengirim data POD" : podStage === "uploading" ? "Mengunggah foto" : "Menyelesaikan"}>
+             <div style={{ width: podStage === "submitting" ? "35%" : podStage === "uploading" ? "75%" : "95%" }} />
+           </div>
+           <small className="field-hint">
+             {podStage === "submitting"
+               ? "Mengirim data POD ke server..."
+               : podStage === "uploading"
+                 ? "Mengunggah foto bukti..."
+                 : "Menyelesaikan pengiriman..."}
+           </small>
+         </div>
+       )}
 
       {formError && <Banner tone="danger">{formError}</Banner>}
 
