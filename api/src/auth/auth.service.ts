@@ -8,6 +8,7 @@ import * as argon2 from 'argon2';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { PrismaService } from '../database/prisma.service.js';
+import { CacheService } from '../cache/cache.service.js';
 import { isAccountTokenUsable } from './account-token-policy.js';
 import { DistributedLoginRateLimiter } from './login-rate-limiter.js';
 import {
@@ -61,7 +62,7 @@ export class AuthService {
   private readonly loginRateLimiter: DistributedLoginRateLimiter;
   private readonly mfaEnrollmentBuckets = new Map<string, LoginBucket>();
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(private readonly prisma: PrismaService, private readonly cache: CacheService) {
     const loginRateLimit = Number(process.env.LOGIN_RATE_LIMIT ?? 10);
     const loginWindowMs = Number(process.env.LOGIN_RATE_WINDOW_MS ?? LOGIN_WINDOW_MS);
     this.loginRateLimiter = new DistributedLoginRateLimiter(prisma, loginRateLimit, loginWindowMs);
@@ -247,6 +248,7 @@ export class AuthService {
   async logout(request: Request, response: Response) {
     this.assertCsrf(request);
     const rawToken = request.cookies?.[SESSION_COOKIE];
+    if (rawToken) await this.cache.del(`session:principal:${this.hashToken(rawToken)}`);
     const session = rawToken
       ? await this.prisma.db.session.findUnique({
           where: { tokenHash: this.hashToken(rawToken) },
@@ -281,9 +283,13 @@ export class AuthService {
 
   async resolveSession(rawToken?: string): Promise<SessionPrincipal | null> {
     if (!rawToken) return null;
+    const tokenHash = this.hashToken(rawToken);
+    const cacheKey = `session:principal:${tokenHash}`;
+    const cached = await this.cache.get<SessionPrincipal>(cacheKey);
+    if (cached) return cached;
 
     const session = await this.prisma.db.session.findUnique({
-      where: { tokenHash: this.hashToken(rawToken) },
+      where: { tokenHash },
       include: {
         user: {
           include: {
@@ -318,7 +324,7 @@ export class AuthService {
       return null;
     }
 
-    return {
+    const principal: SessionPrincipal = {
       id: session.user.id,
       username: session.user.username,
       displayName: session.user.displayName,
@@ -343,6 +349,8 @@ export class AuthService {
         permissions: role.permissions.map(({ permission }) => permission.code),
       })),
     };
+    await this.cache.set(cacheKey, principal, 300);
+    return principal;
   }
 
   async beginMfaEnrollment(principal: SessionPrincipal) {
