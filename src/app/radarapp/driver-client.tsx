@@ -593,12 +593,51 @@ export default function DriverClient() {
             <section className="field-section" aria-label="Tugas aktif">
               <h2 className="field-section-title">Tugas aktif</h2>
               {currentTrip ? (
-                <>
-                  {renderTripCard(currentTrip)}
+                <section className="field-card field-stack" aria-label="Perjalanan aktif" style={{ padding: 18 }}>
+                  <div className="field-trip-head">
+                    <div>
+                      <span className="field-trip-ref">{tripReference(currentTrip.id)}</span>
+                      <h3 className="field-section-title" style={{ margin: 0 }}>{currentTrip.deliveryLocation.name}</h3>
+                    </div>
+                    <StatusBadge status={currentTrip.status} />
+                  </div>
+                  <div className="field-meta">
+                    <span>{currentTrip.sppg.name}</span>
+                    <span>Kendaraan {currentTrip.vehicle.plateNumber} · {currentTrip.plannedQuantity} porsi</span>
+                    <span>Jadwal {formatDateTime(currentTrip.plannedDepartureAt)} · Tiba {formatTime(currentTrip.plannedArrivalAt)}</span>
+                  </div>
+                  {TRACKING_STATUSES.has(currentTrip.status) && (
+                    <p className="field-caption" style={{ margin: 0 }}>
+                      GPS: {tracker.permission === "granted"
+                        ? (tracker.lastFixAt && Date.now() - tracker.lastFixAt < 90_000 ? "Aktif" : "Belum diperbarui")
+                        : tracker.permission === "denied" || tracker.permission === "revoked"
+                          ? "Izin ditolak"
+                          : tracker.permission === "unsupported"
+                            ? "Tidak didukung"
+                            : "Menunggu izin"}
+                      {tracker.lastFixAt ? ` · diperbarui ${Math.max(1, Math.round((Date.now() - tracker.lastFixAt) / 1000))} dtk lalu` : ""}
+                      {tracker.accuracy != null ? ` · ±${Math.round(tracker.accuracy)} m` : ""}
+                    </p>
+                  )}
                   <p className="field-caption" style={{ margin: 0 }}>
                     Kendaraan ditugaskan: <strong>{currentTrip.vehicle.plateNumber}</strong>
                   </p>
-                </>
+                  <div className="field-actions">
+                    {primaryActionLabel(currentTrip.status, false) && (
+                      <button type="button" className="field-btn field-btn-block" data-variant="primary" onClick={() => runPrimary(currentTrip)} disabled={primaryActionLabel(currentTrip.status, false) === "Mulai Perjalanan" && tracker.permission !== "granted"}>
+                        {primaryActionLabel(currentTrip.status, false)}
+                      </button>
+                    )}
+                    <button type="button" className="field-btn" data-variant="ghost" onClick={() => openDetail(currentTrip)}>
+                      Lihat Detail
+                    </button>
+                    {currentTrip.deliveryLocation.latitude && currentTrip.deliveryLocation.longitude && (
+                      <button type="button" className="field-btn" data-variant="ghost" onClick={() => startNavigation(currentTrip)}>
+                        <Navigation size={16} aria-hidden="true" /> Navigasi
+                      </button>
+                    )}
+                  </div>
+                </section>
               ) : (
                 <EmptyState
                   title="Belum ada perjalanan yang ditugaskan."
