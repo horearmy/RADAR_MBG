@@ -9,22 +9,28 @@ import { randomUUID } from 'node:crypto';
 import type { SessionPrincipal } from '../auth/auth.service.js';
 import { assertSppgAccess } from '../auth/permissions.js';
 import { PrismaService } from '../database/prisma.service.js';
+import { CacheService } from '../cache/cache.service.js';
 import { CreateGeofenceDto, GeofenceLocationType, ListGeofencesDto } from './geofence.dto.js';
 import { canAccessDeliveryGeofence, hasConfirmedGeofenceArrival } from './geofence-policy.js';
 
 @Injectable()
 export class GeofenceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly cache?: CacheService) {}
 
   async listForLocation(query: ListGeofencesDto, principal: SessionPrincipal, tenantContext?: { tenantId: string } | null) {
     await this.getScopedLocationWhere(query.locationType, query.locationId, principal, tenantContext);
+    const tenantKey = tenantContext?.tenantId ?? 'global';
+    const cacheKey = `geofence:list:${query.locationType}:${query.locationId}:${tenantKey}`;
+    const cached = this.cache ? await this.cache.get<any[]>(cacheKey) : null;
+    if (cached) return cached;
+
     const where: Prisma.GeofenceWhereInput = {
       ...(tenantContext ? { tenantId: tenantContext.tenantId } : {}),
       ...(query.locationType === GeofenceLocationType.SPPG
         ? { sppgId: query.locationId }
         : { deliveryLocationId: query.locationId }),
     };
-    return this.prisma.db.geofence.findMany({
+    const result = await this.prisma.db.geofence.findMany({
       where,
       orderBy: [{ version: 'desc' }, { createdAt: 'desc' }],
       select: {
@@ -44,6 +50,8 @@ export class GeofenceService {
         createdAt: true,
       },
     });
+    if (this.cache) await this.cache.set(cacheKey, result, 60);
+    return result;
   }
 
   async create(
@@ -168,6 +176,7 @@ export class GeofenceService {
         },
       });
 
+      if (this.cache) await this.cache.del(`geofence:list:${input.locationType}:${input.locationId}:${tenantContext?.tenantId ?? 'global'}`);
       return { geofence, replayed: false };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
