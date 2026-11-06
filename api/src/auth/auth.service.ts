@@ -62,7 +62,9 @@ export class AuthService {
   private readonly mfaEnrollmentBuckets = new Map<string, LoginBucket>();
 
   constructor(private readonly prisma: PrismaService) {
-    this.loginRateLimiter = new DistributedLoginRateLimiter(prisma, 10, LOGIN_WINDOW_MS);
+    const loginRateLimit = Number(process.env.LOGIN_RATE_LIMIT ?? 10);
+    const loginWindowMs = Number(process.env.LOGIN_RATE_WINDOW_MS ?? LOGIN_WINDOW_MS);
+    this.loginRateLimiter = new DistributedLoginRateLimiter(prisma, loginRateLimit, loginWindowMs);
   }
 
   issueCsrfCookie(response: Response): { csrfToken: string } {
