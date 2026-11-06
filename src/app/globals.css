@@ -1543,21 +1543,21 @@ a.gov-card:hover { background: #f7faff; }
 }
 
 /* ===== Field App (Driver & Penerima) — Enterprise Premium, Clean Operational ===== */
-.field-app { --field-text: #172b4d; --field-muted: #5b6b82; min-height: 100vh; background: #f4f7fb; color: var(--field-text); font-family: var(--font-app); font-size: 15px; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
-.field-topbar { position: sticky; top: 0; z-index: 30; display: flex; min-height: 56px; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; color: #fff; background: #071b3a; }
+.field-app { --field-text: #172b4d; --field-muted: #5b6b82; --field-primary: #1677ff; --field-surface: #ffffff; --field-bg: #f4f7fb; --field-outline: #d7e1ef; min-height: 100vh; background: var(--field-bg); color: var(--field-text); font-family: var(--font-app); font-size: 15px; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+.field-topbar { position: sticky; top: 0; z-index: 30; display: flex; min-height: 56px; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; color: #fff; background: #071b3a; box-shadow: 0 2px 8px rgb(7 27 58 / 18%); }
 .field-topbar-brand { display: flex; min-width: 0; align-items: center; gap: 10px; }
 .field-topbar-brand strong { display: block; overflow: hidden; font-size: 15px; font-weight: 650; letter-spacing: .02em; text-overflow: ellipsis; white-space: nowrap; }
 .field-topbar-brand small { display: block; overflow: hidden; color: #b8c7de; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .field-avatar { display: grid; width: 36px; height: 36px; flex: 0 0 auto; place-items: center; border-radius: 50%; color: #fff; background: #1677ff; font-size: 13px; font-weight: 700; }
-.field-icon-btn { display: inline-grid; width: 48px; height: 48px; place-items: center; border: 0; border-radius: 10px; color: inherit; background: transparent; cursor: pointer; }
+.field-icon-btn { display: inline-grid; width: 48px; height: 48px; place-items: center; border: 0; border-radius: 12px; color: inherit; background: transparent; cursor: pointer; }
 .field-icon-btn:hover { background: rgb(255 255 255 / 12%); }
 .field-content { width: min(100%, 1120px); margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
 .field-page-title { margin: 0; font-size: 22px; font-weight: 650; line-height: 1.25; }
 .field-section { display: flex; flex-direction: column; gap: 12px; }
-.field-section-title { margin: 0; font-size: 17px; font-weight: 650; }
+.field-section-title { margin: 0; font-size: 18px; font-weight: 650; }
 .field-stats-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .field-caption { color: var(--field-muted); font-size: 13px; }
-.field-card { padding: 16px; border: 1px solid #dce5f0; border-radius: 14px; background: #fff; }
+.field-card { padding: 16px; border: 1px solid #dce5f0; border-radius: 16px; background: #fff; box-shadow: 0 1px 3px rgb(16 36 64 / 6%); }
 .field-stack { display: flex; flex-direction: column; gap: 12px; }
 .field-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .field-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
@@ -1578,7 +1578,7 @@ a.gov-card:hover { background: #f7faff; }
 .field-banner[data-tone="danger"] { color: #8f1717; border-color: #f6c6c6; background: #fdecec; }
 .field-banner[data-tone="success"] { color: #0f5f31; border-color: #bfe6cd; background: #e6f6ec; }
 .field-banner[data-tone="neutral"] { color: #3d4b61; border-color: #dce5f0; background: #f8fafc; }
-.field-btn { display: inline-flex; min-height: 48px; min-width: 48px; align-items: center; justify-content: center; gap: 8px; padding: 0 16px; border: 1px solid #cbd7e5; border-radius: 10px; color: #172b4d; background: #fff; cursor: pointer; font: inherit; font-size: 15px; font-weight: 600; text-decoration: none; }
+.field-btn { display: inline-flex; min-height: 48px; min-width: 48px; align-items: center; justify-content: center; gap: 8px; padding: 0 16px; border: 1px solid #cbd7e5; border-radius: 12px; color: #172b4d; background: #fff; cursor: pointer; font: inherit; font-size: 15px; font-weight: 600; text-decoration: none; transition: background .15s ease, transform .1s ease; }
 .field-btn:hover:not(:disabled) { background: #f4f7fb; }
 .field-btn:focus-visible, .field-nav-item:focus-visible, .field-icon-btn:focus-visible, .field-tab:focus-visible, .field-chip:focus-visible { outline: 3px solid #7fb2ff; outline-offset: 2px; }
 .field-btn[data-variant="primary"] { color: #fff; border-color: #1677ff; background: #1677ff; }
@@ -1592,7 +1592,8 @@ a.gov-card:hover { background: #f7faff; }
 .field-sticky-action { position: sticky; bottom: calc(68px + env(safe-area-inset-bottom)); z-index: 20; padding: 10px 0 0; background: linear-gradient(to top, #f4f7fb 70%, transparent); }
 .field-nav { position: fixed; right: 0; bottom: 0; left: 0; z-index: 40; display: flex; justify-content: space-around; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); border-top: 1px solid #dce5f0; background: #fff; }
 .field-nav-item { position: relative; display: flex; min-width: 64px; min-height: 52px; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 10px; color: #4a5a72; font-size: 12px; font-weight: 600; text-decoration: none; }
-.field-nav-item[aria-current="page"] { color: #0b4fb3; background: #eaf2ff; }
+.field-nav-item[aria-current="page"] { color: #0b4fb3; background: #eaf2ff; position: relative; }
+.field-nav-item[aria-current="page"]::before { content: ""; position: absolute; top: 4px; left: 50%; transform: translateX(-50%); width: 32px; height: 3px; border-radius: 2px; background: #1677ff; }
 .field-nav-badge { position: absolute; top: 4px; right: calc(50% - 22px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; color: #fff; background: #dc2626; font-size: 11px; line-height: 18px; text-align: center; }
 .field-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
 .field-chip { min-height: 44px; flex: 0 0 auto; padding: 0 14px; border: 1px solid #cbd7e5; border-radius: 999px; color: #3d4b61; background: #fff; cursor: pointer; font: inherit; font-size: 14px; font-weight: 600; }

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import Link from "next/link";
-import { Bell, ClipboardList, History, Home, Info, LogOut, MapPin, Package, RefreshCw, TriangleAlert, UserRound, WifiOff } from "lucide-react";
+import { Bell, ClipboardList, History, Home, Info, LogOut, MapPin, Navigation, Package, RefreshCw, TriangleAlert, UserRound, WifiOff } from "lucide-react";
 import { statusMeta, type StatusTone, formatDateTime } from "@/lib/field-status";
 import type { GpsPermission } from "@/lib/use-trip-tracking";
 
@@ -211,6 +211,7 @@ const NAV_ICONS: Record<string, typeof Home> = {
   deliveries: Package,
   notifications: Bell,
   history: History,
+  navigasi: Navigation,
   profile: UserRound,
 };
 
