@@ -112,6 +112,27 @@ export default function TenantRecipientRegistrationsPage() {
     }
   };
 
+  const deactivateCode = async (id: string) => {
+    if (!window.confirm("Nonaktifkan kode ini? Kode tidak bisa digunakan lagi untuk pendaftaran baru.")) return;
+    try {
+      const csrfRes = await fetch(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
+      const csrf = await csrfRes.json().catch(() => null);
+      if (!csrfRes.ok || !csrf?.csrfToken) throw new Error("Gagal memulai sesi keamanan.");
+      const res = await apiFetch(`/tenant/recipient-registrations/codes/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: { "X-CSRF-Token": csrf.csrfToken },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.message ?? "Gagal menonaktifkan kode");
+      }
+      setCodes((prev) => prev.map((c) => (c.id === id ? { ...c, active: false } : c)));
+    } catch (err) {
+      setCodeError(err instanceof Error ? err.message : "Gagal menonaktifkan kode");
+    }
+  };
+
   const review = async (id: string, decision: "APPROVE" | "REJECT" | "REVISION_REQUIRED") => {
     if (decision === "APPROVE" && !window.confirm("Setujui permintaan pendaftaran ini?")) return;
     if (decision === "REJECT" && !window.confirm("Tolak permintaan pendaftaran ini?")) return;
@@ -287,6 +308,7 @@ export default function TenantRecipientRegistrationsPage() {
                         <QRCodeSVG value={`${origin}/radarapp/register?code=${code.code}`} size={180} />
                       </div>
                       <div style={{ textAlign: "center", fontFamily: "monospace", fontSize: 12 }}>{code.code}</div>
+                      <div style={{ textAlign: "center", fontSize: 11, color: code.active ? "#16A34A" : "#DC2626" }}>{code.active ? "Aktif" : "Nonaktif"}</div>
                       <div style={{ textAlign: "center", fontSize: 12, color: "#718096", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         Link: {origin}/radarapp/register?code={code.code}
                       </div>
@@ -297,6 +319,11 @@ export default function TenantRecipientRegistrationsPage() {
                         <button className="btn btn-ghost" type="button" onClick={() => downloadQr(code.code)}>
                           Unduh QR
                         </button>
+                        {code.active && (
+                          <button className="btn btn-danger" type="button" onClick={() => void deactivateCode(code.id)}>
+                            Nonaktifkan
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}

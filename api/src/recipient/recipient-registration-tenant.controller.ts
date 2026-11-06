@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { SessionGuard } from '../auth/session.guard.js';
 import { TenantGuard, RequireTenant } from '../auth/tenant.guard.js';
 import { PermissionGuard } from '../auth/permission.guard.js';
@@ -29,6 +29,12 @@ export class RecipientRegistrationTenantController {
   @RequirePermissions('tenant:manage')
   createCode(@Req() request: AuthenticatedRequest) {
     return this.service.createRegistrationCode(request.tenantContext!.tenantId, request.principal!.id);
+  }
+
+  @Delete('codes/:id')
+  @RequirePermissions('tenant:manage')
+  deactivateCode(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+    return this.service.deactivateRegistrationCode(request.tenantContext?.tenantId ?? null, id);
   }
 
   @Get()

@@ -34,6 +34,17 @@ export class RecipientRegistrationService {
     });
   }
 
+  async deactivateRegistrationCode(tenantId: string | null, id: string) {
+    if (!tenantId) throw new BadRequestException({ code: 'TENANT_REQUIRED' });
+    const code = await this.prisma.db.recipientRegistrationCode.findUnique({ where: { id } });
+    if (!code || code.tenantId !== tenantId) throw new NotFoundException({ code: 'REGISTRATION_CODE_NOT_FOUND' });
+    return this.prisma.db.recipientRegistrationCode.update({
+      where: { id },
+      data: { active: false },
+      select: { id: true, code: true, active: true, createdAt: true, updatedAt: true },
+    });
+  }
+
   async validateCode(code: string) {
     const row = await this.prisma.db.recipientRegistrationCode.findUnique({
       where: { code },
