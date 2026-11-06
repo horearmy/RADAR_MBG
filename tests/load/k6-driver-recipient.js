@@ -61,6 +61,13 @@ export const options = {
       vus: 5,
       duration: '3m',
     },
+    platform_all_read: {
+      executor: 'constant-vus',
+      exec: 'platformAllReadFlow',
+      vus: 3,
+      duration: '2m',
+      startTime: '1m',
+    },
     recipient_write: {
       executor: 'constant-vus',
       exec: 'recipientWriteFlow',
@@ -162,6 +169,54 @@ export function recipientFlow() {
     check(reviewsRes, { 'recipient reviews 200': (r) => r.status === 200 });
 
     sleep(1);
+  });
+}
+
+export function platformAllReadFlow() {
+  if (!ADMIN_OTP) {
+    sleep(5);
+    return;
+  }
+  group('platform_all_read', () => {
+    const session = login(ADMIN_USER, ADMIN_PASS, ADMIN_OTP);
+    if (!session) {
+      sleep(2);
+      return;
+    }
+
+    const endpoints = [
+      '/platform/summary',
+      '/platform/dashboard-summary',
+      '/platform/tenants',
+      '/platform/geofences?page=1&pageSize=25',
+      '/platform/geofences/platform',
+      '/platform/recipient-reviews/summary',
+      '/platform/recipient-reviews/recent',
+      '/admin/sppg?page=1&pageSize=25',
+      '/admin/drivers?page=1&pageSize=25',
+      '/admin/vehicles?page=1&pageSize=25',
+      '/admin/organizations',
+      '/admin/regions',
+      '/admin/delivery-locations?page=1&pageSize=25',
+      '/admin/assignments?page=1&pageSize=25',
+      '/admin/users?page=1&pageSize=25',
+      '/admin/roles',
+      '/admin/audit-logs?page=1&pageSize=25',
+      '/admin/approval-requests/inbox?page=1&pageSize=25',
+      '/admin/approval-requests/mine?page=1&pageSize=25',
+      '/admin/sppg-registrations?page=1&pageSize=25',
+      '/admin/recipient-registrations/sites',
+      '/admin/recipient-registrations?page=1&pageSize=25',
+      '/exceptions?page=1&pageSize=25',
+      '/trips?page=1&pageSize=25',
+    ];
+
+    for (const ep of endpoints) {
+      const res = http.get(`${BASE_URL}${ep}`, { tags: { name: 'platform_read_all' } });
+      check(res, { [`GET ${ep} ok`]: (r) => r.status === 200 });
+    }
+
+    sleep(2);
   });
 }
 
