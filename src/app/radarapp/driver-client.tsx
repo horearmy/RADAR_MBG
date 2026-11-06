@@ -544,9 +544,26 @@ export default function DriverClient() {
             {{ granted: "Diberikan", denied: "Ditolak", revoked: "Dicabut", prompt: "Belum diminta", unsupported: "Tidak didukung", unknown: "Memeriksa..." }[tracker.permission]}
           </dd>
         </div>
+        <div>
+          <dt>Status koneksi</dt>
+          <dd>{online ? "Online" : "Offline"}</dd>
+        </div>
+        <div>
+          <dt>Sinkronisasi terakhir</dt>
+          <dd>{lastSync ? formatDateTime(lastSync) : "Belum tersedia"}</dd>
+        </div>
+        <div>
+          <dt>Antrean offline</dt>
+          <dd>{tracker.pending > 0 ? `${tracker.pending} data menunggu sinkronisasi` : "Tidak ada"}</dd>
+        </div>
       </dl>
-      <LocationPermissionBanner permission={tracker.permission} />
-      <button type="button" className="field-btn field-btn-block" onClick={() => void doLogout()}>
+      <LocationPermissionBanner permission={tracker.permission} onRequest={() => void handleRequestGps()} busy={gpsRequestBusy} />
+      {tracker.pending > 0 && (
+        <Banner tone="warning" title="Data belum tersinkron">
+          Masih ada {tracker.pending} data lokasi yang menunggu koneksi. Jangan keluar sebelum sinkronisasi selesai jika memungkinkan.
+        </Banner>
+      )}
+      <button type="button" className="field-btn field-btn-block" data-variant={tracker.pending > 0 ? "danger" : undefined} onClick={() => void doLogout()}>
         Keluar
       </button>
     </section>
@@ -684,7 +701,7 @@ export default function DriverClient() {
             ) : (
               <>
                 <div className="field-list">
-                  {doneTrips.slice(0, historyLimit).map(renderTripCard)}
+                  {doneTrips.slice(0, historyLimit).map(renderHistoryCard)}
                 </div>
                 {doneTrips.length > historyLimit && (
                   <button type="button" className="field-btn field-btn-block" onClick={() => setHistoryLimit((n) => n + HISTORY_PAGE)}>
