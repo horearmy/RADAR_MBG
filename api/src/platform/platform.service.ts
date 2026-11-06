@@ -1,9 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
+import { CacheService } from '../cache/cache.service.js';
 
 @Injectable()
 export class PlatformService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly cache: CacheService) {}
 
 
   async listTenants() {
@@ -30,6 +31,7 @@ export class PlatformService {
       where: { id },
       data: { status: 'SUSPENDED', suspendedAt: new Date() },
     });
+    await this.cache.del('platform:dashboard-summary');
 
     await this.prisma.db.auditLog.create({
       data: {
@@ -55,6 +57,7 @@ export class PlatformService {
       where: { id },
       data: { status: 'ARCHIVED' },
     });
+    await this.cache.del('platform:dashboard-summary');
 
     await this.prisma.db.auditLog.create({
       data: {
@@ -303,6 +306,10 @@ export class PlatformService {
   }
 
   async dashboardSummary() {
+    const cacheKey = 'platform:dashboard-summary';
+    const cached = await this.cache.get<any>(cacheKey);
+    if (cached) return cached;
+
     const [tenantTotal, tenantActive, tenantPendingActivation, tenantSuspended, registrationPendingReview, approvalPending] =
       await Promise.all([
         this.prisma.db.tenant.count(),
@@ -315,7 +322,7 @@ export class PlatformService {
         this.prisma.db.approvalRequest.count({ where: { status: 'PENDING_APPROVAL' } }),
       ]);
 
-    return {
+    const result = {
       tenants: {
         total: tenantTotal,
         active: tenantActive,
