@@ -419,12 +419,14 @@ export function driverPodFlow() {
 
 
 export function tenantReadFlow() {
-  if (!TENANT_USER || !TENANT_PASS) {
+  const user = TENANT_USER || `admin-lt${String((__VU % 900) + 1).padStart(5, '0')}`;
+  const pass = TENANT_PASS || 'LoadTest123!';
+  if (!user || !pass) {
     sleep(5);
     return;
   }
   group('tenant_read', () => {
-    const session = login(TENANT_USER, TENANT_PASS);
+    const session = login(user, pass);
     if (!session) {
       sleep(2);
       return;
@@ -598,12 +600,14 @@ export function registrationCreateFlow() {
 
 
 export function tenantFeatureToggleFlow() {
-  if (!TENANT_USER || !TENANT_PASS) {
+  const user = TENANT_USER || `admin-lt${String((__VU % 900) + 1).padStart(5, '0')}`;
+  const pass = TENANT_PASS || 'LoadTest123!';
+  if (!user || !pass) {
     sleep(5);
     return;
   }
   group('tenant_feature_toggle', () => {
-    const session = login(TENANT_USER, TENANT_PASS);
+    const session = login(user, pass);
     if (!session) {
       sleep(2);
       return;
