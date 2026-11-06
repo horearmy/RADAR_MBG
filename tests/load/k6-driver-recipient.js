@@ -91,6 +91,20 @@ export const options = {
       duration: '30s',
       startTime: '7m',
     },
+    mfa_begin: {
+      executor: 'per-vu-iterations',
+      exec: 'mfaBeginFlow',
+      vus: 1,
+      iterations: 1,
+      startTime: '8m',
+    },
+    registration_create: {
+      executor: 'per-vu-iterations',
+      exec: 'registrationCreateFlow',
+      vus: 1,
+      iterations: 1,
+      startTime: '8m',
+    },
     registration_status: {
       executor: 'constant-vus',
       exec: 'registrationStatusFlow',
@@ -194,6 +208,16 @@ export function recipientFlow() {
 
     const notifRes = http.get(`${BASE_URL}/recipient/notifications`, { tags: { name: 'recipient_notifications' } });
     check(notifRes, { 'recipient notifications 200': (r) => r.status === 200 });
+
+    if (notifRes.status === 200) {
+      const notifs = notifRes.json();
+      if (Array.isArray(notifs) && notifs.length > 0 && notifs[0].id) {
+        const readRes = http.post(`${BASE_URL}/recipient/notifications/${encodeURIComponent(notifs[0].id)}/read`, null, {
+          tags: { name: 'recipient_notification_read' },
+        });
+        check(readRes, { 'recipient notification read 200/201': (r) => r.status === 200 || r.status === 201 });
+      }
+    }
 
     const reviewsRes = http.get(`${BASE_URL}/recipient/reviews`, { tags: { name: 'recipient_reviews' } });
     check(reviewsRes, { 'recipient reviews 200': (r) => r.status === 200 });
@@ -412,9 +436,11 @@ const APPROVAL_DECISION = __ENV.APPROVAL_DECISION || 'APPROVE';
 const GEOFENCE_LOCATION_TYPE = __ENV.GEOFENCE_LOCATION_TYPE || '';
 const GEOFENCE_LOCATION_ID = __ENV.GEOFENCE_LOCATION_ID || '';
 const REGISTRATION_NUMBER = __ENV.REGISTRATION_NUMBER || '';
+const MFA_TEST_USER = __ENV.MFA_TEST_USER || '';
+const MFA_TEST_PASS = __ENV.MFA_TEST_PASS || '';
+const RUN_REGISTRATION_CREATE = __ENV.RUN_REGISTRATION_CREATE === 'true';
 const GEOFENCE_LOCATION_TYPE = __ENV.GEOFENCE_LOCATION_TYPE || '';
 const GEOFENCE_LOCATION_ID = __ENV.GEOFENCE_LOCATION_ID || '';
-const REGISTRATION_NUMBER = __ENV.REGISTRATION_NUMBER || '';
 
 export function approvalDecisionFlow() {
   if (!ADMIN_OTP || !APPROVAL_ID) {
@@ -484,5 +510,54 @@ export function registrationStatusFlow() {
     check(res, { 'registration status 200': (r) => r.status === 200 });
 
     sleep(1);
+  });
+}
+
+
+export function mfaBeginFlow() {
+  if (!MFA_TEST_USER || !MFA_TEST_PASS) {
+    sleep(5);
+    return;
+  }
+  group('mfa_begin', () => {
+    const session = login(MFA_TEST_USER, MFA_TEST_PASS);
+    if (!session) {
+      sleep(2);
+      return;
+    }
+
+    // Begin enrollment (may fail if already enabled)
+    const res = http.post(`${BASE_URL}/auth/mfa/enrollment`, null, {
+      tags: { name: 'mfa_begin_enrollment' },
+    });
+    check(res, { 'mfa begin 200/403': (r) => r.status === 200 || r.status === 403 || r.status === 409 });
+
+    sleep(2);
+  });
+}
+
+export function registrationCreateFlow() {
+  if (!RUN_REGISTRATION_CREATE) {
+    sleep(5);
+    return;
+  }
+  group('registration_create', () => {
+    const res = http.post(`${BASE_URL}/public/sppg-registrations`, JSON.stringify({
+      sppgName: `Stress SPPG ${__VU}-${__ITER}`,
+      provinceCode: '00',
+      regencyCode: '00',
+      districtCode: '00',
+      villageCode: '00',
+      fullAddress: 'Stress test address',
+      contactName: 'Stress Test',
+      contactEmail: `stress${__VU}${__ITER}@example.com`,
+      contactPhone: '08123456789',
+    }), {
+      headers: { 'Content-Type': 'application/json' },
+      tags: { name: 'registration_create' },
+    });
+    check(res, { 'registration create 200/201': (r) => r.status === 200 || r.status === 201 });
+
+    sleep(2);
   });
 }
