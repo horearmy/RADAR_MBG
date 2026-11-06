@@ -138,7 +138,34 @@ export default function TenantRecipientRegistrationsPage() {
     }
   };
 
-  if (!user) return <main className="page"><p>Memuat...</p></main>;
+  const downloadQr = (code: string) => {
+    const container = document.getElementById(`qr-${code}`);
+    const svg = container?.querySelector("svg");
+    if (!svg) return;
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.onload = () => {
+      const scale = 2;
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      }
+      URL.revokeObjectURL(url);
+      const pngUrl = canvas.toDataURL("image/png");
+      const a = document.createElement("a");
+      a.href = pngUrl;
+      a.download = `qr-${code}.png`;
+      a.click();
+    };
+    img.src = url;
+  };
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
 
@@ -179,7 +206,7 @@ export default function TenantRecipientRegistrationsPage() {
                 <div style={{ display: "grid", gap: 16 }}>
                   {codes.map((code) => (
                     <div key={code.id} style={{ display: "grid", gap: 8, padding: 12, border: "1px solid #DCE5F0", borderRadius: 12 }}>
-                      <div style={{ display: "flex", justifyContent: "center" }}>
+                      <div id={`qr-${code.code}`} style={{ display: "flex", justifyContent: "center" }}>
                         <QRCodeSVG value={`${origin}/radarapp/register?code=${code.code}`} size={180} />
                       </div>
                       <div style={{ textAlign: "center", fontFamily: "monospace", fontSize: 12 }}>{code.code}</div>
@@ -189,6 +216,9 @@ export default function TenantRecipientRegistrationsPage() {
                       <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
                         <button className="btn btn-ghost" type="button" onClick={() => void navigator.clipboard?.writeText(`${origin}/radarapp/register?code=${code.code}`)}>
                           Salin link
+                        </button>
+                        <button className="btn btn-ghost" type="button" onClick={() => downloadQr(code.code)}>
+                          Unduh QR
                         </button>
                       </div>
                     </div>
