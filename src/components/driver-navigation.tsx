@@ -291,7 +291,7 @@ export function DriverNavigation({ origin, destination, onStartLiveGps, liveGpsA
         {loadingRoute && <div className="driver-nav-loading">Memuat rute...</div>}
         {routeError && !loadingRoute && <div className="driver-nav-error">{routeError}</div>}
 
-        {route && (expanded || !routeError) && (
+        {route && !routeError && (
           <div className="driver-nav-stats">
             <div className="driver-nav-stat">
               <strong>{formatDistance(route.distance)}</strong>
