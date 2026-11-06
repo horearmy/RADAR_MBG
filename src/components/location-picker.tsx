@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import "leaflet/dist/leaflet.css";
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const L = typeof window !== "undefined" ? require("leaflet") : null;
 if (L) {
   delete (L.Icon.Default.prototype as any)._getIconUrl;
