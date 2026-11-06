@@ -70,6 +70,13 @@ export const options = {
       duration: '2m',
       startTime: '1m',
     },
+    trips_load: {
+      executor: 'constant-vus',
+      exec: 'tripsLoadFlow',
+      vus: 5,
+      duration: '2m',
+      startTime: '2m',
+    },
     tenant_read: {
       executor: 'constant-vus',
       exec: 'tenantReadFlow',
@@ -643,5 +650,39 @@ export function registrationUploadDocumentFlow() {
     check(res, { 'registration upload 200/201': (r) => r.status === 200 || r.status === 201 });
 
     sleep(2);
+  });
+}
+
+
+export function tripsLoadFlow() {
+  if (!ADMIN_OTP) {
+    sleep(5);
+    return;
+  }
+  group('trips_load', () => {
+    const session = login(ADMIN_USER, ADMIN_PASS, ADMIN_OTP);
+    if (!session) {
+      sleep(2);
+      return;
+    }
+
+    const listRes = http.get(`${BASE_URL}/trips?page=1&pageSize=100`, { tags: { name: 'trips_list_100' } });
+    check(listRes, { 'trips list 200': (r) => r.status === 200 });
+
+    if (listRes.status === 200) {
+      const data = listRes.json('data');
+      if (Array.isArray(data)) {
+        const ids = data.slice(0, 3).map((t) => t.id);
+        for (const id of ids) {
+          const detailRes = http.get(`${BASE_URL}/trips/${id}`, { tags: { name: 'trip_detail' } });
+          check(detailRes, { 'trip detail 200': (r) => r.status === 200 });
+
+          const trackRes = http.get(`${BASE_URL}/trips/${id}/track`, { tags: { name: 'trip_track' } });
+          check(trackRes, { 'trip track 200/404': (r) => r.status === 200 || r.status === 404 });
+        }
+      }
+    }
+
+    sleep(1);
   });
 }
