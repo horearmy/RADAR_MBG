@@ -8,6 +8,7 @@
     "prebuild": "node scripts/copy-maplibre-worker.mjs",
     "build": "next build",
     "start": "next start",
+    "pm2:start": "pm2 start ecosystem.config.js --env production",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "api:dev": "npm --prefix api run start:dev",
