@@ -84,6 +84,20 @@ export const options = {
       duration: '30s',
       startTime: '6m',
     },
+    geofence_create: {
+      executor: 'constant-vus',
+      exec: 'geofenceCreateFlow',
+      vus: 1,
+      duration: '30s',
+      startTime: '7m',
+    },
+    registration_status: {
+      executor: 'constant-vus',
+      exec: 'registrationStatusFlow',
+      vus: 2,
+      duration: '1m',
+      startTime: '7m',
+    },
     recipient_write: {
       executor: 'constant-vus',
       exec: 'recipientWriteFlow',
@@ -395,6 +409,12 @@ export function tenantReadFlow() {
 
 const APPROVAL_ID = __ENV.APPROVAL_ID || '';
 const APPROVAL_DECISION = __ENV.APPROVAL_DECISION || 'APPROVE';
+const GEOFENCE_LOCATION_TYPE = __ENV.GEOFENCE_LOCATION_TYPE || '';
+const GEOFENCE_LOCATION_ID = __ENV.GEOFENCE_LOCATION_ID || '';
+const REGISTRATION_NUMBER = __ENV.REGISTRATION_NUMBER || '';
+const GEOFENCE_LOCATION_TYPE = __ENV.GEOFENCE_LOCATION_TYPE || '';
+const GEOFENCE_LOCATION_ID = __ENV.GEOFENCE_LOCATION_ID || '';
+const REGISTRATION_NUMBER = __ENV.REGISTRATION_NUMBER || '';
 
 export function approvalDecisionFlow() {
   if (!ADMIN_OTP || !APPROVAL_ID) {
@@ -418,5 +438,51 @@ export function approvalDecisionFlow() {
     check(res, { 'approval decision 200/201': (r) => r.status === 200 || r.status === 201 });
 
     sleep(2);
+  });
+}
+
+
+export function geofenceCreateFlow() {
+  if (!ADMIN_OTP || !GEOFENCE_LOCATION_TYPE || !GEOFENCE_LOCATION_ID) {
+    sleep(5);
+    return;
+  }
+  group('geofence_create', () => {
+    const session = login(ADMIN_USER, ADMIN_PASS, ADMIN_OTP);
+    if (!session) {
+      sleep(2);
+      return;
+    }
+
+    const res = http.post(`${BASE_URL}/geofences`, JSON.stringify({
+      locationType: GEOFENCE_LOCATION_TYPE,
+      locationId: GEOFENCE_LOCATION_ID,
+      shapeType: 'CIRCLE',
+      name: `Stress geofence ${__VU}-${__ITER}`,
+      centerLatitude: -6.2,
+      centerLongitude: 106.8,
+      radiusMeters: 100,
+    }), {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `stress-gf-${__VU}-${__ITER}` },
+      tags: { name: 'geofence_create' },
+    });
+    check(res, { 'geofence create 200/201': (r) => r.status === 200 || r.status === 201 });
+
+    sleep(2);
+  });
+}
+
+export function registrationStatusFlow() {
+  if (!REGISTRATION_NUMBER) {
+    sleep(5);
+    return;
+  }
+  group('registration_status', () => {
+    const res = http.get(`${BASE_URL}/public/sppg-registrations/status/${encodeURIComponent(REGISTRATION_NUMBER)}`, {
+      tags: { name: 'registration_status' },
+    });
+    check(res, { 'registration status 200': (r) => r.status === 200 });
+
+    sleep(1);
   });
 }
