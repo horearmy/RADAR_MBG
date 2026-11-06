@@ -6,7 +6,7 @@
   "start_url": "/radarapp",
   "display": "standalone",
   "background_color": "#f5f7fa",
-  "theme_color": "#061b41",
+  "theme_color": "#071b3a",
   "icons": [
     {
       "src": "/icon.svg",

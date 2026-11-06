@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
 import "./globals.css";
 
@@ -8,6 +8,13 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   applicationName: "RADAR MBG",
   appleWebApp: { capable: true, title: "RADAR MBG", statusBarStyle: "default" },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#071b3a",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
