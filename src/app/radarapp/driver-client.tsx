@@ -96,6 +96,7 @@ export default function DriverClient() {
   const [lastSync, setLastSync] = useState<number | null>(null);
   const [errorText, setErrorText] = useState("");
   const [refreshError, setRefreshError] = useState(false);
+  const [gpsRequestBusy, setGpsRequestBusy] = useState(false);
   const [taskFilter, setTaskFilter] = useState<TaskFilter>("today");
   const [historyLimit, setHistoryLimit] = useState(HISTORY_PAGE);
 
@@ -253,12 +254,30 @@ export default function DriverClient() {
     return () => navigator.geolocation.clearWatch(watchId);
   }, [navigatingTripId]);
 
-  function startNavigation(trip: TripSummary) {
+  async function startNavigation(trip: TripSummary) {
     if (!trip.deliveryLocation.latitude || !trip.deliveryLocation.longitude) return;
+    if (tracker.permission !== "granted") {
+      const fix = await tracker.requestPermission();
+      if (!fix) {
+        showNotice("danger", "Izin lokasi belum diberikan. Aktifkan GPS untuk memulai navigasi.");
+        return;
+      }
+    }
     setNavigatingTripId(trip.id);
     setCurrentPosition(null);
     // Switch to navigation tab
     router.push("/radarapp/driver?tab=navigasi");
+  }
+
+  async function handleRequestGps() {
+    setGpsRequestBusy(true);
+    const fix = await tracker.requestPermission();
+    setGpsRequestBusy(false);
+    if (!fix) {
+      showNotice("danger", "Izin lokasi belum diberikan. Aktifkan GPS untuk melanjutkan perjalanan.");
+    } else {
+      showNotice("success", "Izin lokasi diberikan. Live GPS aktif.");
+    }
   }
 
   const loadDetail = useCallback(
@@ -358,6 +377,13 @@ export default function DriverClient() {
         await startTripDelivery(trip.id);
         showNotice("success", "Serah terima dimulai. Anda dapat membuat POD.");
       } else {
+        if (tracker.permission !== "granted") {
+          const fix = await tracker.requestPermission();
+          if (!fix) {
+            showNotice("danger", "Izin lokasi belum diberikan. Aktifkan GPS sebelum menyelesaikan perjalanan.");
+            return;
+          }
+        }
         await completeTrip(trip.id);
         showNotice("success", "Perjalanan diselesaikan. Pelacakan lokasi dihentikan.");
       }
@@ -442,33 +468,55 @@ export default function DriverClient() {
           <span className="field-hint">Kendaraan terdeteksi memasuki area. Verifikasi kedatangan dilakukan dengan QR di Konsol Driver.</span>
         )}
         <div className="field-actions">
-          <button type="button" className="field-btn" onClick={() => openDetail(trip)}>
-            Lihat Detail
-          </button>
-          {trip.deliveryLocation.latitude && trip.deliveryLocation.longitude && (
-            <button type="button" className="field-btn" onClick={() => startNavigation(trip)}>
-              <Navigation size={16} aria-hidden="true" /> Navigasi
-            </button>
-          )}
-          <button
-            type="button"
-            className="field-btn"
-            data-variant={canPod ? "primary" : undefined}
-            onClick={() => canPod && runPrimary(trip)}
-            disabled={!canPod}
-            title={canPod ? "Buat POD" : "POD tersedia saat status Serah Terima Berjalan"}
-          >
-            Buat POD
-          </button>
-          {showPrimary && (
-            <button type="button" className="field-btn" data-variant="primary" onClick={() => runPrimary(trip)}>
+          {label && (
+            <button type="button" className="field-btn field-btn-block" data-variant="primary" onClick={() => runPrimary(trip)} disabled={label === "Mulai Perjalanan" && tracker.permission !== "granted"} title={label === "Mulai Perjalanan" && tracker.permission !== "granted" ? "Aktifkan GPS terlebih dahulu" : undefined}>
               {label}
             </button>
           )}
+          <button type="button" className="field-btn" data-variant="ghost" onClick={() => openDetail(trip)}>
+            Lihat Detail
+          </button>
+          {trip.deliveryLocation.latitude && trip.deliveryLocation.longitude && (
+            <button type="button" className="field-btn" data-variant="ghost" onClick={() => startNavigation(trip)}>
+              <Navigation size={16} aria-hidden="true" /> Navigasi
+            </button>
+          )}
         </div>
+        {TRACKING_STATUSES.has(trip.status) && (
+          <p className="field-caption" style={{ margin: 0 }}>
+            GPS: {tracker.permission === "granted"
+              ? (tracker.lastFixAt && Date.now() - tracker.lastFixAt < 90_000 ? "Aktif" : "Belum diperbarui")
+              : tracker.permission === "denied" || tracker.permission === "revoked"
+                ? "Izin ditolak"
+                : tracker.permission === "unsupported"
+                  ? "Tidak didukung"
+                  : "Menunggu izin"}
+            {tracker.lastFixAt ? ` · diperbarui ${Math.max(1, Math.round((Date.now() - tracker.lastFixAt) / 1000))} dtk lalu` : ""}
+            {tracker.accuracy != null ? ` · ±${Math.round(tracker.accuracy)} m` : ""}
+          </p>
+        )}
       </article>
     );
   };
+
+  const renderHistoryCard = (trip: TripSummary) => (
+    <article key={trip.id} className="field-card" style={{ padding: 12 }} aria-label={`Riwayat ${tripReference(trip.id)}`}>
+      <div className="field-trip-head">
+        <span className="field-trip-ref">{tripReference(trip.id)}</span>
+        <StatusBadge status={trip.status} />
+      </div>
+      <div className="field-meta">
+        <strong>{trip.deliveryLocation.name}</strong>
+        <span>{trip.sppg.name} · {trip.vehicle.plateNumber} · {trip.plannedQuantity} porsi</span>
+        <span>{formatDateTime(trip.plannedDepartureAt)}</span>
+      </div>
+      <div className="field-actions">
+        <button type="button" className="field-btn field-btn-block" data-variant="ghost" onClick={() => openDetail(trip)}>
+          Lihat Detail
+        </button>
+      </div>
+    </article>
+  );
 
   const profileSection = (
     <section className="field-card field-stack">
@@ -509,6 +557,9 @@ export default function DriverClient() {
       <FieldAppHeader title="RADAR MBG" subtitle="Driver" name={user?.displayName} onLogout={() => void doLogout()} />
       <div className="field-content">
         <OfflineSyncBanner online={online} lastSync={lastSync} pending={tracker.pending} />
+        {tracker.permission !== "granted" && tracker.permission !== "unknown" && (
+          <LocationPermissionBanner permission={tracker.permission} onRequest={() => void handleRequestGps()} busy={gpsRequestBusy} />
+        )}
         {loadState === "error" ? (
           <ErrorState message={errorText} onRetry={() => { setLoadState("loading"); void loadTrips(true); }} />
         ) : null}
@@ -558,7 +609,7 @@ export default function DriverClient() {
                 <>
                   <h2 className="field-section-title">Riwayat terakhir</h2>
                   <div className="field-list">
-                    {doneTrips.slice(0, 3).map(renderTripCard)}
+                    {doneTrips.slice(0, 3).map(renderHistoryCard)}
                   </div>
                 </>
               )}
@@ -725,7 +776,18 @@ export default function DriverClient() {
               <button type="button" className="field-btn" onClick={closeDetail}>
                 Tutup
               </button>
-              {["IN_TRANSIT", "ARRIVAL_DETECTED", "ARRIVAL_VERIFIED"].includes(detailTrip.status) && (
+              {["IN_TRANSIT", "ARRIVAL_DETECTED", "ARRIVAL_VERIFIED"].includes(detailTrip.status) && detailTrip.deliveryLocation.latitude && detailTrip.deliveryLocation.longitude && (
+                <button
+                  type="button"
+                  className="field-btn"
+                  onClick={() => startNavigation(detailTrip)}
+                  disabled={tracker.permission !== "granted"}
+                  title={tracker.permission !== "granted" ? "Aktifkan GPS terlebih dahulu" : undefined}
+                >
+                  <Navigation size={16} aria-hidden="true" /> Navigasi
+                </button>
+              )}
+              {detailTrip.deliveryLocation.latitude && detailTrip.deliveryLocation.longitude && (
                 <a
                   className="field-btn"
                   href={`https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${encodeURIComponent(
@@ -734,7 +796,7 @@ export default function DriverClient() {
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  <Navigation size={16} aria-hidden="true" /> Buka Navigasi
+                  <Navigation size={16} aria-hidden="true" /> Buka di Google Maps
                 </a>
               )}
               {detailTrip.status === "READY_TO_DEPART" && (

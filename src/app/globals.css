@@ -1549,7 +1549,7 @@ a.gov-card:hover { background: #f7faff; }
 .field-topbar-brand strong { display: block; overflow: hidden; font-size: 15px; font-weight: 650; letter-spacing: .02em; text-overflow: ellipsis; white-space: nowrap; }
 .field-topbar-brand small { display: block; overflow: hidden; color: #b8c7de; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .field-avatar { display: grid; width: 36px; height: 36px; flex: 0 0 auto; place-items: center; border-radius: 50%; color: #fff; background: #1677ff; font-size: 13px; font-weight: 700; }
-.field-icon-btn { display: inline-grid; width: 44px; height: 44px; place-items: center; border: 0; border-radius: 10px; color: inherit; background: transparent; cursor: pointer; }
+.field-icon-btn { display: inline-grid; width: 48px; height: 48px; place-items: center; border: 0; border-radius: 10px; color: inherit; background: transparent; cursor: pointer; }
 .field-icon-btn:hover { background: rgb(255 255 255 / 12%); }
 .field-content { width: min(100%, 1120px); margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
 .field-page-title { margin: 0; font-size: 22px; font-weight: 650; line-height: 1.25; }
@@ -1578,7 +1578,7 @@ a.gov-card:hover { background: #f7faff; }
 .field-banner[data-tone="danger"] { color: #8f1717; border-color: #f6c6c6; background: #fdecec; }
 .field-banner[data-tone="success"] { color: #0f5f31; border-color: #bfe6cd; background: #e6f6ec; }
 .field-banner[data-tone="neutral"] { color: #3d4b61; border-color: #dce5f0; background: #f8fafc; }
-.field-btn { display: inline-flex; min-height: 44px; min-width: 44px; align-items: center; justify-content: center; gap: 8px; padding: 0 16px; border: 1px solid #cbd7e5; border-radius: 10px; color: #172b4d; background: #fff; cursor: pointer; font: inherit; font-size: 15px; font-weight: 600; text-decoration: none; }
+.field-btn { display: inline-flex; min-height: 48px; min-width: 48px; align-items: center; justify-content: center; gap: 8px; padding: 0 16px; border: 1px solid #cbd7e5; border-radius: 10px; color: #172b4d; background: #fff; cursor: pointer; font: inherit; font-size: 15px; font-weight: 600; text-decoration: none; }
 .field-btn:hover:not(:disabled) { background: #f4f7fb; }
 .field-btn:focus-visible, .field-nav-item:focus-visible, .field-icon-btn:focus-visible, .field-tab:focus-visible, .field-chip:focus-visible { outline: 3px solid #7fb2ff; outline-offset: 2px; }
 .field-btn[data-variant="primary"] { color: #fff; border-color: #1677ff; background: #1677ff; }
@@ -1619,6 +1619,15 @@ a.gov-card:hover { background: #f7faff; }
 .field-error-text { color: #a41919; font-size: 13px; }
 .field-hint { color: var(--field-muted); font-size: 13px; }
 .field-photo { max-width: 100%; max-height: 260px; border-radius: 10px; border: 1px solid #dce5f0; object-fit: cover; }
+.field-map { display: grid; gap: 8px; }
+.field-map-frame { overflow: hidden; border: 1px solid #dce5f0; border-radius: 10px; background: #f1f5f4; }
+.field-map-frame iframe { display: block; width: 100%; height: 200px; border: 0; }
+.field-rating { display: flex; gap: 6px; flex-wrap: wrap; }
+.field-rating-btn { display: grid; width: 40px; height: 40px; place-items: center; border: 1px solid #cbd7e5; border-radius: 10px; background: #fff; color: #b45309; font-size: 20px; line-height: 1; cursor: pointer; }
+.field-rating-btn.is-active { border-color: #f59e0b; background: #fff7ed; }
+.field-emoji-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.field-emoji-btn { display: grid; width: 40px; height: 40px; place-items: center; border: 1px solid #cbd7e5; border-radius: 10px; background: #fff; font-size: 20px; line-height: 1; cursor: pointer; }
+.field-emoji-btn.is-active { border-color: #1677ff; background: #eaf2ff; }
 .field-progress { height: 8px; overflow: hidden; border-radius: 999px; background: #dce5f0; }
 .field-progress > div { height: 100%; background: #1677ff; transition: width .2s; }
 .field-skeleton { display: grid; gap: 12px; }

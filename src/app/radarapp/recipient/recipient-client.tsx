@@ -580,113 +580,136 @@ export default function RecipientClient() {
         <FieldDialog labelledBy="delivery-title" onClose={() => setSelected(null)}>
           <>
             <div className="field-trip-head">
-              <h2 id="delivery-title">{selected.tripReference}</h2>
+              <div>
+                <h2 id="delivery-title">{selected.tripReference}</h2>
+                <p className="field-caption" style={{ margin: 0 }}>Detail pengiriman</p>
+              </div>
               <StatusBadge status={selected.status} />
             </div>
-            <dl className="field-dl" style={{ marginTop: 10 }}>
-              <div><dt>SPPG</dt><dd>{selected.sppgName ?? "-"}</dd></div>
-              <div><dt>Lokasi</dt><dd>{selected.siteName ?? siteName}</dd></div>
-              <div><dt>Kendaraan / driver</dt><dd>{[selected.vehiclePlate, selected.driverName].filter(Boolean).join(" · ") || "-"}</dd></div>
-              <div><dt>Estimasi tiba</dt><dd>{selected.eta ? formatDateTime(selected.eta) : selected.scheduledAt ? formatDateTime(selected.scheduledAt) : "Belum tersedia"}</dd></div>
-              <div>
-                <dt>Geofence</dt>
-                <dd>
-                  {selected.arrivedAt
-                    ? `Kendaraan terdeteksi memasuki area · ${formatDateTime(selected.arrivedAt)}`
-                    : "Belum memasuki area"}
-                </dd>
-              </div>
-              <div>
-                <dt>Lokasi kendaraan</dt>
-                <dd>
-                   {selected.lastLocationAt ? `Lokasi terakhir diperbarui ${formatDateTime(selected.lastLocationAt)}` : "Lokasi belum tersedia"}
-                   {selected.lastLatitude != null && selected.lastLongitude != null && (
-                     <>
-                       {" · "}
-                       <a href={`https://www.google.com/maps?q=${selected.lastLatitude},${selected.lastLongitude}`} target="_blank" rel="noreferrer">
-                         Buka di peta
-                       </a>
-                     </>
-                   )}
-                   {selected.lastLocationAccuracy != null && (
-                     <span className="field-caption" style={{ display: "block", marginTop: 4 }}>
-                       Akurasi ±{Math.round(selected.lastLocationAccuracy)} m
-                     </span>
-                   )}
-                 </dd>
-               </div>
-               {selected.lastLatitude != null && selected.lastLongitude != null && (
-                 <div style={{ marginTop: 8 }}>
-                   <iframe
-                     title="Lokasi terakhir kendaraan"
-                     src={`https://www.openstreetmap.org/export/embed.html?bbox=${selected.lastLongitude - 0.01},${selected.lastLatitude - 0.01},${selected.lastLongitude + 0.01},${selected.lastLatitude + 0.01}&layer=mapnik&marker=${selected.lastLatitude},${selected.lastLongitude}`}
-                     style={{ width: "100%", height: 180, border: 0, borderRadius: 8 }}
-                     loading="lazy"
-                   />
-                   <p className="field-caption" style={{ marginTop: 4 }}>
-                     Peta menunjukkan lokasi terakhir yang diterima server, bukan posisi real-time.
-                   </p>
-                 </div>
-                )}
-                    {selected.sppgLatitude != null && selected.sppgLongitude != null && selected.deliveryLatitude != null && selected.deliveryLongitude != null && (
-                      <a
-                        href={`https://www.google.com/maps/dir/?api=1&origin=${selected.sppgLatitude},${selected.sppgLongitude}&destination=${selected.deliveryLatitude},${selected.deliveryLongitude}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="field-btn"
-                        style={{ marginTop: 8, justifyContent: "center" }}
-                      >
-                        Lihat rute di Google Maps
-                      </a>
-               )}
-            </dl>
+
+            <section className="field-card field-stack" aria-label="Informasi pengiriman">
+              <h3 className="field-section-title">Informasi pengiriman</h3>
+              <dl className="field-dl">
+                <div><dt>SPPG</dt><dd>{selected.sppgName ?? "-"}</dd></div>
+                <div><dt>Lokasi penerima</dt><dd>{selected.siteName ?? siteName}</dd></div>
+                <div><dt>Kendaraan / driver</dt><dd>{[selected.vehiclePlate, selected.driverName].filter(Boolean).join(" · ") || "-"}</dd></div>
+                <div><dt>Estimasi tiba</dt><dd>{selected.eta ? formatDateTime(selected.eta) : selected.scheduledAt ? formatDateTime(selected.scheduledAt) : "Belum tersedia"}</dd></div>
+                <div>
+                  <dt>Geofence</dt>
+                  <dd>{selected.arrivedAt ? `Kendaraan terdeteksi memasuki area · ${formatDateTime(selected.arrivedAt)}` : "Belum memasuki area"}</dd>
+                </div>
+                <div>
+                  <dt>Lokasi kendaraan</dt>
+                  <dd>
+                    {selected.lastLocationAt ? `Lokasi terakhir diperbarui ${formatDateTime(selected.lastLocationAt)}` : "Lokasi belum tersedia"}
+                    {selected.lastLatitude != null && selected.lastLongitude != null && (
+                      <>
+                        {" · "}
+                        <a href={`https://www.google.com/maps?q=${selected.lastLatitude},${selected.lastLongitude}`} target="_blank" rel="noreferrer">
+                          Buka di peta
+                        </a>
+                      </>
+                    )}
+                    {selected.lastLocationAccuracy != null && (
+                      <span className="field-caption" style={{ display: "block", marginTop: 4 }}>
+                        Akurasi ±{Math.round(selected.lastLocationAccuracy)} m
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              </dl>
+
+              {selected.lastLatitude != null && selected.lastLongitude != null && (
+                <div className="field-map">
+                  <div className="field-map-frame">
+                    <iframe
+                      title="Lokasi terakhir kendaraan"
+                      src={`https://www.openstreetmap.org/export/embed.html?bbox=${selected.lastLongitude - 0.01},${selected.lastLatitude - 0.01},${selected.lastLongitude + 0.01},${selected.lastLatitude + 0.01}&layer=mapnik&marker=${selected.lastLatitude},${selected.lastLongitude}`}
+                      loading="lazy"
+                    />
+                  </div>
+                  <p className="field-caption" style={{ margin: 0 }}>
+                    Peta menunjukkan lokasi terakhir yang diterima server, bukan posisi real-time.
+                  </p>
+                </div>
+              )}
+
+              {selected.sppgLatitude != null && selected.sppgLongitude != null && selected.deliveryLatitude != null && selected.deliveryLongitude != null && (
+                <a
+                  href={`https://www.google.com/maps/dir/?api=1&origin=${selected.sppgLatitude},${selected.sppgLongitude}&destination=${selected.deliveryLatitude},${selected.deliveryLongitude}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="field-btn field-btn-block"
+                >
+                  Lihat rute di Google Maps
+                </a>
+              )}
+            </section>
+
             {selected.arrivedAt && !pod && (
               <Banner tone="info">Deteksi area hanya indikator kedatangan, bukan konfirmasi barang diterima.</Banner>
             )}
 
-            <h3 className="field-section-title" style={{ margin: "14px 0 8px" }}>Bukti serah terima (POD)</h3>
-            {podState === "loading" && <LoadingSkeleton count={1} />}
-            {podState === "error" && <ErrorState message="POD tidak dapat dimuat." onRetry={() => void openDelivery(selected)} />}
-            {podState === "idle" && !pod && <p className="field-caption">POD belum dikirim oleh Driver.</p>}
-            {pod && (
-              <div className="field-stack">
-                <dl className="field-dl">
-                  <div><dt>Driver</dt><dd>{pod.driverName ?? selected.driverName ?? "-"}</dd></div>
-                  <div><dt>Waktu submit</dt><dd>{formatDateTime(pod.submittedAt)}</dd></div>
-                  <div><dt>Jumlah diserahkan</dt><dd>{pod.deliveredQuantity ?? "-"} porsi</dd></div>
-                  <div><dt>Penerima di lokasi</dt><dd>{pod.receiverName ?? "-"}</dd></div>
-                </dl>
-                {pod.note && <p style={{ margin: 0 }}>Catatan Driver: {pod.note}</p>}
-                {pod.photoUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img className="field-photo" src={pod.photoUrl} alt="Foto bukti serah terima dari Driver" />
-                )}
-              </div>
-            )}
+            <section className="field-card field-stack" aria-label="Bukti serah terima">
+              <h3 className="field-section-title">Bukti serah terima (POD)</h3>
+              {podState === "loading" && <LoadingSkeleton count={1} />}
+              {podState === "error" && <ErrorState message="POD tidak dapat dimuat." onRetry={() => void openDelivery(selected)} />}
+              {podState === "idle" && !pod && <p className="field-caption">POD belum dikirim oleh Driver.</p>}
+              {pod && (
+                <div className="field-stack">
+                  <dl className="field-dl">
+                    <div><dt>Driver</dt><dd>{pod.driverName ?? selected.driverName ?? "-"}</dd></div>
+                    <div><dt>Waktu submit</dt><dd>{formatDateTime(pod.submittedAt)}</dd></div>
+                    <div><dt>Jumlah diserahkan</dt><dd>{pod.deliveredQuantity ?? "-"} porsi</dd></div>
+                    <div><dt>Penerima di lokasi</dt><dd>{pod.receiverName ?? "-"}</dd></div>
+                  </dl>
+                  {pod.note && <p style={{ margin: 0 }}>Catatan Driver: {pod.note}</p>}
+                  {pod.photoUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img className="field-photo" src={pod.photoUrl} alt="Foto bukti serah terima dari Driver" />
+                  )}
+                </div>
+              )}
+            </section>
 
-            <h3 className="field-section-title" style={{ margin: "14px 0 8px" }}>Beri review</h3>
-            <div className="field-stack">
-              <div style={{ display: "flex", gap: 6 }}>
+            <section className="field-card field-stack" aria-label="Beri review">
+              <h3 className="field-section-title">Beri review</h3>
+              <div className="field-rating" role="radiogroup" aria-label="Rating 1 sampai 5">
                 {[1, 2, 3, 4, 5].map((n) => (
-                  <button key={n} type="button" className="field-btn" aria-pressed={reviewRating === n} onClick={() => setReviewRating(n)}>
+                  <button
+                    key={n}
+                    type="button"
+                    className={`field-rating-btn ${n <= reviewRating ? "is-active" : ""}`}
+                    aria-pressed={reviewRating === n}
+                    aria-label={`${n} bintang`}
+                    onClick={() => setReviewRating(n)}
+                  >
                     {n <= reviewRating ? "★" : "☆"}
                   </button>
                 ))}
               </div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <div className="field-emoji-row" role="group" aria-label="Pilih emoji">
                 {["😊", "🙂", "😐", "😞", "😡"].map((e) => (
-                  <button key={e} type="button" className="field-btn" aria-pressed={reviewEmoji === e} onClick={() => setReviewEmoji(e)}>
+                  <button
+                    key={e}
+                    type="button"
+                    className={`field-emoji-btn ${reviewEmoji === e ? "is-active" : ""}`}
+                    aria-pressed={reviewEmoji === e}
+                    onClick={() => setReviewEmoji(e)}
+                  >
                     {e}
                   </button>
                 ))}
               </div>
-              <textarea value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} placeholder="Komentar (opsional)" />
+              <div className="field-field">
+                <textarea value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} placeholder="Komentar (opsional)" aria-label="Komentar review" />
+              </div>
               {reviewError && <p className="field-caption" style={{ color: "#DC2626" }}>{reviewError}</p>}
               {reviewSuccess && <p className="field-caption" style={{ color: "#16A34A" }}>{reviewSuccess}</p>}
-              <button type="button" className="field-btn" data-variant="primary" onClick={() => void submitReview()} disabled={reviewBusy || !online}>
+              <button type="button" className="field-btn field-btn-block" data-variant="primary" onClick={() => void submitReview()} disabled={reviewBusy || !online}>
                 {reviewBusy ? "Mengirim..." : "Kirim Review"}
               </button>
-            </div>
+            </section>
 
             <div className="field-actions" style={{ marginTop: 14 }}>
               <button type="button" className="field-btn" onClick={() => setSelected(null)}>Tutup</button>
