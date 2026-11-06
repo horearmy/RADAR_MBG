@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { CheckCircle2, QrCode } from "lucide-react";
 import { apiBaseUrl } from "@/lib/api";
@@ -8,6 +8,8 @@ import { apiBaseUrl } from "@/lib/api";
 function RegisterContent() {
   const searchParams = useSearchParams();
   const code = searchParams.get("code") ?? "";
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  const googleBtnRef = useRef<HTMLDivElement>(null);
   const [tenantName, setTenantName] = useState<string | null>(null);
   const [validating, setValidating] = useState(true);
   const [codeError, setCodeError] = useState<string | null>(null);
@@ -21,6 +23,57 @@ function RegisterContent() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ id: string; status: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [googleReady, setGoogleReady] = useState(false);
+  const [googleError, setGoogleError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!googleClientId) return;
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => setGoogleReady(true);
+    document.head.appendChild(script);
+    return () => {
+      document.head.removeChild(script);
+    };
+  }, [googleClientId]);
+
+  useEffect(() => {
+    if (!googleReady || !googleBtnRef.current || !googleClientId) return;
+    const g = (window as any).google;
+    if (!g?.accounts?.id) return;
+    g.accounts.id.initialize({
+      client_id: googleClientId,
+      callback: async (response: { credential: string }) => {
+        setSubmitting(true);
+        setError(null);
+        try {
+          const csrfRes = await fetch(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
+          const csrf = await csrfRes.json().catch(() => null);
+          const res = await fetch(`${apiBaseUrl}/public/recipient-registrations/google`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json", ...(csrf?.csrfToken ? { "X-CSRF-Token": csrf.csrfToken } : {}) },
+            body: JSON.stringify({ code, idToken: response.credential }),
+          });
+          const body = await res.json().catch(() => null);
+          if (!res.ok) throw new Error(body?.message ?? "Gagal mendaftar dengan Google.");
+          setResult({ id: body.id, status: body.status });
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Gagal mendaftar dengan Google.");
+        } finally {
+          setSubmitting(false);
+        }
+      },
+    });
+    g.accounts.id.renderButton(googleBtnRef.current, {
+      theme: "outline",
+      size: "large",
+      text: "signup_with",
+      shape: "rectangular",
+    });
+  }, [googleReady, googleClientId, code]);
 
   useEffect(() => {
     if (!code) {
@@ -132,6 +185,12 @@ function RegisterContent() {
               <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
             </label>
             {error && <p style={{ color: "#DC2626" }}>{error}</p>}
+            {googleClientId && (
+              <div style={{ display: "grid", gap: 8 }}>
+                <div ref={googleBtnRef} />
+                {googleError && <p style={{ color: "#DC2626" }}>{googleError}</p>}
+              </div>
+            )}
             <button type="submit" disabled={submitting}>{submitting ? "Mengirim..." : "Kirim Pendaftaran"}</button>
           </form>
         </div>

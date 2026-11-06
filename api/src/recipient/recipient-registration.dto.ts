@@ -18,6 +18,7 @@ export class CreateRecipientRegistrationRequestDto {
 
   @IsOptional()
   @IsEmail()
+  @Length(0, 254)
   contactEmail?: string;
 
   @IsOptional()
@@ -29,6 +30,16 @@ export class CreateRecipientRegistrationRequestDto {
   @IsString()
   @Length(0, 2000)
   notes?: string;
+}
+
+export class CreateRecipientRegistrationGoogleDto {
+  @IsString()
+  @Length(4, 64)
+  code!: string;
+
+  @IsString()
+  @Length(10, 4096)
+  idToken!: string;
 }
 
 export class ReviewRecipientRegistrationRequestDto {

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
+import { OAuth2Client } from 'google-auth-library';
 import type { SessionPrincipal } from '../auth/auth.service.js';
 import { CreateRecipientRegistrationCodeDto, CreateRecipientRegistrationRequestDto, ReviewRecipientRegistrationRequestDto } from './recipient-registration.dto.js';
 
@@ -55,6 +56,38 @@ export class RecipientRegistrationService {
         contactEmail: input.contactEmail?.trim().toLowerCase() ?? null,
         requestedSiteName: input.requestedSiteName?.trim() ?? null,
         notes: input.notes?.trim() ?? null,
+        status: 'PENDING_REVIEW',
+      },
+    });
+  }
+
+  async createRequestFromGoogle(code: string, idToken: string) {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      throw new BadRequestException({ code: 'GOOGLE_AUTH_DISABLED', message: 'Login Google belum dikonfigurasi.' });
+    }
+
+    const validCode = await this.validateCode(code);
+
+    const client = new OAuth2Client(clientId);
+    const ticket = await client.verifyIdToken({ idToken, audience: clientId });
+    const payload = ticket.getPayload();
+    if (!payload || !payload.email_verified || !payload.email) {
+      throw new BadRequestException({ code: 'GOOGLE_TOKEN_INVALID', message: 'Token Google tidak valid.' });
+    }
+
+    const requesterName = (payload.name || payload.email.split('@')[0] || 'Pendaftar Google').trim();
+    const contactEmail = payload.email.trim().toLowerCase();
+
+    return this.prisma.db.recipientRegistrationRequest.create({
+      data: {
+        registrationCodeId: (await this.prisma.db.recipientRegistrationCode.findUnique({ where: { code }, select: { id: true } }))?.id ?? null,
+        tenantId: validCode.tenant.id,
+        requesterName,
+        contactPhone: null,
+        contactEmail,
+        requestedSiteName: null,
+        notes: 'Pendaftaran via Google Sign-In',
         status: 'PENDING_REVIEW',
       },
     });
