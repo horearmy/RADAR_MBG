@@ -4,12 +4,14 @@ import { Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle2, QrCode } from "lucide-react";
 import { apiBaseUrl } from "@/lib/api";
+import { QrScanner } from "@/components/qr-scanner";
 
 function RegisterContent() {
   const searchParams = useSearchParams();
   const code = searchParams.get("code") ?? "";
   const router = useRouter();
   const [manualCode, setManualCode] = useState("");
+  const [showScanner, setShowScanner] = useState(false);
   const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
   const googleBtnRef = useRef<HTMLDivElement>(null);
   const [tenantName, setTenantName] = useState<string | null>(null);
@@ -150,7 +152,19 @@ function RegisterContent() {
               <button type="submit" className="field-btn field-btn-block" data-variant="primary">
                 Lanjutkan
               </button>
+              <button type="button" className="field-btn field-btn-block" data-variant="ghost" onClick={() => setShowScanner(true)}>
+                Scan QR
+              </button>
             </form>
+            {showScanner && (
+              <QrScanner
+                onScan={(scanned) => {
+                  setShowScanner(false);
+                  router.push(`/radarapp/register?code=${encodeURIComponent(scanned)}`);
+                }}
+                onClose={() => setShowScanner(false)}
+              />
+            )}
           </div>
         </div>
       </main>
