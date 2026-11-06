@@ -423,6 +423,19 @@ export function tenantReadFlow() {
       return;
     }
 
+    const meRes = http.get(`${BASE_URL}/auth/me`, { tags: { name: 'tenant_me_auth' } });
+    if (meRes.status !== 200) {
+      sleep(2);
+      return;
+    }
+    const memberships = meRes.json('user.tenantMemberships');
+    const tenantId = Array.isArray(memberships) && memberships.length > 0 ? memberships[0].tenantId : null;
+    if (!tenantId) {
+      sleep(2);
+      return;
+    }
+    const headers = { 'X-Tenant-Id': tenantId, Accept: 'application/json' };
+
     const endpoints = [
       '/tenant/summary',
       '/tenant/me',
@@ -437,7 +450,7 @@ export function tenantReadFlow() {
     ];
 
     for (const ep of endpoints) {
-      const res = http.get(`${BASE_URL}${ep}`, { tags: { name: 'tenant_read_all' } });
+      const res = http.get(`${BASE_URL}${ep}`, { headers, tags: { name: 'tenant_read_all' } });
       check(res, { [`GET ${ep} ok`]: (r) => r.status === 200 });
     }
 
@@ -589,10 +602,18 @@ export function tenantFeatureToggleFlow() {
       return;
     }
 
+    const meRes = http.get(`${BASE_URL}/auth/me`, { tags: { name: 'tenant_me_auth' } });
+    const memberships = meRes.status === 200 ? meRes.json('user.tenantMemberships') : null;
+    const tenantId = Array.isArray(memberships) && memberships.length > 0 ? memberships[0].tenantId : null;
+    if (!tenantId) {
+      sleep(2);
+      return;
+    }
+
     const res = http.post(`${BASE_URL}/tenant/features`, JSON.stringify({
       features: { drivers: true, trips: true, vehicles: true, audit: true, profiling: true },
     }), {
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Tenant-Id': tenantId },
       tags: { name: 'tenant_feature_toggle' },
     });
     check(res, { 'tenant features 200/201': (r) => r.status === 200 || r.status === 201 });
