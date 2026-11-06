@@ -10,10 +10,14 @@
 
 import http from 'k6/http';
 import { check, sleep, group } from 'k6';
-import { Rate, Trend } from 'k6/metrics';
+import { Rate } from 'k6/metrics';
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:4000/api/v1';
 const ORIGIN = __ENV.ORIGIN || 'http://localhost:3000';
+
+// Optional file for POD upload stress (1x1 PNG)
+let podFile = null;
+try { podFile = open('./pixel.png', 'b'); } catch { podFile = null; }
 
 const DRIVER_USER = __ENV.DRIVER_USER || 'driver.testfull@example.com';
 const DRIVER_PASS = __ENV.DRIVER_PASS || 'Password12345!';
@@ -57,6 +61,20 @@ export const options = {
       vus: 5,
       duration: '3m',
     },
+    recipient_write: {
+      executor: 'constant-vus',
+      exec: 'recipientWriteFlow',
+      vus: 2,
+      duration: '1m',
+      startTime: '5m',
+    },
+    driver_pod: {
+      executor: 'constant-vus',
+      exec: 'driverPodFlow',
+      vus: 1,
+      duration: '1m',
+      startTime: '5m',
+    },
   },
   thresholds: {
     http_req_duration: ['p(95)<800'],
@@ -91,14 +109,6 @@ function login(username, password, otpCode) {
   loginErrors.add(ok ? 0 : 1);
   check(res, { 'login 200': (r) => r.status === 200 });
   return ok ? res : null;
-}
-
-function authHeaders(res) {
-  // k6 cookie jar handles cookies automatically per VU
-  return {
-    headers: { Accept: 'application/json' },
-    cookies: res ? res.cookies : undefined,
-  };
 }
 
 export function driverFlow() {
@@ -185,6 +195,93 @@ export function platformFlow() {
 
     const geofencesRes = http.get(`${BASE_URL}/platform/geofences?page=1&pageSize=25`, { tags: { name: 'platform_geofences' } });
     check(geofencesRes, { 'platform geofences 200': (r) => r.status === 200 || r.status === 404 });
+
+    sleep(2);
+  });
+}
+
+
+const RECIPIENT_STOP_ID = __ENV.RECIPIENT_STOP_ID || '';
+const DRIVER_TRIP_ID = __ENV.DRIVER_TRIP_ID || '';
+
+export function recipientWriteFlow() {
+  if (!RECIPIENT_STOP_ID) {
+    sleep(5);
+    return;
+  }
+  group('recipient_write', () => {
+    const session = login(RECIPIENT_USER, RECIPIENT_PASS);
+    if (!session) {
+      sleep(2);
+      return;
+    }
+
+    // Create review
+    const reviewRes = http.post(`${BASE_URL}/recipient/stops/${encodeURIComponent(RECIPIENT_STOP_ID)}/review`, JSON.stringify({
+      rating: 5,
+      emoji: '😊',
+      comment: 'Stress test review',
+    }), {
+      headers: { 'Content-Type': 'application/json' },
+      tags: { name: 'recipient_create_review' },
+    });
+    check(reviewRes, { 'create review 200/201': (r) => r.status === 200 || r.status === 201 });
+
+    // Report issue
+    const issueRes = http.post(`${BASE_URL}/recipient/stops/${encodeURIComponent(RECIPIENT_STOP_ID)}/report-issue`, JSON.stringify({
+      category: 'OTHER',
+      description: 'Stress test issue report (min 5 chars).',
+    }), {
+      headers: { 'Content-Type': 'application/json' },
+      tags: { name: 'recipient_report_issue' },
+    });
+    check(issueRes, { 'report issue 200/201': (r) => r.status === 200 || r.status === 201 });
+
+    // Confirm receipt (may fail if already confirmed)
+    const confirmRes = http.post(`${BASE_URL}/recipient/stops/${encodeURIComponent(RECIPIENT_STOP_ID)}/confirm`, null, {
+      headers: { 'Idempotency-Key': `stress-${__VU}-${__ITER}` },
+      tags: { name: 'recipient_confirm' },
+    });
+    check(confirmRes, { 'confirm 200/201/409': (r) => r.status === 200 || r.status === 201 || r.status === 409 });
+
+    sleep(1);
+  });
+}
+
+export function driverPodFlow() {
+  if (!DRIVER_TRIP_ID || !podFile) {
+    sleep(5);
+    return;
+  }
+  group('driver_pod', () => {
+    const session = login(DRIVER_USER, DRIVER_PASS);
+    if (!session) {
+      sleep(2);
+      return;
+    }
+
+    // Submit POD (without photo first)
+    const submitRes = http.post(`${BASE_URL}/trips/${encodeURIComponent(DRIVER_TRIP_ID)}/delivery`, JSON.stringify({
+      receivedQuantity: 1,
+      damagedQuantity: 0,
+      confirmationNote: 'Stress test POD',
+      deviceTimestamp: new Date().toISOString(),
+    }), {
+      headers: { 'Content-Type': 'application/json' },
+      tags: { name: 'driver_submit_pod' },
+    });
+    check(submitRes, { 'submit pod 200/201': (r) => r.status === 200 || r.status === 201 });
+
+    // Upload proof (multipart)
+    if (submitRes.status === 200 || submitRes.status === 201) {
+      const formData = {
+        file: http.file(podFile, 'pixel.png', 'image/png'),
+      };
+      const uploadRes = http.post(`${BASE_URL}/trips/${encodeURIComponent(DRIVER_TRIP_ID)}/delivery/proofs`, formData, {
+        tags: { name: 'driver_upload_proof' },
+      });
+      check(uploadRes, { 'upload proof 200/201': (r) => r.status === 200 || r.status === 201 });
+    }
 
     sleep(2);
   });
