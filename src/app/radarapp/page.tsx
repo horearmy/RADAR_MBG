@@ -3,8 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Package, Truck, UserRound } from "lucide-react";
-import desktopBg from "@/bg/dekstop.png";
-import mobileBg from "@/bg/mobile.png";
+import desktopBg from "@/bg/dekstop.webp";
+import mobileBg from "@/bg/mobile.webp";
 
 export default function FieldLandingPage() {
   return (
