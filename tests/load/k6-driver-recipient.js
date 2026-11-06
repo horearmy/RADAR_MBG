@@ -25,7 +25,9 @@ const RECIPIENT_USER = __ENV.RECIPIENT_USER || 'penerima.testfull@example.com';
 const RECIPIENT_PASS = __ENV.RECIPIENT_PASS || 'Password12345!';
 const ADMIN_USER = __ENV.ADMIN_USER || 'admin';
 const ADMIN_PASS = __ENV.ADMIN_PASS || 'LzmtZSmeuBBEtZEhqoEYVPYK';
-const ADMIN_OTP = __ENV.ADMIN_OTP || '';
+const TENANT_USER = __ENV.TENANT_USER || '';
+const TENANT_PASS = __ENV.TENANT_PASS || '';
+const APPROVAL_ID = __ENV.APPROVAL_ID || '';
 
 export const options = {
   scenarios: {
@@ -67,6 +69,20 @@ export const options = {
       vus: 3,
       duration: '2m',
       startTime: '1m',
+    },
+    tenant_read: {
+      executor: 'constant-vus',
+      exec: 'tenantReadFlow',
+      vus: 2,
+      duration: '2m',
+      startTime: '2m',
+    },
+    approval_decision: {
+      executor: 'constant-vus',
+      exec: 'approvalDecisionFlow',
+      vus: 1,
+      duration: '30s',
+      startTime: '6m',
     },
     recipient_write: {
       executor: 'constant-vus',
@@ -337,6 +353,69 @@ export function driverPodFlow() {
       });
       check(uploadRes, { 'upload proof 200/201': (r) => r.status === 200 || r.status === 201 });
     }
+
+    sleep(2);
+  });
+}
+
+
+export function tenantReadFlow() {
+  if (!TENANT_USER || !TENANT_PASS) {
+    sleep(5);
+    return;
+  }
+  group('tenant_read', () => {
+    const session = login(TENANT_USER, TENANT_PASS);
+    if (!session) {
+      sleep(2);
+      return;
+    }
+
+    const endpoints = [
+      '/tenant/summary',
+      '/tenant/me',
+      '/tenant/trips?page=1&pageSize=25',
+      '/tenant/drivers?page=1&pageSize=25',
+      '/tenant/vehicles?page=1&pageSize=25',
+      '/tenant/delivery-locations?page=1&pageSize=25',
+      '/tenant/users?page=1&pageSize=25',
+      '/tenant/audit?page=1&pageSize=25',
+      '/tenant/recipient-registrations/sites',
+      '/tenant/recipient-registrations?page=1&pageSize=25',
+    ];
+
+    for (const ep of endpoints) {
+      const res = http.get(`${BASE_URL}${ep}`, { tags: { name: 'tenant_read_all' } });
+      check(res, { [`GET ${ep} ok`]: (r) => r.status === 200 });
+    }
+
+    sleep(2);
+  });
+}
+
+const APPROVAL_ID = __ENV.APPROVAL_ID || '';
+const APPROVAL_DECISION = __ENV.APPROVAL_DECISION || 'APPROVE';
+
+export function approvalDecisionFlow() {
+  if (!ADMIN_OTP || !APPROVAL_ID) {
+    sleep(5);
+    return;
+  }
+  group('approval_decision', () => {
+    const session = login(ADMIN_USER, ADMIN_PASS, ADMIN_OTP);
+    if (!session) {
+      sleep(2);
+      return;
+    }
+
+    const res = http.post(`${BASE_URL}/admin/approval-requests/${encodeURIComponent(APPROVAL_ID)}/decision`, JSON.stringify({
+      decision: APPROVAL_DECISION,
+      reason: 'Stress test decision',
+    }), {
+      headers: { 'Content-Type': 'application/json' },
+      tags: { name: 'approval_decision' },
+    });
+    check(res, { 'approval decision 200/201': (r) => r.status === 200 || r.status === 201 });
 
     sleep(2);
   });
