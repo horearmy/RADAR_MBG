@@ -31,6 +31,15 @@ type RegistrationRequest = {
   createdAt: string;
 };
 
+function recipientRegistrationStatusLabel(status: string): { label: string; tone: string } {
+  switch (status) {
+    case "APPROVED": return { label: "Disetujui", tone: "status-green" };
+    case "REJECTED": return { label: "Ditolak", tone: "status-red" };
+    case "REVISION_REQUIRED": return { label: "Perlu revisi", tone: "status-violet" };
+    default: return { label: "Menunggu tinjauan", tone: "status-amber" };
+  }
+}
+
 export default function TenantRecipientRegistrationsPage() {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -104,6 +113,9 @@ export default function TenantRecipientRegistrationsPage() {
   };
 
   const review = async (id: string, decision: "APPROVE" | "REJECT" | "REVISION_REQUIRED") => {
+    if (decision === "APPROVE" && !window.confirm("Setujui permintaan pendaftaran ini?")) return;
+    if (decision === "REJECT" && !window.confirm("Tolak permintaan pendaftaran ini?")) return;
+    if (decision === "REVISION_REQUIRED" && !window.confirm("Minta revisi untuk permintaan ini?")) return;
     setReviewingId(id);
     setReviewError(null);
     try {
@@ -251,7 +263,16 @@ export default function TenantRecipientRegistrationsPage() {
             {codeError && <div className="panel"><p className="text-secondary">{codeError}</p></div>}
             {error && <div className="panel"><p className="text-secondary">{error}</p></div>}
 
-            {codes.length > 0 && (
+            {codes.length === 0 ? (
+              <div className="panel" style={{ marginBottom: 16 }}>
+                <div className="panel-header">
+                  <div>
+                    <h2>Kode Pendaftaran Penerima</h2>
+                    <p>Belum ada kode pendaftaran. Buat kode pertama untuk memulai.</p>
+                  </div>
+                </div>
+              </div>
+            ) : (
               <section className="panel" style={{ marginBottom: 16 }}>
                 <div className="panel-header">
                   <div>
@@ -266,7 +287,7 @@ export default function TenantRecipientRegistrationsPage() {
                         <QRCodeSVG value={`${origin}/radarapp/register?code=${code.code}`} size={180} />
                       </div>
                       <div style={{ textAlign: "center", fontFamily: "monospace", fontSize: 12 }}>{code.code}</div>
-                      <div style={{ textAlign: "center", fontSize: 12, color: "#718096" }}>
+                      <div style={{ textAlign: "center", fontSize: 12, color: "#718096", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         Link: {origin}/radarapp/register?code={code.code}
                       </div>
                       <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
@@ -312,16 +333,16 @@ export default function TenantRecipientRegistrationsPage() {
                         <td>{r.requesterName}</td>
                         <td>{r.contactEmail ?? r.contactPhone ?? "-"}</td>
                         <td>{r.requestedSiteName ?? "-"}</td>
-                        <td><span className="pill pill-neutral">{r.status}</span></td>
+                        <td><span className={`status-pill ${recipientRegistrationStatusLabel(r.status).tone}`}>{recipientRegistrationStatusLabel(r.status).label}</span></td>
                         <td>
                           {r.status === "PENDING_REVIEW" && (
                             <div style={{ display: "grid", gap: 6 }}>
-                              <select value={reviewSiteId} onChange={(e) => setReviewSiteId(e.target.value)}>
+                              <select value={reviewSiteId} onChange={(e) => setReviewSiteId(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: "1px solid #DCE5F0", borderRadius: 8 }}>
                                 <option value="">Pilih lokasi penerima</option>
                                 {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                               </select>
-                              <input value={reviewNotes} onChange={(e) => setReviewNotes(e.target.value)} placeholder="Catatan (opsional)" />
-                              <div style={{ display: "flex", gap: 6 }}>
+                              <input value={reviewNotes} onChange={(e) => setReviewNotes(e.target.value)} placeholder="Catatan (opsional)" style={{ width: "100%", padding: "8px 10px", border: "1px solid #DCE5F0", borderRadius: 8 }} />
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                                 <button className="btn btn-success" disabled={reviewingId === r.id} onClick={() => review(r.id, "APPROVE")}>Setujui</button>
                                 <button className="btn btn-danger" disabled={reviewingId === r.id} onClick={() => review(r.id, "REJECT")}>Tolak</button>
                                 <button className="btn btn-warning" disabled={reviewingId === r.id} onClick={() => review(r.id, "REVISION_REQUIRED")}>Revisi</button>
