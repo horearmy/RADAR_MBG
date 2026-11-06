@@ -52,11 +52,14 @@ function isNavActive(href: string | undefined, pathname: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+let cachedSidebarUser: SessionUser | null = null;
+let cachedSidebarTenantId: string | null = null;
+
 export function AppSidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const [user, setUser] = useState<SessionUser | null>(null);
-  const [selectedTenantId, setSelectedTenantIdState] = useState("");
+  const [user, setUser] = useState<SessionUser | null>(cachedSidebarUser);
+  const [selectedTenantId, setSelectedTenantIdState] = useState(cachedSidebarTenantId ?? "");
 
   useEffect(() => {
     let active = true;
@@ -65,19 +68,23 @@ export function AppSidebar() {
         const current = await getCurrentSession();
         if (active) {
           setUser(current);
+          cachedSidebarUser = current;
           const memberships = current.tenantMemberships ?? [];
           const savedTenantId = getSelectedTenantId();
           const validTenantId = memberships.some((membership) => membership.tenantId === savedTenantId) ? savedTenantId : "";
-          if (validTenantId) setSelectedTenantIdState(validTenantId);
+          if (validTenantId) { setSelectedTenantIdState(validTenantId); cachedSidebarTenantId = validTenantId; }
           else if (memberships.length === 1) {
             setSelectedTenantId(memberships[0].tenantId);
             setSelectedTenantIdState(memberships[0].tenantId);
+            cachedSidebarTenantId = memberships[0].tenantId;
           } else {
             setSelectedTenantId(null);
+            cachedSidebarTenantId = null;
           }
           if (current.roles.some((role) => role.isGlobal)) {
             setSelectedTenantId(null);
             setSelectedTenantIdState("");
+            cachedSidebarTenantId = null;
           }
         }
       } catch {
