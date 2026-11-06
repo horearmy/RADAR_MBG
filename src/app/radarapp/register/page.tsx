@@ -163,35 +163,37 @@ function RegisterContent() {
             <h1>Pendaftaran Penerima</h1>
           </div>
           {tenantName && <p style={{ marginBottom: 12 }}>SPPG: <strong>{tenantName}</strong></p>}
-          <form onSubmit={submit} style={{ display: "grid", gap: 12 }}>
-            <label>
-              Nama lengkap
+          <form onSubmit={submit} className="field-form">
+            <label className="field-field">
+              <span>Nama lengkap</span>
               <input value={form.requesterName} onChange={(e) => setForm({ ...form, requesterName: e.target.value })} required />
             </label>
-            <label>
-              Nomor telepon
+            <label className="field-field">
+              <span>Nomor telepon</span>
               <input value={form.contactPhone} onChange={(e) => setForm({ ...form, contactPhone: e.target.value })} />
             </label>
-            <label>
-              Email
+            <label className="field-field">
+              <span>Email</span>
               <input type="email" value={form.contactEmail} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} />
             </label>
-            <label>
-              Lokasi penerima yang diminta
+            <label className="field-field">
+              <span>Lokasi penerima yang diminta</span>
               <input value={form.requestedSiteName} onChange={(e) => setForm({ ...form, requestedSiteName: e.target.value })} />
             </label>
-            <label>
-              Catatan
+            <label className="field-field">
+              <span>Catatan</span>
               <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
             </label>
-            {error && <p style={{ color: "#DC2626" }}>{error}</p>}
+            {error && <p className="field-error-text">{error}</p>}
             {googleClientId && (
               <div style={{ display: "grid", gap: 8 }}>
                 <div ref={googleBtnRef} />
-                {googleError && <p style={{ color: "#DC2626" }}>{googleError}</p>}
+                {googleError && <p className="field-error-text">{googleError}</p>}
               </div>
             )}
-            <button type="submit" disabled={submitting}>{submitting ? "Mengirim..." : "Kirim Pendaftaran"}</button>
+            <button type="submit" className="field-btn field-btn-block" data-variant="primary" disabled={submitting}>
+              {submitting ? "Mengirim..." : "Kirim Pendaftaran"}
+            </button>
           </form>
         </div>
       </div>
