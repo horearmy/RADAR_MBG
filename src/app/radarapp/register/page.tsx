@@ -1,13 +1,15 @@
 "use client";
 
 import { Suspense, useEffect, useRef, useState, type FormEvent } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle2, QrCode } from "lucide-react";
 import { apiBaseUrl } from "@/lib/api";
 
 function RegisterContent() {
   const searchParams = useSearchParams();
   const code = searchParams.get("code") ?? "";
+  const router = useRouter();
+  const [manualCode, setManualCode] = useState("");
   const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
   const googleBtnRef = useRef<HTMLDivElement>(null);
   const [tenantName, setTenantName] = useState<string | null>(null);
@@ -77,7 +79,6 @@ function RegisterContent() {
 
   useEffect(() => {
     if (!code) {
-      setCodeError("Kode pendaftaran tidak ditemukan.");
       setValidating(false);
       return;
     }
@@ -120,6 +121,40 @@ function RegisterContent() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (!code) {
+    return (
+      <main className="field-app">
+        <div className="field-content">
+          <div className="field-card">
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <QrCode size={20} />
+              <h1>Pendaftaran Penerima</h1>
+            </div>
+            <p style={{ marginBottom: 12, color: "#718096" }}>
+              Masukkan kode pendaftaran yang diberikan oleh administrator SPPG (atau scan QR code).
+            </p>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const trimmed = manualCode.trim();
+                if (trimmed) router.push(`/radarapp/register?code=${encodeURIComponent(trimmed)}`);
+              }}
+              className="field-form"
+            >
+              <label className="field-field">
+                <span>Kode pendaftaran</span>
+                <input value={manualCode} onChange={(e) => setManualCode(e.target.value)} placeholder="Contoh: REG-XXXX-XXXX" required />
+              </label>
+              <button type="submit" className="field-btn field-btn-block" data-variant="primary">
+                Lanjutkan
+              </button>
+            </form>
+          </div>
+        </div>
+      </main>
+    );
   }
 
   if (validating) {
