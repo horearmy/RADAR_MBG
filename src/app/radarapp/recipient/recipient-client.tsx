@@ -95,6 +95,7 @@ export default function RecipientClient() {
   const [me, setMe] = useState<RecipientMe | null>(null);
   const [deliveries, setDeliveries] = useState<RecipientDelivery[]>([]);
   const [notifications, setNotifications] = useState<RecipientNotification[]>([]);
+  const [reviews, setReviews] = useState<any[]>([]);
   const [notifError, setNotifError] = useState(false);
   const [lastSync, setLastSync] = useState<number | null>(null);
   const [errorText, setErrorText] = useState("");
@@ -108,6 +109,12 @@ export default function RecipientClient() {
   const [pod, setPod] = useState<RecipientPod | null>(null);
   const [podState, setPodState] = useState<"idle" | "loading" | "error">("idle");
   const [action, setAction] = useState<"confirm" | "issue" | null>(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewEmoji, setReviewEmoji] = useState("😊");
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewError, setReviewError] = useState("");
+  const [reviewSuccess, setReviewSuccess] = useState("");
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
   const [formError, setFormError] = useState("");
@@ -150,6 +157,11 @@ export default function RecipientClient() {
         } catch (error) {
           if (error instanceof Error && error.message === "UNAUTHENTICATED") throw error;
           setNotifError(true);
+        }
+        try {
+          setReviews(await recipientApi.reviews() as any[]);
+        } catch {
+          // ignore if reviews not available
         }
         setLastSync(Date.now());
         setLoadState("ready");
@@ -259,6 +271,28 @@ export default function RecipientClient() {
       setFormError(isApiUnavailable(error) ? "Fitur ini belum tersedia di server." : safeErrorMessage(error));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function submitReview() {
+    if (!selected) return;
+    setReviewBusy(true);
+    setReviewError("");
+    setReviewSuccess("");
+    try {
+      await recipientApi.createReview(selected.stopId, {
+        rating: reviewRating,
+        emoji: reviewEmoji,
+        comment: reviewComment.trim() || undefined,
+      });
+      setReviewSuccess("Review terkirim.");
+      setReviewComment("");
+      const list = await recipientApi.reviews();
+      setReviews(Array.isArray(list) ? list : []);
+    } catch (error) {
+      setReviewError(isApiUnavailable(error) ? "Fitur review belum tersedia di server." : safeErrorMessage(error));
+    } finally {
+      setReviewBusy(false);
     }
   }
 
@@ -515,6 +549,24 @@ export default function RecipientClient() {
                   <div><dt>Peran</dt><dd>{me?.role ?? "Penerima"}</dd></div>
                   <div><dt>Status akun</dt><dd>Aktif</dd></div>
                 </dl>
+
+                <h3 className="field-section-title" style={{ margin: "14px 0 8px" }}>Riwayat review</h3>
+                {reviews.length === 0 ? (
+                  <EmptyState title="Belum ada review." />
+                ) : (
+                  <div className="field-stack">
+                    {reviews.map((r: any) => (
+                      <article key={r.id} className="field-card field-stack">
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                          <strong>{r.rating} ★ {r.emoji ?? ""}</strong>
+                          <span className="field-caption">{formatDateTime(r.createdAt)}</span>
+                        </div>
+                        {r.comment && <p style={{ margin: 0 }}>{r.comment}</p>}
+                      </article>
+                    ))}
+                  </div>
+                )}
+
                 <button type="button" className="field-btn field-btn-block" onClick={() => void doLogout()}>Keluar</button>
               </section>
             )}
@@ -611,6 +663,30 @@ export default function RecipientClient() {
                 )}
               </div>
             )}
+
+            <h3 className="field-section-title" style={{ margin: "14px 0 8px" }}>Beri review</h3>
+            <div className="field-stack">
+              <div style={{ display: "flex", gap: 6 }}>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button key={n} type="button" className="field-btn" aria-pressed={reviewRating === n} onClick={() => setReviewRating(n)}>
+                    {n <= reviewRating ? "★" : "☆"}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {["😊", "🙂", "😐", "😞", "😡"].map((e) => (
+                  <button key={e} type="button" className="field-btn" aria-pressed={reviewEmoji === e} onClick={() => setReviewEmoji(e)}>
+                    {e}
+                  </button>
+                ))}
+              </div>
+              <textarea value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} placeholder="Komentar (opsional)" />
+              {reviewError && <p className="field-caption" style={{ color: "#DC2626" }}>{reviewError}</p>}
+              {reviewSuccess && <p className="field-caption" style={{ color: "#16A34A" }}>{reviewSuccess}</p>}
+              <button type="button" className="field-btn" data-variant="primary" onClick={() => void submitReview()} disabled={reviewBusy || !online}>
+                {reviewBusy ? "Mengirim..." : "Kirim Review"}
+              </button>
+            </div>
 
             <div className="field-actions" style={{ marginTop: 14 }}>
               <button type="button" className="field-btn" onClick={() => setSelected(null)}>Tutup</button>

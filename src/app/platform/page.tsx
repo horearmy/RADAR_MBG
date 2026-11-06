@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { Building2, RefreshCw } from "lucide-react";
 import { apiBaseUrl, apiGet, getCurrentSession, isPlatformAdmin, type SessionUser } from "@/lib/api";
 
@@ -88,6 +89,7 @@ export default function PlatformTenantsPage() {
           <p className="page-subtitle">Tampilan baca-saja untuk pemantauan tenant pada platform.</p>
         </div>
         <button className="btn" type="button" onClick={() => void loadTenants()} disabled={loading || !isPlatformAdmin(user)}><RefreshCw size={14} /> Muat ulang</button>
+<Link className="btn btn-primary" href="/previews">Review Penerima</Link>
       </header>
       <section className="panel">
         <div className="panel-header"><div className="platform-tenant-heading"><Building2 size={17} /><strong>Daftar tenant</strong><span>{tenants.length}</span></div></div>

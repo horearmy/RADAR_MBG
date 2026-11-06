@@ -38,6 +38,16 @@ export class PlatformController {
     return this.service.listPlatformGeofences(query.tenantId, active);
   }
 
+  @Get('recipient-reviews/summary')
+  recipientReviewSummary(@Query() query: { tenantId?: string; from?: string; to?: string }) {
+    return this.service.recipientReviewSummary(query.tenantId, query.from, query.to);
+  }
+
+  @Get('recipient-reviews/recent')
+  recipientReviewsRecent(@Query() query: { tenantId?: string; limit?: string }) {
+    return this.service.recipientReviewsRecent(query.tenantId, Number(query.limit ?? 20));
+  }
+
   @Patch('tenants/:id/suspend')
   @RequirePermissions('admin:manage_users')
   suspendTenant(

@@ -9,6 +9,7 @@
 
 import {
   apiBaseUrl,
+  apiFetch,
   apiGet,
   apiMutate,
   getCurrentSession,
@@ -189,6 +190,24 @@ export const recipientApi = {
   notifications: async () => toList<RecipientNotification>(await apiGet<unknown>("/recipient/notifications")),
   markRead: (id: string) =>
     apiMutate<unknown>(`/recipient/notifications/${encodeURIComponent(id)}/read`, "POST"),
+  createReview: (stopId: string, input: { rating: number; emoji?: string; comment?: string }) =>
+    apiMutate<unknown>(`/recipient/stops/${encodeURIComponent(stopId)}/review`, "POST", input),
+  getReview: (stopId: string) => apiGet<unknown>(`/recipient/stops/${encodeURIComponent(stopId)}/review`),
+  reviews: () => apiGet<unknown>("/recipient/reviews"),
+  updateReview: (id: string, input: { rating?: number; emoji?: string; comment?: string }) =>
+    apiMutate<unknown>(`/recipient/reviews/${encodeURIComponent(id)}`, "PATCH", input),
+  deleteReview: async (id: string) => {
+    const csrfRes = await fetch(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
+    const csrf = await csrfRes.json().catch(() => null);
+    if (!csrfRes.ok || !csrf?.csrfToken) throw new Error("CSRF_UNAVAILABLE");
+    const response = await apiFetch(`/recipient/reviews/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      credentials: "include",
+      headers: { "X-CSRF-Token": csrf.csrfToken },
+    });
+    if (!response.ok) throw new Error(`REQUEST_FAILED_${response.status}`);
+    return response.json().catch(() => ({ ok: true }));
+  },
 };
 
 /** 404/501 dari endpoint penerima berarti backend belum menyediakan API-nya. */

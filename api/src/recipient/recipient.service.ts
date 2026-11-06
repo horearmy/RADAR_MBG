@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
 import { PrivateStorageService } from '../storage/storage.service.js';
 
@@ -278,6 +278,63 @@ export class RecipientService {
       where: { id, userId },
       data: { readAt: new Date() },
     });
+    return { ok: true };
+  }
+
+  async createReview(userId: string, stopId: string, input: { rating: number; emoji?: string; comment?: string }) {
+    const stop = await this.prisma.db.deliveryStop.findUnique({ where: { id: stopId } });
+    if (!stop) throw new NotFoundException({ code: 'STOP_NOT_FOUND' });
+    await this.ensureMember(userId, stop.recipientSiteId);
+
+    if (input.rating < 1 || input.rating > 5) throw new BadRequestException({ code: 'INVALID_RATING' });
+
+    return this.prisma.db.recipientReview.create({
+      data: {
+        userId,
+        recipientSiteId: stop.recipientSiteId,
+        tripId: stop.tripId,
+        stopId,
+        rating: input.rating,
+        emoji: input.emoji?.trim() ?? null,
+        comment: input.comment?.trim() ?? null,
+        status: 'SUBMITTED',
+      },
+    });
+  }
+
+  async getReview(userId: string, stopId: string) {
+    const stop = await this.prisma.db.deliveryStop.findUnique({ where: { id: stopId } });
+    if (!stop) throw new NotFoundException({ code: 'STOP_NOT_FOUND' });
+    await this.ensureMember(userId, stop.recipientSiteId);
+    return this.prisma.db.recipientReview.findUnique({ where: { userId_stopId: { userId, stopId } } });
+  }
+
+  async listReviews(userId: string) {
+    return this.prisma.db.recipientReview.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+  }
+
+  async updateReview(userId: string, reviewId: string, input: { rating?: number; emoji?: string; comment?: string }) {
+    const review = await this.prisma.db.recipientReview.findUnique({ where: { id: reviewId } });
+    if (!review || review.userId !== userId) throw new NotFoundException({ code: 'REVIEW_NOT_FOUND' });
+    if (input.rating !== undefined && (input.rating < 1 || input.rating > 5)) throw new BadRequestException({ code: 'INVALID_RATING' });
+    return this.prisma.db.recipientReview.update({
+      where: { id: reviewId },
+      data: {
+        ...(input.rating !== undefined ? { rating: input.rating } : {}),
+        ...(input.emoji !== undefined ? { emoji: input.emoji?.trim() ?? null } : {}),
+        ...(input.comment !== undefined ? { comment: input.comment?.trim() ?? null } : {}),
+      },
+    });
+  }
+
+  async deleteReview(userId: string, reviewId: string) {
+    const review = await this.prisma.db.recipientReview.findUnique({ where: { id: reviewId } });
+    if (!review || review.userId !== userId) throw new NotFoundException({ code: 'REVIEW_NOT_FOUND' });
+    await this.prisma.db.recipientReview.delete({ where: { id: reviewId } });
     return { ok: true };
   }
 }

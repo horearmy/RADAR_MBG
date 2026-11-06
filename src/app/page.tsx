@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Activity,
   AlertTriangle,
@@ -184,8 +184,10 @@ function StatusPill({ tone, children }: { tone: string; children: ReactNode }) {
   return <span className={`status-pill status-${tone}`}><span className="status-dot" />{children}</span>;
 }
 
-export default function Home() {
+function HomeContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [dashboardTab, setDashboardTab] = useState<"ringkasan" | "review" | "tautan">("ringkasan");
   const mapSectionRef = useRef<HTMLElement>(null);
   const [mapFilter, setMapFilter] = useState<MapFilter>("all");
   const [selectedMapTripId, setSelectedMapTripId] = useState<string | null>(null);
@@ -283,6 +285,11 @@ export default function Home() {
 
     return () => { active = false; };
   }, [router, loadDashboard]);
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "ringkasan" || tab === "review" || tab === "tautan") setDashboardTab(tab);
+  }, [searchParams]);
 
   const handleRefresh = useCallback(async (silent = true) => {
     if (!sessionUser) return;
@@ -504,6 +511,12 @@ export default function Home() {
             </div>
           </div>
 
+          <div className="table-tabs" role="tablist" aria-label="Tab dashboard" style={{ marginBottom: 16 }}>
+            <button type="button" role="tab" aria-selected={dashboardTab === "ringkasan"} className={`table-tab ${dashboardTab === "ringkasan" ? "active" : ""}`} onClick={() => setDashboardTab("ringkasan")}>Ringkasan</button>
+            <button type="button" role="tab" aria-selected={dashboardTab === "review"} className={`table-tab ${dashboardTab === "review" ? "active" : ""}`} onClick={() => setDashboardTab("review")}>Review</button>
+            <button type="button" role="tab" aria-selected={dashboardTab === "tautan"} className={`table-tab ${dashboardTab === "tautan" ? "active" : ""}`} onClick={() => setDashboardTab("tautan")}>Tautan</button>
+          </div>
+
           <div className="demo-notice">
             <span className="notice-mark">i</span>
             <span><strong>Data operasional</strong> — diperbarui otomatis setiap 60 detik. Terakhir dimuat {formatClock(dashboard.refreshedAt)} WIB.</span>
@@ -723,7 +736,7 @@ export default function Home() {
             )}
           </div>
 
-          <section className="panel trips-panel" aria-label="Perjalanan terkini">
+            {dashboardTab === "ringkasan" && <section className="panel trips-panel" aria-label="Perjalanan terkini">
             <div className="panel-heading">
               <div>
                 <div className="section-title-row"><h2>Perjalanan terkini</h2><span className="count-chip">{inTransitTrips.length} aktif</span></div>
@@ -762,9 +775,22 @@ export default function Home() {
               </table>
             </div>
             <Link className="mobile-all-link" href="/trips">Lihat semua perjalanan<ArrowRight size={14} /></Link>
-          </section>
+            </section>}
 
-          <section className="panel quick-panel">
+            {dashboardTab === "review" && (
+              <section className="panel" aria-label="Review penerima" style={{ minHeight: 240 }}>
+                <div className="panel-heading">
+                  <div>
+                    <div className="section-title-row"><h2>Review Penerima</h2></div>
+                    <p>Ringkasan rating dan distribusi review.</p>
+                  </div>
+                  <Link className="text-link" href="/previews">Detail review<ArrowRight size={14} /></Link>
+                </div>
+                <h3 style={{ margin: "0 0 8px" }}>Review Penerima (Tab Review)</h3>
+                <iframe title="Review Penerima" src="/previews" style={{ width: "100%", height: 600, border: 0, borderRadius: 8 }} loading="lazy" />
+              </section>
+            )}
+            {dashboardTab === "tautan" && <section className="panel quick-panel">
             <div className="panel-heading">
               <div>
                 <div className="section-title-row"><h2>Aksi platform</h2></div>
@@ -782,7 +808,7 @@ export default function Home() {
               {canManageUsers && <Link href="/users" className="app-link-card"><Users size={20} /><span>Administrasi akun</span></Link>}
               {canDrive && <Link href="/driver" className="app-link-card"><Navigation size={20} /><span>Mode pengemudi</span></Link>}
             </div>
-          </section>
+            </section>}
 
           <footer className="page-footer">
             <span><span className="footer-dot" /> RADAR MBG <i>·</i> Data operasional</span>
@@ -791,5 +817,13 @@ export default function Home() {
         </main>
       </section>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<main className="session-state"><span className="session-spinner" /><p>Memuat dashboard…</p></main>}>
+      <HomeContent />
+    </Suspense>
   );
 }
