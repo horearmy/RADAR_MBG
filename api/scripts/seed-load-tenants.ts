@@ -38,6 +38,12 @@ async function main() {
       await prisma.tenantMembership.create({
         data: { tenantId: tenant.id, userId: user.id, role: 'TENANT_ADMIN', status: 'ACTIVE' },
       });
+      await prisma.driver.create({
+        data: { tenantId: tenant.id, sppgId: sppg.id, code: `DRV-${code}`, name: `Driver ${code}`, status: 'ACTIVE' },
+      });
+      await prisma.deliveryLocation.create({
+        data: { organizationId: org.id, regionId: region.id, code: `DL-${code}`, name: `Lokasi ${code}`, active: true, tenantId: tenant.id },
+      });
       created++;
       if (i % 100 === 0) console.log(`created ${i}/${COUNT}`);
     } catch (e) {
