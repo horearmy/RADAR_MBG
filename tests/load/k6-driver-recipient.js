@@ -112,6 +112,20 @@ export const options = {
       duration: '1m',
       startTime: '7m',
     },
+    tenant_feature_toggle: {
+      executor: 'constant-vus',
+      exec: 'tenantFeatureToggleFlow',
+      vus: 1,
+      duration: '30s',
+      startTime: '8m',
+    },
+    registration_upload_document: {
+      executor: 'per-vu-iterations',
+      exec: 'registrationUploadDocumentFlow',
+      vus: 1,
+      iterations: 1,
+      startTime: '8m',
+    },
     recipient_write: {
       executor: 'constant-vus',
       exec: 'recipientWriteFlow',
@@ -435,7 +449,7 @@ const APPROVAL_ID = __ENV.APPROVAL_ID || '';
 const APPROVAL_DECISION = __ENV.APPROVAL_DECISION || 'APPROVE';
 const GEOFENCE_LOCATION_TYPE = __ENV.GEOFENCE_LOCATION_TYPE || '';
 const GEOFENCE_LOCATION_ID = __ENV.GEOFENCE_LOCATION_ID || '';
-const REGISTRATION_NUMBER = __ENV.REGISTRATION_NUMBER || '';
+const REGISTRATION_ID = __ENV.REGISTRATION_ID || '';
 const MFA_TEST_USER = __ENV.MFA_TEST_USER || '';
 const MFA_TEST_PASS = __ENV.MFA_TEST_PASS || '';
 const RUN_REGISTRATION_CREATE = __ENV.RUN_REGISTRATION_CREATE === 'true';
@@ -557,6 +571,55 @@ export function registrationCreateFlow() {
       tags: { name: 'registration_create' },
     });
     check(res, { 'registration create 200/201': (r) => r.status === 200 || r.status === 201 });
+
+    sleep(2);
+  });
+}
+
+
+export function tenantFeatureToggleFlow() {
+  if (!TENANT_USER || !TENANT_PASS) {
+    sleep(5);
+    return;
+  }
+  group('tenant_feature_toggle', () => {
+    const session = login(TENANT_USER, TENANT_PASS);
+    if (!session) {
+      sleep(2);
+      return;
+    }
+
+    const res = http.post(`${BASE_URL}/tenant/features`, JSON.stringify({
+      features: { drivers: true, trips: true, vehicles: true, audit: true, profiling: true },
+    }), {
+      headers: { 'Content-Type': 'application/json' },
+      tags: { name: 'tenant_feature_toggle' },
+    });
+    check(res, { 'tenant features 200/201': (r) => r.status === 200 || r.status === 201 });
+
+    sleep(2);
+  });
+}
+
+export function registrationUploadDocumentFlow() {
+  if (!ADMIN_OTP || !REGISTRATION_ID || !podFile) {
+    sleep(5);
+    return;
+  }
+  group('registration_upload_document', () => {
+    const session = login(ADMIN_USER, ADMIN_PASS, ADMIN_OTP);
+    if (!session) {
+      sleep(2);
+      return;
+    }
+
+    const formData = {
+      file: http.file(podFile, 'pixel.png', 'image/png'),
+    };
+    const res = http.post(`${BASE_URL}/admin/sppg-registrations/${encodeURIComponent(REGISTRATION_ID)}/documents/upload`, formData, {
+      tags: { name: 'registration_upload_document' },
+    });
+    check(res, { 'registration upload 200/201': (r) => r.status === 200 || r.status === 201 });
 
     sleep(2);
   });
