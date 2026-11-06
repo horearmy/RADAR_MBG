@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { ChevronRight, QrCode, RefreshCw, UserRound } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import mobileBg from "@/bg/mobile.webp";
 import { HeaderAccount } from "@/components/account-menu";
 import { TenantSidebar } from "@/components/tenant-sidebar";
 import {
@@ -144,27 +145,82 @@ export default function TenantRecipientRegistrationsPage() {
     if (!svg) return;
     const svgData = new XMLSerializer().serializeToString(svg);
     const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(svgBlob);
-    const img = new Image();
-    img.onload = () => {
-      const scale = 2;
+    const qrUrl = URL.createObjectURL(svgBlob);
+
+    const bgImg = new Image();
+    bgImg.crossOrigin = "anonymous";
+    bgImg.src = mobileBg.src;
+
+    bgImg.onload = () => {
       const canvas = document.createElement("canvas");
-      canvas.width = img.width * scale;
-      canvas.height = img.height * scale;
+      canvas.width = bgImg.width;
+      canvas.height = bgImg.height;
       const ctx = canvas.getContext("2d");
-      if (ctx) {
+      if (!ctx) return;
+
+      // Background
+      ctx.drawImage(bgImg, 0, 0);
+
+      // Overlay
+      ctx.fillStyle = "rgba(7, 27, 58, 0.35)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // White card
+      const cardW = 520;
+      const cardH = 620;
+      const cardX = (canvas.width - cardW) / 2;
+      const cardY = (canvas.height - cardH) / 2;
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.roundRect(cardX, cardY, cardW, cardH, 24);
+      ctx.fill();
+      ctx.shadowColor = "rgba(0,0,0,0.15)";
+      ctx.shadowBlur = 20;
+      ctx.shadowOffsetY = 8;
+      ctx.fill();
+      ctx.shadowColor = "transparent";
+
+      // Title
+      ctx.fillStyle = "#071B3A";
+      ctx.font = "bold 28px Inter, system-ui, Arial, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Pendaftaran Penerima", canvas.width / 2, cardY + 50);
+
+      // Subtitle
+      ctx.fillStyle = "#5B6B82";
+      ctx.font = "14px Inter, system-ui, Arial, sans-serif";
+      ctx.fillText("Scan QR ini untuk mendaftar", canvas.width / 2, cardY + 80);
+
+      // QR
+      const qrImg = new Image();
+      qrImg.onload = () => {
+        const qrSize = 360;
+        const qrX = (canvas.width - qrSize) / 2;
+        const qrY = cardY + 120;
+        // white quiet zone
         ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      }
-      URL.revokeObjectURL(url);
-      const pngUrl = canvas.toDataURL("image/png");
-      const a = document.createElement("a");
-      a.href = pngUrl;
-      a.download = `qr-${code}.png`;
-      a.click();
+        ctx.fillRect(qrX - 16, qrY - 16, qrSize + 32, qrSize + 32);
+        ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+
+        // Code
+        ctx.fillStyle = "#172B4D";
+        ctx.font = "bold 16px monospace";
+        ctx.fillText(code, canvas.width / 2, qrY + qrSize + 40);
+
+        // Footer
+        ctx.fillStyle = "#718096";
+        ctx.font = "12px Inter, system-ui, Arial, sans-serif";
+        ctx.fillText("RADAR MBG · Field Operations", canvas.width / 2, cardY + cardH - 30);
+
+        URL.revokeObjectURL(qrUrl);
+        const pngUrl = canvas.toDataURL("image/png");
+        const a = document.createElement("a");
+        a.href = pngUrl;
+        a.download = `qr-${code}.png`;
+        a.click();
+      };
+      qrImg.src = qrUrl;
     };
-    img.src = url;
   };
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
