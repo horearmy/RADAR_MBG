@@ -270,7 +270,7 @@ export function PodForm({
       {/* Step Indicator */}
       <div className="pod-steps">
         {STEPS.map((s, i) => (
-          <div key={s.key} className={`pod-step ${step === s.key ? "active" : ""} ${i < STEPS.findIndex((x) => x.key === step) ? "done" : ""}`}>
+          <div key={s.key} className={`pod-step ${step === s.key ? "active" : ""} ${i < STEPS.findIndex((x) => x.key === step) ? "done" : ""}`} aria-current={step === s.key ? "step" : undefined}>
             <span className="pod-step-icon">{s.icon}</span>
             <span className="pod-step-label">{s.label}</span>
           </div>
@@ -465,6 +465,12 @@ export function PodForm({
       )}
 
       {formError && <Banner tone="danger">{formError}</Banner>}
+
+       {uploadFailed && submitted && file && (
+         <button type="button" className="field-btn field-btn-block" data-variant="primary" onClick={() => void doUpload(trip.id, file)} disabled={busy || !online}>
+           Coba unggah foto lagi
+         </button>
+       )}
 
       <div className="field-actions">
         {step !== "photo" ? (
