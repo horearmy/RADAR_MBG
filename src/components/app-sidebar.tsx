@@ -162,7 +162,8 @@ export function AppSidebar() {
               const nextTenantId = event.target.value;
               setSelectedTenantId(nextTenantId || null);
               setSelectedTenantIdState(nextTenantId);
-              window.location.assign(pathname);
+              router.push(pathname);
+        router.refresh();
             }}
           >
             <option value="">Pilih tenant…</option>
