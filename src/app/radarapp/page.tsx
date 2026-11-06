@@ -1,15 +1,21 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { Package, Truck, UserRound } from "lucide-react";
+import desktopBg from "@/bg/dekstop.png";
+import mobileBg from "@/bg/mobile.png";
 
 export default function FieldLandingPage() {
   return (
-    <main className="field-app" style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
-      <div style={{ width: "100%", maxWidth: 520, display: "grid", gap: 20 }}>
+    <main className="field-app" style={{ position: "relative", minHeight: "100vh", display: "grid", placeItems: "center", padding: 24, overflow: "hidden" }}>
+      <Image src={desktopBg} alt="" fill priority className="hidden md:block" style={{ objectFit: "cover" }} />
+      <Image src={mobileBg} alt="" fill priority className="md:hidden" style={{ objectFit: "cover" }} />
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(7,27,58,.78), rgba(7,27,58,.45))", zIndex: 1 }} />
+      <div style={{ position: "relative", zIndex: 2, width: "100%", maxWidth: 520, display: "grid", gap: 20 }}>
         <div style={{ textAlign: "center" }}>
-          <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0 }}>RADAR MBG</h1>
-          <p style={{ color: "#718096", marginTop: 8 }}>Field Operations</p>
+          <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, color: "#fff" }}>RADAR MBG</h1>
+          <p style={{ color: "#cbd5e1", marginTop: 8 }}>Field Operations</p>
         </div>
 
         <div style={{ display: "grid", gap: 16 }}>
@@ -39,8 +45,8 @@ export default function FieldLandingPage() {
         </div>
 
         <div style={{ textAlign: "center", display: "grid", gap: 8 }}>
-          <p style={{ color: "#718096", fontSize: 14 }}>Belum terdaftar?</p>
-          <Link href="/radarapp/register" className="btn btn-ghost" style={{ justifyContent: "center" }}>
+          <p style={{ color: "#cbd5e1", fontSize: 14 }}>Belum terdaftar?</p>
+          <Link href="/radarapp/register" className="btn btn-ghost" style={{ justifyContent: "center", color: "#fff" }}>
             <UserRound size={16} /> Ajukan pendaftaran penerima
           </Link>
         </div>
