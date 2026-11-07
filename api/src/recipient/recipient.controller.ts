@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { SessionGuard } from '../auth/session.guard.js';
 import type { AuthenticatedRequest } from '../auth/session.guard.js';
 import { Req } from '@nestjs/common';
@@ -12,6 +12,11 @@ export class RecipientController {
   @Get('me')
   me(@Req() req: AuthenticatedRequest) {
     return this.service.getMe(req.principal!.id);
+  }
+
+  @Patch('profile')
+  updateProfile(@Req() req: AuthenticatedRequest, @Body() body: { photoUrl?: string | null }) {
+    return this.service.updateProfile(req.principal!.id, body);
   }
 
   @Get('deliveries')
@@ -51,5 +56,30 @@ export class RecipientController {
   @Post('notifications/:id/read')
   markRead(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.markRead(req.principal!.id, id);
+  }
+
+  @Post('stops/:stopId/review')
+  createReview(@Req() req: AuthenticatedRequest, @Param('stopId', ParseUUIDPipe) stopId: string, @Body() body: { rating: number; emoji?: string; comment?: string }) {
+    return this.service.createReview(req.principal!.id, stopId, body);
+  }
+
+  @Get('stops/:stopId/review')
+  getReview(@Req() req: AuthenticatedRequest, @Param('stopId', ParseUUIDPipe) stopId: string) {
+    return this.service.getReview(req.principal!.id, stopId);
+  }
+
+  @Get('reviews')
+  listReviews(@Req() req: AuthenticatedRequest) {
+    return this.service.listReviews(req.principal!.id);
+  }
+
+  @Patch('reviews/:id')
+  updateReview(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: { rating?: number; emoji?: string; comment?: string }) {
+    return this.service.updateReview(req.principal!.id, id, body);
+  }
+
+  @Delete('reviews/:id')
+  deleteReview(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.deleteReview(req.principal!.id, id);
   }
 }

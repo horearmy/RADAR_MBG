@@ -1,14 +1,19 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
 import { EmailService } from './email.service.js';
+import { CacheService } from '../cache/cache.service.js';
 import type { FeaturesConfig } from './tenant-features.controller.js';
 import * as argon2 from 'argon2';
 
 @Injectable()
 export class TenantService {
-  constructor(private readonly prisma: PrismaService, private readonly email: EmailService) {}
+  constructor(private readonly prisma: PrismaService, private readonly email: EmailService, private readonly cache: CacheService) {}
 
   async summary(tenantId: string) {
+    const cacheKey = `tenant:summary:${tenantId}`;
+    const cached = await this.cache.get<{ drivers: number; vehicles: number; tripsToday: number; tripsActive: number; tripsDone: number }>(cacheKey);
+    if (cached) return cached;
+
     // Hitung rentang hari ini berdasarkan WIB (UTC+7)
     const now = new Date();
     const wibOffsetMs = 7 * 60 * 60 * 1000;
@@ -22,7 +27,9 @@ export class TenantService {
       this.prisma.db.trip.count({ where: { tenantId, status: { in: ['IN_TRANSIT', 'DELIVERY_IN_PROGRESS', 'ARRIVAL_DETECTED', 'ARRIVAL_VERIFIED'] } } }),
       this.prisma.db.trip.count({ where: { tenantId, status: 'COMPLETED' } }),
     ]);
-    return { drivers, vehicles, tripsToday, tripsActive, tripsDone };
+    const result = { drivers, vehicles, tripsToday, tripsActive, tripsDone };
+    await this.cache.set(cacheKey, result, 60);
+    return result;
   }
 
   async getMe(tenantId: string) {
@@ -48,6 +55,7 @@ export class TenantService {
     longitude?: string;
     reason?: string;
   }) {
+    await this.cache.del(`tenant:summary:${tenantId}`);
     const updated = await this.prisma.db.sppgProfile.update({
       where: { tenantId },
       data: {
@@ -94,10 +102,10 @@ export class TenantService {
     });
   }
 
-  async createDriver(tenantId: string, input: { code: string; name: string; phone?: string }) {
+  async createDriver(tenantId: string, input: { code: string; name: string; phone?: string; photoUrl?: string }) {
     const sppgId = await this.legacySppg(tenantId);
     return this.prisma.db.driver.create({
-      data: { tenantId, sppgId, code: input.code.trim().toUpperCase(), name: input.name.trim(), phone: input.phone?.trim(), status: 'ACTIVE' },
+      data: { tenantId, sppgId, code: input.code.trim().toUpperCase(), name: input.name.trim(), phone: input.phone?.trim(), photoUrl: input.photoUrl?.trim() ?? null, status: 'ACTIVE' },
     });
   }
 
@@ -326,6 +334,36 @@ async getUser(tenantId: string, userId: string) {
     });
     if (!membership) throw new Error('USER_NOT_FOUND');
     return { ...membership.user, role: membership.role, membershipId: membership.id, membershipStatus: membership.status };
+  }
+
+  async activateInvitedUser(tenantId: string, userId: string, password: string, actorUserId: string) {
+    const membership = await this.prisma.db.tenantMembership.findFirst({ where: { tenantId, userId } });
+    if (!membership) throw new Error('USER_NOT_FOUND');
+    const user = await this.prisma.db.user.findUnique({ where: { id: userId }, select: { id: true, status: true } });
+    if (!user || user.status !== 'INVITED') throw new Error('USER_NOT_INVITED');
+
+    const passwordHash = await argon2.hash(password);
+    await this.prisma.db.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: { passwordHash, passwordChangedAt: new Date(), status: 'ACTIVE', disabledAt: null },
+      });
+      await tx.tenantMembership.update({
+        where: { id: membership.id },
+        data: { status: 'ACTIVE' },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorUserId,
+          action: 'tenant.user.activate',
+          entityType: 'user',
+          entityId: userId,
+          result: 'success',
+          reason: 'Aktivasi akun undangan oleh admin tenant.',
+        },
+      });
+    });
+    return { success: true };
   }
 
   async updateUser(tenantId: string, userId: string, data: { displayName?: string; role?: 'TENANT_ADMIN' | 'TENANT_OPERATOR' | 'TENANT_DRIVER' | 'TENANT_VIEWER'; status?: 'ACTIVE' | 'SUSPENDED' | 'INACTIVE'; password?: string }, actorUserId: string) {

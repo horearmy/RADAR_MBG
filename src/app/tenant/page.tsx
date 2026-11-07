@@ -162,6 +162,7 @@ export default function TenantPage() {
   const [mapExpanded, setMapExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [dashboardNow, setDashboardNow] = useState(0);
 
   const loadSummary = useCallback(async (silent: boolean) => {
     if (!silent) setSessionState("checking");
@@ -210,7 +211,7 @@ export default function TenantPage() {
           return;
         }
         if (!hasPermission(user, "tenant:read")) {
-          router.replace(user.tenantRole === "TENANT_DRIVER" ? "/radarapp" : "/login");
+          router.replace(user.tenantRole === "TENANT_DRIVER" ? "/radarapp/driver" : "/login");
           return;
         }
         setSessionUser(user);
@@ -285,6 +286,14 @@ export default function TenantPage() {
     return () => window.clearInterval(interval);
   }, [sessionUser, sessionState, handleRefresh]);
 
+  useEffect(() => {
+    if (sessionState !== "ready") return;
+    const now = Date.now();
+    setDashboardNow(now);
+    const timer = window.setInterval(() => setDashboardNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, [sessionState]);
+
   if (sessionState === "checking") {
     return <main className="session-state"><span className="session-spinner" /><p>Memuat data tenant…</p></main>;
   }
@@ -317,14 +326,6 @@ export default function TenantPage() {
 
   const canReadTrips = hasPermission(sessionUser, "trip:read");
   const canManageUsers = hasPermission(sessionUser, "admin:manage_users");
-  const [dashboardNow, setDashboardNow] = useState(0);
-
-  useEffect(() => {
-    const now = Date.now();
-    setDashboardNow(now);
-    const interval = window.setInterval(() => setDashboardNow(Date.now()), 60_000);
-    return () => window.clearInterval(interval);
-  }, []);
 
   const locatedTrips = trips.filter((t) => t.positions?.length > 0);
   const mapTrips = locatedTrips.filter((t) => matchesMapFilter(t, mapFilter, dashboardNow));

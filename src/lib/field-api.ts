@@ -9,6 +9,7 @@
 
 import {
   apiBaseUrl,
+  apiFetch,
   apiGet,
   apiMutate,
   getCurrentSession,
@@ -26,14 +27,16 @@ export type ResolvedWorkspaces = {
 };
 
 export const WORKSPACE_HOME: Record<FieldWorkspace, string> = {
-  driver: "/radarapp",
+  driver: "/radarapp/driver",
   recipient: "/radarapp/recipient",
 };
 
 export function isDriver(user: SessionUser): boolean {
-  // Driver punya driverId DAN/ATAU tenantRole TENANT_DRIVER dengan permission yang sesuai
+  // Driver punya driverId atau membership tenant role TENANT_DRIVER dengan permission yang sesuai.
+  // tenantRole top-level sering null, jadi membership juga harus diperiksa.
   const hasDriverRecord = Boolean(user.driverId);
-  const hasDriverRole = user.tenantRole === "TENANT_DRIVER" &&
+  const hasDriverMembership = (user.tenantMemberships ?? []).some((membership) => membership.role === "TENANT_DRIVER");
+  const hasDriverRole = (user.tenantRole === "TENANT_DRIVER" || hasDriverMembership) &&
     hasPermission(user, "trip:start") &&
     hasPermission(user, "trip:location:update");
   return hasDriverRecord || hasDriverRole;
@@ -104,6 +107,7 @@ export async function logoutField(): Promise<void> {
 
 export type RecipientMe = {
   displayName?: string;
+  photoUrl?: string | null;
   role?: string;
   sites?: Array<{ id: string; name: string; organizationName?: string }>;
 };
@@ -124,7 +128,14 @@ export type RecipientDelivery = {
   deliveredQuantity?: number | null;
   vehiclePlate?: string | null;
   driverName?: string | null;
+  sppgLatitude?: number | null;
+  sppgLongitude?: number | null;
+  deliveryLatitude?: number | null;
+  deliveryLongitude?: number | null;
+  lastLatitude?: number | null;
+  lastLongitude?: number | null;
   lastLocationAt?: string | null;
+  lastLocationAccuracy?: number | null;
 };
 
 export type RecipientPod = {
@@ -162,6 +173,8 @@ function toList<T>(payload: unknown): T[] {
 
 export const recipientApi = {
   me: () => apiGet<RecipientMe>("/recipient/me"),
+  updateProfile: (input: { photoUrl?: string | null }) =>
+    apiMutate<RecipientMe>("/recipient/profile", "PATCH", input),
   deliveries: async () => toList<RecipientDelivery>(await apiGet<unknown>("/recipient/deliveries")),
   stop: (stopId: string) => apiGet<RecipientDelivery>(`/recipient/stops/${encodeURIComponent(stopId)}`),
   pod: (stopId: string) => apiGet<RecipientPod>(`/recipient/stops/${encodeURIComponent(stopId)}/pod`),
@@ -177,6 +190,24 @@ export const recipientApi = {
   notifications: async () => toList<RecipientNotification>(await apiGet<unknown>("/recipient/notifications")),
   markRead: (id: string) =>
     apiMutate<unknown>(`/recipient/notifications/${encodeURIComponent(id)}/read`, "POST"),
+  createReview: (stopId: string, input: { rating: number; emoji?: string; comment?: string }) =>
+    apiMutate<unknown>(`/recipient/stops/${encodeURIComponent(stopId)}/review`, "POST", input),
+  getReview: (stopId: string) => apiGet<unknown>(`/recipient/stops/${encodeURIComponent(stopId)}/review`),
+  reviews: () => apiGet<unknown>("/recipient/reviews"),
+  updateReview: (id: string, input: { rating?: number; emoji?: string; comment?: string }) =>
+    apiMutate<unknown>(`/recipient/reviews/${encodeURIComponent(id)}`, "PATCH", input),
+  deleteReview: async (id: string) => {
+    const csrfRes = await fetch(`${apiBaseUrl}/auth/csrf`, { credentials: "include" });
+    const csrf = await csrfRes.json().catch(() => null);
+    if (!csrfRes.ok || !csrf?.csrfToken) throw new Error("CSRF_UNAVAILABLE");
+    const response = await apiFetch(`/recipient/reviews/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      credentials: "include",
+      headers: { "X-CSRF-Token": csrf.csrfToken },
+    });
+    if (!response.ok) throw new Error(`REQUEST_FAILED_${response.status}`);
+    return response.json().catch(() => ({ ok: true }));
+  },
 };
 
 /** 404/501 dari endpoint penerima berarti backend belum menyediakan API-nya. */

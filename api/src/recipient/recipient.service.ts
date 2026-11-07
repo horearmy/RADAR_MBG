@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
 import { PrivateStorageService } from '../storage/storage.service.js';
 
@@ -33,6 +33,7 @@ export class RecipientService {
     if (memberships.length === 0) throw new NotFoundException({ code: 'RECIPIENT_NOT_FOUND' });
     return {
       displayName: user.displayName ?? user.username,
+      photoUrl: user.photoUrl ?? null,
       role: 'RECIPIENT',
       sites: memberships.map((m) => ({
         id: m.site.id,
@@ -40,6 +41,19 @@ export class RecipientService {
         organizationName: m.site.organization?.name,
       })),
     };
+  }
+
+  async updateProfile(userId: string, input: { photoUrl?: string | null }) {
+    const user = await this.prisma.db.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException({ code: 'USER_NOT_FOUND' });
+    const memberships = await this.getMemberships(userId);
+    if (memberships.length === 0) throw new NotFoundException({ code: 'RECIPIENT_NOT_FOUND' });
+    const updated = await this.prisma.db.user.update({
+      where: { id: userId },
+      data: { photoUrl: input.photoUrl === undefined ? user.photoUrl : input.photoUrl },
+      select: { id: true, username: true, displayName: true, photoUrl: true },
+    });
+    return updated;
   }
 
   async listDeliveries(userId: string) {
@@ -56,6 +70,7 @@ export class RecipientService {
             vehicle: true,
             driver: true,
             deliveryRecords: { orderBy: { createdAt: 'desc' }, take: 1 },
+            positions: { orderBy: { serverReceivedAt: 'desc' }, take: 1 },
           },
         },
       },
@@ -78,7 +93,10 @@ export class RecipientService {
         deliveredQuantity: rec?.receivedQuantity ?? s.trip.receivedQuantity ?? null,
         vehiclePlate: s.trip.vehicle?.plateNumber ?? null,
         driverName: s.trip.driver?.name ?? null,
-        lastLocationAt: null,
+        lastLatitude: s.trip.positions?.[0]?.latitude ? Number(s.trip.positions[0].latitude) : null,
+        lastLongitude: s.trip.positions?.[0]?.longitude ? Number(s.trip.positions[0].longitude) : null,
+        lastLocationAt: s.trip.positions?.[0]?.serverReceivedAt?.toISOString() ?? null,
+        lastLocationAccuracy: s.trip.positions?.[0]?.accuracyMeters ? Number(s.trip.positions[0].accuracyMeters) : null,
       };
     });
   }
@@ -95,6 +113,7 @@ export class RecipientService {
             vehicle: true,
             driver: true,
             deliveryRecords: { orderBy: { createdAt: 'desc' }, take: 1 },
+            positions: { orderBy: { serverReceivedAt: 'desc' }, take: 1 },
           },
         },
       },
@@ -117,7 +136,14 @@ export class RecipientService {
       deliveredQuantity: rec?.receivedQuantity ?? stop.trip.receivedQuantity ?? null,
       vehiclePlate: stop.trip.vehicle?.plateNumber ?? null,
       driverName: stop.trip.driver?.name ?? null,
-      lastLocationAt: null,
+      sppgLatitude: stop.trip.sppg?.latitude ? Number(stop.trip.sppg.latitude) : null,
+      sppgLongitude: stop.trip.sppg?.longitude ? Number(stop.trip.sppg.longitude) : null,
+      deliveryLatitude: stop.trip.deliveryLocation?.latitude ? Number(stop.trip.deliveryLocation.latitude) : null,
+      deliveryLongitude: stop.trip.deliveryLocation?.longitude ? Number(stop.trip.deliveryLocation.longitude) : null,
+      lastLatitude: stop.trip.positions?.[0]?.latitude ? Number(stop.trip.positions[0].latitude) : null,
+      lastLongitude: stop.trip.positions?.[0]?.longitude ? Number(stop.trip.positions[0].longitude) : null,
+      lastLocationAt: stop.trip.positions?.[0]?.serverReceivedAt?.toISOString() ?? null,
+      lastLocationAccuracy: stop.trip.positions?.[0]?.accuracyMeters ? Number(stop.trip.positions[0].accuracyMeters) : null,
     };
   }
 
@@ -229,13 +255,21 @@ export class RecipientService {
         type: status === 'DELIVERED' ? 'POD_SUBMITTED' : 'SCHEDULE_CHANGED',
         title,
         body: `Perjalanan ${tripRef} · ${stop.site.name}`,
-        status: 'QUEUED',
+        status: 'SENT',
         stopId: stop.id,
         tripId,
       })),
     );
     if (notifications.length > 0) {
-      await this.prisma.db.notificationEvent.createMany({ data: notifications });
+      const existing = await this.prisma.db.notificationEvent.findMany({
+        where: { tripId, stopId: { in: notifications.map((n) => n.stopId).filter((id): id is string => Boolean(id)) } },
+        select: { userId: true, stopId: true, type: true },
+      });
+      const existingKeys = new Set(existing.map((n) => `${n.userId}:${n.stopId}:${n.type}`));
+      const unique = notifications.filter((n) => !existingKeys.has(`${n.userId}:${n.stopId}:${n.type}`));
+      if (unique.length > 0) {
+        await this.prisma.db.notificationEvent.createMany({ data: unique });
+      }
     }
   }
 
@@ -244,6 +278,63 @@ export class RecipientService {
       where: { id, userId },
       data: { readAt: new Date() },
     });
+    return { ok: true };
+  }
+
+  async createReview(userId: string, stopId: string, input: { rating: number; emoji?: string; comment?: string }) {
+    const stop = await this.prisma.db.deliveryStop.findUnique({ where: { id: stopId } });
+    if (!stop) throw new NotFoundException({ code: 'STOP_NOT_FOUND' });
+    await this.ensureMember(userId, stop.recipientSiteId);
+
+    if (input.rating < 1 || input.rating > 5) throw new BadRequestException({ code: 'INVALID_RATING' });
+
+    return this.prisma.db.recipientReview.create({
+      data: {
+        userId,
+        recipientSiteId: stop.recipientSiteId,
+        tripId: stop.tripId,
+        stopId,
+        rating: input.rating,
+        emoji: input.emoji?.trim() ?? null,
+        comment: input.comment?.trim() ?? null,
+        status: 'SUBMITTED',
+      },
+    });
+  }
+
+  async getReview(userId: string, stopId: string) {
+    const stop = await this.prisma.db.deliveryStop.findUnique({ where: { id: stopId } });
+    if (!stop) throw new NotFoundException({ code: 'STOP_NOT_FOUND' });
+    await this.ensureMember(userId, stop.recipientSiteId);
+    return this.prisma.db.recipientReview.findUnique({ where: { userId_stopId: { userId, stopId } } });
+  }
+
+  async listReviews(userId: string) {
+    return this.prisma.db.recipientReview.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+  }
+
+  async updateReview(userId: string, reviewId: string, input: { rating?: number; emoji?: string; comment?: string }) {
+    const review = await this.prisma.db.recipientReview.findUnique({ where: { id: reviewId } });
+    if (!review || review.userId !== userId) throw new NotFoundException({ code: 'REVIEW_NOT_FOUND' });
+    if (input.rating !== undefined && (input.rating < 1 || input.rating > 5)) throw new BadRequestException({ code: 'INVALID_RATING' });
+    return this.prisma.db.recipientReview.update({
+      where: { id: reviewId },
+      data: {
+        ...(input.rating !== undefined ? { rating: input.rating } : {}),
+        ...(input.emoji !== undefined ? { emoji: input.emoji?.trim() ?? null } : {}),
+        ...(input.comment !== undefined ? { comment: input.comment?.trim() ?? null } : {}),
+      },
+    });
+  }
+
+  async deleteReview(userId: string, reviewId: string) {
+    const review = await this.prisma.db.recipientReview.findUnique({ where: { id: reviewId } });
+    if (!review || review.userId !== userId) throw new NotFoundException({ code: 'REVIEW_NOT_FOUND' });
+    await this.prisma.db.recipientReview.delete({ where: { id: reviewId } });
     return { ok: true };
   }
 }

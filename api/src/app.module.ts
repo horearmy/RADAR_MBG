@@ -13,8 +13,10 @@ import { RegistrationModule } from './registration/registration.module.js';
 import { PlatformModule } from './platform/platform.module.js';
 import { DevModule } from './dev/dev.module.js';
 
+import { CacheModule } from './cache/cache.module.js';
+
 @Module({
-  imports: [DatabaseModule, AuthModule, TripModule, AdminModule, ExceptionModule, AlertModule, TenantModule, RegistrationModule, PlatformModule, RecipientModule, DevModule],
+  imports: [DatabaseModule, CacheModule, AuthModule, TripModule, AdminModule, ExceptionModule, AlertModule, TenantModule, RegistrationModule, PlatformModule, RecipientModule, DevModule],
   controllers: [AppController],
   providers: [AppService],
 })

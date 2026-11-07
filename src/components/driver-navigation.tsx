@@ -41,6 +41,7 @@ export function DriverNavigation({ origin, destination, onStartLiveGps, liveGpsA
   const [loadingRoute, setLoadingRoute] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   // Initialize map (client-only, maplibre loaded via dynamic import)
   useEffect(() => {
@@ -121,6 +122,13 @@ export function DriverNavigation({ origin, destination, onStartLiveGps, liveGpsA
       return () => clearTimeout(timeout);
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (visible && mapRef.current) {
+      const timeout = setTimeout(() => mapRef.current?.resize(), 120);
+      return () => clearTimeout(timeout);
+    }
+  }, [expanded, visible]);
 
   // Fetch route when origin or destination changes
   useEffect(() => {
@@ -264,7 +272,17 @@ export function DriverNavigation({ origin, destination, onStartLiveGps, liveGpsA
     <div className="driver-nav">
       <div className="driver-nav-map" ref={mapContainer} />
 
-      <div className="driver-nav-info">
+      <div className={`driver-nav-info ${expanded ? "is-expanded" : "is-collapsed"}`}>
+        <button
+          type="button"
+          className="driver-nav-handle"
+          onClick={() => setExpanded((value) => !value)}
+          aria-expanded={expanded}
+          aria-label={expanded ? "Sembunyikan detail perjalanan" : "Tampilkan detail perjalanan"}
+        >
+          <span className="driver-nav-handle-bar" />
+        </button>
+
         <div className="driver-nav-destination">
           <strong>{destination.name}</strong>
           <span>Tujuan Pengiriman</span>
@@ -273,17 +291,23 @@ export function DriverNavigation({ origin, destination, onStartLiveGps, liveGpsA
         {loadingRoute && <div className="driver-nav-loading">Memuat rute...</div>}
         {routeError && !loadingRoute && <div className="driver-nav-error">{routeError}</div>}
 
-        {route && (
+        {route && !routeError && (
           <div className="driver-nav-stats">
             <div className="driver-nav-stat">
               <strong>{formatDistance(route.distance)}</strong>
-              <span>Jarak</span>
+              <span>Jarak ke tujuan</span>
             </div>
             <div className="driver-nav-stat">
               <strong>{formatDuration(route.duration)}</strong>
-              <span>Estimasi</span>
+              <span>Estimasi tiba</span>
             </div>
           </div>
+        )}
+
+        {expanded && route && (
+          <p className="field-caption" style={{ margin: 0 }}>
+            Rute dihitung dari lokasi Anda saat ini ke tujuan. Pastikan GPS aktif untuk pembaruan otomatis.
+          </p>
         )}
 
         {onStartLiveGps && (
@@ -292,7 +316,7 @@ export function DriverNavigation({ origin, destination, onStartLiveGps, liveGpsA
             className={`driver-nav-gps-btn ${liveGpsActive ? "active" : ""}`}
             onClick={onStartLiveGps}
           >
-            {liveGpsActive ? "🔴 Live GPS Aktif" : "📍 Mulai Live GPS"}
+            {liveGpsActive ? "Live GPS Aktif" : "Mulai Live GPS"}
           </button>
         )}
       </div>

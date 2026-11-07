@@ -285,6 +285,7 @@ export class MasterDataService {
           createdAt: true,
           updatedAt: true,
           phone: true,
+          photoUrl: true,
           sppg: { select: { id: true, code: true, name: true } },
         },
       }),
@@ -303,7 +304,9 @@ export class MasterDataService {
     const isDriver = principal.driverId !== null || principal.roles.some((role) => role.code === 'DRIVER');
     const base: Prisma.DriverWhereInput = {
       ...(!includeAllTenants && tenantContext ? { tenantId: tenantContext.tenantId } : {}),
-      ...(!includeAllTenants && (tenantContext || scope.global)
+      ...(!includeAllTenants && tenantContext
+        ? {}
+        : scope.global
         ? {}
         : isDriver
           ? principal.driverId ? { id: principal.driverId } : { id: { in: [] } }
@@ -572,6 +575,7 @@ export class MasterDataService {
           code: input.code.trim().toUpperCase(),
           name: input.name.trim(),
           phone: input.phone?.trim(),
+          photoUrl: input.photoUrl?.trim() ?? null,
           status: DriverStatus.ACTIVE,
         },
       }),
@@ -1014,6 +1018,7 @@ export class MasterDataService {
         data: {
           ...(input.name !== undefined ? { name: input.name.trim() } : {}),
           ...(input.phone !== undefined ? { phone: input.phone?.trim() ?? null } : {}),
+          ...(input.photoUrl !== undefined ? { photoUrl: input.photoUrl?.trim() ?? null } : {}),
           ...(input.status !== undefined ? { status: input.status } : {}),
         },
       });

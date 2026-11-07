@@ -793,8 +793,11 @@ export function hasPermission(user: SessionUser | null | undefined, permission: 
   if (user.roles?.some((role) => Array.isArray(role?.permissions) && role.permissions.includes(permission))) {
     return true;
   }
-  const tenantRole = user.tenantRole;
-  if (tenantRole && TENANT_ROLE_PERMISSIONS[tenantRole]?.includes(permission)) return true;
+  const tenantRoles = [
+    user.tenantRole,
+    ...(user.tenantMemberships?.map((membership) => membership.role) ?? []),
+  ].filter(Boolean) as string[];
+  if (tenantRoles.some((role) => TENANT_ROLE_PERMISSIONS[role]?.includes(permission))) return true;
   return false;
 }
 

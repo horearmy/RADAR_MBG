@@ -69,7 +69,7 @@ export class TenantController {
 
   @Post('drivers')
   @RequirePermissions('master:manage')
-  createDriver(@Req() req: AuthenticatedRequest, @Body() body: { code: string; name: string; phone?: string }) {
+  createDriver(@Req() req: AuthenticatedRequest, @Body() body: { code: string; name: string; phone?: string; photoUrl?: string }) {
     return this.service.createDriver(req.tenantContext!.tenantId, body);
   }
 
@@ -119,6 +119,12 @@ export class TenantController {
   @RequirePermissions('tenant:read')
   getUser(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.service.getUser(req.tenantContext!.tenantId, id);
+  }
+
+  @Post('users/:id/activate')
+  @RequirePermissions('tenant:manage')
+  activateUser(@Req() req: AuthenticatedRequest, @Param('id') id: string, @Body() body: { password: string }) {
+    return this.service.activateInvitedUser(req.tenantContext!.tenantId, id, body.password, req.principal!.id);
   }
 
   @Patch('users/:id')

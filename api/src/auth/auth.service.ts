@@ -8,6 +8,7 @@ import * as argon2 from 'argon2';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { PrismaService } from '../database/prisma.service.js';
+import { CacheService } from '../cache/cache.service.js';
 import { isAccountTokenUsable } from './account-token-policy.js';
 import { DistributedLoginRateLimiter } from './login-rate-limiter.js';
 import {
@@ -59,10 +60,15 @@ export type SessionPrincipal = {
 @Injectable()
 export class AuthService {
   private readonly loginRateLimiter: DistributedLoginRateLimiter;
+  private readonly superadminRateLimiter: DistributedLoginRateLimiter;
   private readonly mfaEnrollmentBuckets = new Map<string, LoginBucket>();
 
-  constructor(private readonly prisma: PrismaService) {
-    this.loginRateLimiter = new DistributedLoginRateLimiter(prisma, 10, LOGIN_WINDOW_MS);
+  constructor(private readonly prisma: PrismaService, private readonly cache: CacheService) {
+    const loginRateLimit = Number(process.env.LOGIN_RATE_LIMIT ?? 10);
+    const loginWindowMs = Number(process.env.LOGIN_RATE_WINDOW_MS ?? LOGIN_WINDOW_MS);
+    this.loginRateLimiter = new DistributedLoginRateLimiter(prisma, loginRateLimit, loginWindowMs);
+    const superadminRateLimit = Number(process.env.SUPERADMIN_LOGIN_RATE_LIMIT ?? 5);
+    this.superadminRateLimiter = new DistributedLoginRateLimiter(prisma, superadminRateLimit, loginWindowMs);
   }
 
   issueCsrfCookie(response: Response): { csrfToken: string } {
@@ -176,8 +182,11 @@ export class AuthService {
 
     await this.clearLoginRateLimit(username, clientIp);
 
+    const isSuperadmin = user.roles.some(({ role }) => role.isGlobal);
+    const sessionTtlMs = isSuperadmin ? Number(process.env.SUPERADMIN_SESSION_TTL_MS ?? 8 * 60 * 60 * 1000) : SESSION_TTL_MS;
+
     const rawToken = randomBytes(32).toString('base64url');
-    const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+    const expiresAt = new Date(Date.now() + sessionTtlMs);
     const session = await this.prisma.db.$transaction(async (tx) => {
       if (recoveryCodeId) {
         const consumed = await tx.mfaRecoveryCode.updateMany({
@@ -245,6 +254,7 @@ export class AuthService {
   async logout(request: Request, response: Response) {
     this.assertCsrf(request);
     const rawToken = request.cookies?.[SESSION_COOKIE];
+    if (rawToken) await this.cache.del(`session:principal:${this.hashToken(rawToken)}`);
     const session = rawToken
       ? await this.prisma.db.session.findUnique({
           where: { tokenHash: this.hashToken(rawToken) },
@@ -279,9 +289,13 @@ export class AuthService {
 
   async resolveSession(rawToken?: string): Promise<SessionPrincipal | null> {
     if (!rawToken) return null;
+    const tokenHash = this.hashToken(rawToken);
+    const cacheKey = `session:principal:${tokenHash}`;
+    const cached = await this.cache.get<SessionPrincipal>(cacheKey);
+    if (cached) return cached;
 
     const session = await this.prisma.db.session.findUnique({
-      where: { tokenHash: this.hashToken(rawToken) },
+      where: { tokenHash },
       include: {
         user: {
           include: {
@@ -316,7 +330,7 @@ export class AuthService {
       return null;
     }
 
-    return {
+    const principal: SessionPrincipal = {
       id: session.user.id,
       username: session.user.username,
       displayName: session.user.displayName,
@@ -341,6 +355,8 @@ export class AuthService {
         permissions: role.permissions.map(({ permission }) => permission.code),
       })),
     };
+    await this.cache.set(cacheKey, principal, 300);
+    return principal;
   }
 
   async beginMfaEnrollment(principal: SessionPrincipal) {
@@ -402,6 +418,16 @@ export class AuthService {
       });
       if (updated.count !== 1) {
         throw new UnauthorizedException({ code: 'ACCOUNT_TOKEN_INVALID_OR_EXPIRED' });
+      }
+      if (isInvitation) {
+        await tx.tenantMembership.updateMany({
+          where: { userId: accountToken.userId, status: 'INVITED' },
+          data: { status: 'ACTIVE' },
+        });
+        await tx.recipientMembership.updateMany({
+          where: { userId: accountToken.userId, status: 'INVITED' },
+          data: { status: 'ACTIVE' },
+        });
       }
       const revoked = await tx.session.updateMany({
         where: { userId: accountToken.userId, revokedAt: null },
@@ -745,7 +771,9 @@ export class AuthService {
   }
 
   private async assertLoginRateLimit(username: string, ip: string) {
-    if (!await this.loginRateLimiter.allows(username, ip)) {
+    const superadminUsernames = (process.env.SUPERADMIN_USERNAMES ?? 'admin').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const limiter = superadminUsernames.includes(username.trim().toLowerCase()) ? this.superadminRateLimiter : this.loginRateLimiter;
+    if (!await limiter.allows(username, ip)) {
       throw new ForbiddenException({
         code: 'LOGIN_RATE_LIMITED',
         message: 'Terlalu banyak percobaan. Silakan coba kembali nanti.',

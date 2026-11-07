@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { Suspense, useCallback, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, Search, ShieldCheck } from "lucide-react";
+import { AppSidebar } from "@/components/app-sidebar";
 import { HeaderAccount } from "@/components/account-menu";
 import {
   getAuditLogs,
@@ -101,8 +102,13 @@ export default function AuditPage() {
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
   return (
-    <main className="audit-page">
-      <header className="approval-topbar">
+    <main className="app-shell">
+      <Suspense fallback={<aside className="sidebar" />}>
+        <AppSidebar />
+      </Suspense>
+      <section className="main-column">
+        <div className="audit-page">
+          <header className="approval-topbar">
         <Link href="/" className="approval-back"><ArrowLeft size={15} /> Dashboard</Link>
         <div className="approval-brand"><span className="brand-mark"><span /><span /><span /></span><strong>RADAR<span>MBG</span></strong></div>
         <HeaderAccount user={user} />
@@ -142,6 +148,8 @@ export default function AuditPage() {
 
         <div className="audit-pagination"><span>Menampilkan {total ? ((page - 1) * PAGE_SIZE + 1).toLocaleString("id-ID") : 0}–{Math.min(page * PAGE_SIZE, total).toLocaleString("id-ID")} dari {total.toLocaleString("id-ID")}</span><div><button aria-label="Halaman sebelumnya" disabled={page <= 1 || loading} onClick={() => setPage((value) => Math.max(1, value - 1))} type="button"><ChevronLeft size={15} /></button><button aria-label="Halaman selanjutnya" disabled={page >= totalPages || loading} onClick={() => setPage((value) => value + 1)} type="button"><ChevronRight size={15} /></button></div></div>
       </div>
+      </div>
+        </section>
     </main>
   );
 }

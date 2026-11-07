@@ -4,9 +4,8 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Car, Edit, RefreshCw, Truck, Users } from "lucide-react";
-import { getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
-
-const apiBase = process.env.NEXT_PUBLIC_RADAR_API_URL ?? "http://localhost:4000/api/v1";
+import { apiBaseUrl, getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
+const apiBase = apiBaseUrl;
 
 function formatDate(iso?: string | null) {
   if (!iso) return "-";

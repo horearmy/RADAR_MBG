@@ -86,6 +86,7 @@ export default function SppgPage() {
   const [selectedReg, setSelectedReg] = useState<any>(null);
   const [provisionResult, setProvisionResult] = useState<any>(null);
   const [alreadyMsg, setAlreadyMsg] = useState<string | null>(null);
+  const [selectedRegs, setSelectedRegs] = useState<string[]>([]);
 
   async function loadRegistrations() {
     try {
@@ -123,6 +124,37 @@ export default function SppgPage() {
       setProvisionResult(body);
     }
     await loadRegistrations();
+  }
+
+  async function bulkProvision() {
+    const targets = registrations.filter((r) => selectedRegs.includes(r.id) && r.status === 'APPROVED' && !r.tenantId);
+    if (targets.length === 0) {
+      alert('Pilih registrasi APPROVED yang belum diprovisi.');
+      return;
+    }
+    const csrfRes = await fetch(`${apiBase}/auth/csrf`, { credentials: 'include' });
+    const csrfJson = await csrfRes.json().catch(() => null) as { csrfToken?: string } | null;
+    if (!csrfRes.ok || !csrfJson?.csrfToken) {
+      alert('Gagal memulai sesi keamanan. Muat ulang halaman lalu coba lagi.');
+      return;
+    }
+    const results: string[] = [];
+    for (const target of targets) {
+      try {
+        const res = await fetch(`${apiBase}/admin/sppg-registrations/${target.id}/provision`, {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfJson.csrfToken },
+        });
+        const body = await res.json().catch(() => null);
+        if (!res.ok) results.push(`${target.registrationNumber}: ${body?.message ?? 'gagal'}`);
+        else results.push(`${target.registrationNumber}: berhasil (${body?.adminUsername ?? '-'})`);
+      } catch {
+        results.push(`${target.registrationNumber}: error jaringan`);
+      }
+    }
+    setSelectedRegs([]);
+    await loadRegistrations();
+    alert(results.join('\\n'));
   }
 
   const load = useCallback(async () => {
@@ -349,13 +381,23 @@ export default function SppgPage() {
                   <h2>Pendaftaran SPPG (Menunggu Review)</h2>
                   <p>{registrations.filter((r) => r.status === 'SUBMITTED').length} baru</p>
                 </div>
+                <div className="panel-actions">
+                  <button className="btn btn-success" onClick={bulkProvision} disabled={selectedRegs.length === 0}>Provision Terpilih ({selectedRegs.length})</button>
+                </div>
               </div>
               <div className="table-wrap" style={{ maxHeight: 320, overflowY: 'auto' }}>
                 <table>
-                  <thead><tr><th>NOMOR</th><th>NAMA</th><th>STATUS</th><th>AKSI</th></tr></thead>
+                  <thead><tr><th><input type="checkbox" aria-label="Pilih semua" onChange={(e) => {
+  if (e.target.checked) setSelectedRegs(registrations.filter((r) => r.status === 'APPROVED' && !r.tenantId).map((r) => r.id));
+  else setSelectedRegs([]);
+}} /></th><th>NOMOR</th><th>NAMA</th><th>STATUS</th><th>AKSI</th></tr></thead>
                   <tbody>
                     {registrations.map((r) => (
                       <tr key={r.id} style={{ background: r.status === 'APPROVED' ? '#e8f7f0' : r.status === 'REJECTED' ? '#fff0ef' : undefined }}>
+                        <td><input type="checkbox" checked={selectedRegs.includes(r.id)} disabled={!(r.status === 'APPROVED' && !r.tenantId)} onChange={(e) => {
+                          if (e.target.checked) setSelectedRegs((prev) => [...new Set([...prev, r.id])]);
+                          else setSelectedRegs((prev) => prev.filter((id) => id !== r.id));
+                        }} /></td>
                         <td>{r.registrationNumber}</td>
                         <td>{r.sppgName}</td>
                         <td><span className={`pill ${r.status === 'APPROVED' ? 'pill-active' : r.status === 'REJECTED' ? 'pill-danger' : r.status === 'REVISION_REQUIRED' ? 'pill-warning' : 'pill-info'}`}>{r.status}</span></td>
@@ -364,7 +406,8 @@ export default function SppgPage() {
                           <button className="btn btn-primary" onClick={() => regAction(r.id, 'approve')}>Setujui</button>
                           <button className="btn btn-danger" onClick={() => regAction(r.id, 'reject')}>Tolak</button>
                           <button className="btn btn-warning" onClick={() => regAction(r.id, 'request-revision')}>Revisi</button>
-                          {r.status === 'APPROVED' && <button className="btn btn-success" onClick={() => regAction(r.id, 'provision')}>Provision</button>}
+                          {r.status === 'APPROVED' && !r.tenantId && <button className="btn btn-success" onClick={() => regAction(r.id, 'provision')}>Provision</button>}
+{r.tenantId && <span className="pill pill-active" style={{ marginLeft: 6 }}>Diprovisi</span>}
                         </td>
                       </tr>
                     ))}
@@ -488,13 +531,32 @@ export default function SppgPage() {
           <div style={{ padding: 20, display: 'grid', gap: 8, fontSize: 13 }}>
             <div><strong>Tenant ID:</strong> {provisionResult.tenant?.id}</div>
             <div><strong>Nama SPPG:</strong> {provisionResult.tenant?.name}</div>
+            <div><strong>Username admin:</strong> {provisionResult.adminUsername ?? '-'}</div>
             <div><strong>Admin:</strong> {provisionResult.tenant?.tenantCode}</div>
-            <div><strong>Kanal:</strong> Email (dev: log)</div>
-            <div><strong>Pengiriman:</strong> SENT (dev)</div>
-            <div><strong>Kedaluwarsa:</strong> 24 jam</div>
+            <div><strong>Kanal:</strong> Undangan aplikasi (token satu kali)</div>
+            <div><strong>Kedaluwarsa:</strong> 7 hari</div>
             <div><strong>Status tenant:</strong> {provisionResult.tenant?.status}</div>
             <div><strong>Status akun:</strong> INVITED</div>
-            <div style={{ marginTop: 8, color: '#62728a', fontSize: 11 }}>Token dibuat oleh server, disimpan sebagai hash, dan hanya dapat digunakan satu kali.</div>
+            <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
+              <strong>Token undangan:</strong>
+              <textarea readOnly value={provisionResult.invitationToken ?? ''} rows={3} style={{ width: '100%', fontFamily: 'monospace', fontSize: 11, resize: 'vertical' }} />
+              <button className="btn btn-ghost" type="button" onClick={() => { if (provisionResult?.invitationToken) void navigator.clipboard?.writeText(provisionResult.invitationToken); }}>
+                Salin token
+              </button>
+            </div>
+            <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
+              <strong>Link aktivasi:</strong>
+              <input readOnly value={`${typeof window !== 'undefined' ? window.location.origin : ''}/acceptinvitation?token=${provisionResult.invitationToken ?? ''}`} style={{ width: '100%', fontFamily: 'monospace', fontSize: 11 }} />
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button className="btn btn-ghost" type="button" onClick={() => { const link = `${typeof window !== 'undefined' ? window.location.origin : ''}/acceptinvitation?token=${provisionResult?.invitationToken ?? ''}`; if (provisionResult?.invitationToken) void navigator.clipboard?.writeText(link); }}>
+                  Salin link
+                </button>
+                <a className="btn btn-ghost" href={`mailto:?subject=Aktivasi%20akun%20RADAR%20MBG&body=${encodeURIComponent(`Username: ${provisionResult?.adminUsername ?? '-'}%0ATenant ID: ${provisionResult?.tenant?.id ?? '-'}%0ALink aktivasi: ${typeof window !== 'undefined' ? window.location.origin : ''}/acceptinvitation?token=${provisionResult?.invitationToken ?? ''}`)}`}>
+                  Buka email
+                </a>
+              </div>
+            </div>
+            <div style={{ marginTop: 8, color: '#62728a', fontSize: 11 }}>Serahkan username dan token ini kepada admin SPPG. Aktivasi dilakukan di /acceptinvitation, lalu gunakan tenant ID {provisionResult.tenant?.id} untuk konteks tenant.</div>
           </div>
           <div style={{ padding: 20, borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button className="btn btn-ghost" onClick={() => setProvisionResult(null)}>Tutup</button>

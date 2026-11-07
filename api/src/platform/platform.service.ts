@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
+import { CacheService } from '../cache/cache.service.js';
 
 @Injectable()
 export class PlatformService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly cache: CacheService) {}
 
 
   async listTenants() {
@@ -19,6 +20,83 @@ export class PlatformService {
         updatedAt: true,
       },
     });
+  }
+
+  async suspendTenant(id: string, principal: { id: string }, requestId: string, reason?: string) {
+    const tenant = await this.prisma.db.tenant.findUnique({ where: { id } });
+    if (!tenant) throw new NotFoundException({ code: 'TENANT_NOT_FOUND' });
+    if (tenant.status !== 'ACTIVE') throw new BadRequestException({ code: 'TENANT_STATUS_INVALID' });
+
+    const updated = await this.prisma.db.tenant.update({
+      where: { id },
+      data: { status: 'SUSPENDED', suspendedAt: new Date() },
+    });
+    await this.cache.del('platform:dashboard-summary');
+
+    await this.prisma.db.auditLog.create({
+      data: {
+        actorUserId: principal.id,
+        action: 'tenant.suspend',
+        entityType: 'tenant',
+        entityId: id,
+        result: 'SUCCESS',
+        reason: reason ?? null,
+        requestId,
+      },
+    });
+
+    return updated;
+  }
+
+  async archiveTenant(id: string, principal: { id: string }, requestId: string, reason?: string) {
+    const tenant = await this.prisma.db.tenant.findUnique({ where: { id } });
+    if (!tenant) throw new NotFoundException({ code: 'TENANT_NOT_FOUND' });
+    if (tenant.status === 'ARCHIVED') throw new BadRequestException({ code: 'TENANT_STATUS_INVALID' });
+
+    const updated = await this.prisma.db.tenant.update({
+      where: { id },
+      data: { status: 'ARCHIVED' },
+    });
+    await this.cache.del('platform:dashboard-summary');
+
+    await this.prisma.db.auditLog.create({
+      data: {
+        actorUserId: principal.id,
+        action: 'tenant.archive',
+        entityType: 'tenant',
+        entityId: id,
+        result: 'SUCCESS',
+        reason: reason ?? null,
+        requestId,
+      },
+    });
+
+    return updated;
+  }
+
+  async reactivateTenant(id: string, principal: { id: string }, requestId: string, reason?: string) {
+    const tenant = await this.prisma.db.tenant.findUnique({ where: { id } });
+    if (!tenant) throw new NotFoundException({ code: 'TENANT_NOT_FOUND' });
+    if (tenant.status === 'ACTIVE') throw new BadRequestException({ code: 'TENANT_STATUS_INVALID' });
+
+    const updated = await this.prisma.db.tenant.update({
+      where: { id },
+      data: { status: 'ACTIVE', suspendedAt: null, activatedAt: new Date() },
+    });
+
+    await this.prisma.db.auditLog.create({
+      data: {
+        actorUserId: principal.id,
+        action: 'tenant.reactivate',
+        entityType: 'tenant',
+        entityId: id,
+        result: 'SUCCESS',
+        reason: reason ?? null,
+        requestId,
+      },
+    });
+
+    return updated;
   }
 
   async listGeofences(tenantId?: string, activeOnly?: boolean) {
@@ -111,6 +189,106 @@ export class PlatformService {
     }));
   }
 
+  async recipientReviewSummary(tenantId?: string, from?: string, to?: string) {
+    const where: any = {};
+    if (tenantId) where.trip = { tenantId };
+    if (from || to) {
+      where.createdAt = {};
+      if (from) where.createdAt.gte = new Date(from);
+      if (to) where.createdAt.lte = new Date(to);
+    }
+
+    const reviews = await this.prisma.db.recipientReview.findMany({
+      where,
+      select: { rating: true, emoji: true, createdAt: true, trip: { select: { tenantId: true } } },
+    });
+
+    const tenantIds = [...new Set(reviews.map((r) => r.trip?.tenantId).filter((id): id is string => Boolean(id)))];
+    const tenantRows = tenantIds.length
+      ? await this.prisma.db.tenant.findMany({ where: { id: { in: tenantIds } }, select: { id: true, tenantCode: true, name: true } })
+      : [];
+    const tenantById = new Map(tenantRows.map((t) => [t.id, t]));
+
+    const total = reviews.length;
+    const averageRating = total > 0 ? reviews.reduce((sum, r) => sum + r.rating, 0) / total : 0;
+    const distribution = [1, 2, 3, 4, 5].map((rating) => ({
+      rating,
+      count: reviews.filter((r) => r.rating === rating).length,
+    }));
+
+    const emojiCounts = new Map<string, number>();
+    for (const r of reviews) {
+      if (r.emoji) emojiCounts.set(r.emoji, (emojiCounts.get(r.emoji) ?? 0) + 1);
+    }
+    const emojis = [...emojiCounts.entries()].map(([emoji, count]) => ({ emoji, count })).sort((a, b) => b.count - a.count);
+
+    const byTenant = new Map<string, { tenantId: string; tenantCode: string; name: string; total: number; sum: number }>();
+    for (const r of reviews) {
+      const tid = r.trip?.tenantId;
+      if (!tid) continue;
+      const t = tenantById.get(tid);
+      if (!t) continue;
+      const current = byTenant.get(tid) ?? { tenantId: tid, tenantCode: t.tenantCode, name: t.name, total: 0, sum: 0 };
+      current.total += 1;
+      current.sum += r.rating;
+      byTenant.set(tid, current);
+    }
+    const tenants = [...byTenant.values()].map((t) => ({
+      tenantId: t.tenantId,
+      tenantCode: t.tenantCode,
+      name: t.name,
+      total: t.total,
+      averageRating: t.total > 0 ? t.sum / t.total : 0,
+    })).sort((a, b) => b.averageRating - a.averageRating);
+
+    return {
+      total,
+      averageRating: Number(averageRating.toFixed(2)),
+      distribution,
+      emojis,
+      tenants,
+    };
+  }
+
+  async recipientReviewsRecent(tenantId?: string, limit = 20) {
+    const where: any = {};
+    if (tenantId) where.trip = { tenantId };
+    const rows = await this.prisma.db.recipientReview.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(Math.max(limit, 1), 50),
+      select: {
+        id: true,
+        rating: true,
+        emoji: true,
+        comment: true,
+        status: true,
+        createdAt: true,
+        trip: { select: { tenantId: true } },
+        user: { select: { displayName: true, username: true } },
+      },
+    });
+    const tenantIds = [...new Set(rows.map((r) => r.trip?.tenantId).filter((id): id is string => Boolean(id)))];
+    const tenantRows = tenantIds.length
+      ? await this.prisma.db.tenant.findMany({ where: { id: { in: tenantIds } }, select: { id: true, tenantCode: true, name: true } })
+      : [];
+    const tenantById = new Map(tenantRows.map((t) => [t.id, t]));
+    return rows.map((r) => {
+      const t = r.trip?.tenantId ? tenantById.get(r.trip.tenantId) : null;
+      return {
+        id: r.id,
+        rating: r.rating,
+        emoji: r.emoji,
+        comment: r.comment,
+        status: r.status,
+        createdAt: r.createdAt.toISOString(),
+        tenantCode: t?.tenantCode ?? null,
+        tenantName: t?.name ?? null,
+        userName: r.user?.displayName ?? r.user?.username ?? null,
+      };
+    });
+  }
+
   async summary(filters?: { tenantId?: string; from?: string; to?: string }) {
     const tripWhere: any = {};
     if (filters?.tenantId) tripWhere.tenantId = filters.tenantId;
@@ -128,6 +306,10 @@ export class PlatformService {
   }
 
   async dashboardSummary() {
+    const cacheKey = 'platform:dashboard-summary';
+    const cached = await this.cache.get<any>(cacheKey);
+    if (cached) return cached;
+
     const [tenantTotal, tenantActive, tenantPendingActivation, tenantSuspended, registrationPendingReview, approvalPending] =
       await Promise.all([
         this.prisma.db.tenant.count(),
@@ -140,7 +322,7 @@ export class PlatformService {
         this.prisma.db.approvalRequest.count({ where: { status: 'PENDING_APPROVAL' } }),
       ]);
 
-    return {
+    const result = {
       tenants: {
         total: tenantTotal,
         active: tenantActive,

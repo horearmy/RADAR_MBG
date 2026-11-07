@@ -14,8 +14,10 @@ import {
   getCurrentSession,
   getDeliveryLocationOptions,
   getGeofences,
+  getSelectedTenantId,
   getSppgOptions,
   hasPermission,
+  setSelectedTenantId,
   type DeliveryLocationOption,
   type GeofenceLocationType,
   type GeofenceSummary,
@@ -180,11 +182,20 @@ export default function GeofencesPage() {
         // Pengguna tenant hanya boleh memakai SPPG miliknya (legacySppgId).
         // Tanpa ini, daftar /admin/sppg bisa memuat SPPG tenant lain pada
         // organisasi/region yang sama sehingga riwayat geofence gagal dimuat.
-        const isTenantUser = !current.roles.some((role) => role.isGlobal) && Boolean(current.tenantRole);
+        const isTenantUser = !current.roles.some((role) => role.isGlobal) && (Boolean(current.tenantRole) || (current.tenantMemberships?.length ?? 0) > 0);
         let tenantSppgId: string | null = null;
         if (isTenantUser) {
+          const selectedTenantId = getSelectedTenantId();
+          const hasValidSelection = Boolean(selectedTenantId && current.tenantMemberships?.some((membership) => membership.tenantId === selectedTenantId));
+          if (!hasValidSelection && (current.tenantMemberships?.length ?? 0) === 1) {
+            setSelectedTenantId(current.tenantMemberships![0].tenantId);
+          }
+          const tenantIdForRequest = getSelectedTenantId() ?? (current.tenantMemberships?.length === 1 ? current.tenantMemberships[0].tenantId : null);
           try {
-            const meResponse = await apiFetchUrl(`${apiBaseUrl}/tenant/me`, { credentials: "include" });
+            const meResponse = await apiFetchUrl(`${apiBaseUrl}/tenant/me`, {
+              credentials: "include",
+              headers: tenantIdForRequest ? { "x-tenant-id": tenantIdForRequest } : undefined,
+            });
             if (meResponse.ok) {
               const me = await meResponse.json() as { legacySppgId?: string | null };
               tenantSppgId = me.legacySppgId ?? null;

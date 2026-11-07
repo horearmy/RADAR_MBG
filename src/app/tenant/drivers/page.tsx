@@ -7,7 +7,7 @@ import { HeaderAccount } from "@/components/account-menu";
 import { TenantSidebar } from "@/components/tenant-sidebar";
 import { apiBaseUrl, apiFetchUrl, getCurrentSession, hasPermission, type SessionUser } from "@/lib/api";
 
-type Driver = { id: string; code: string; name: string; phone?: string; status: string };
+type Driver = { id: string; code: string; name: string; phone?: string; photoUrl?: string | null; status: string };
 
 type InviteResult = {
   user: { id: string; username: string; displayName: string };
@@ -38,7 +38,7 @@ export default function TenantDriversPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ code: "", name: "", phone: "" });
+  const [form, setForm] = useState({ code: "", name: "", phone: "", photoUrl: "" });
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -108,6 +108,7 @@ export default function TenantDriversPage() {
           code: form.code.trim().toUpperCase(),
           name: form.name.trim(),
           phone: form.phone.trim() || undefined,
+           photoUrl: form.photoUrl.trim() || undefined,
         }),
       });
       if (!res.ok) {
@@ -115,7 +116,7 @@ export default function TenantDriversPage() {
         throw new Error(data.message || data.code || `REQUEST_FAILED_${res.status}`);
       }
       setShowForm(false);
-      setForm({ code: "", name: "", phone: "" });
+      setForm({ code: "", name: "", phone: "", photoUrl: "" });
       await loadDrivers(true);
     } catch (err) {
       setFormError(errorMessage(err));
@@ -192,7 +193,7 @@ export default function TenantDriversPage() {
               {canCreateDriver && (
                 <button className="trip-create-trigger" onClick={() => {
                   const code = `DRV-${Date.now().toString(36).toUpperCase()}`;
-                  setForm({ code, name: "", phone: "" });
+                  setForm({ code, name: "", phone: "", photoUrl: "" });
                   setShowForm(true);
                 }}>
                   <Plus size={14} />
@@ -394,6 +395,11 @@ export default function TenantDriversPage() {
                       <small>Format: 08xxxxxxxxxx</small>
                     </div>
                   </div>
+                     <div className="trip-form-field">
+                       <span>Foto (URL)</span>
+                       <input type="url" value={form.photoUrl} onChange={(e) => setForm((f) => ({ ...f, photoUrl: e.target.value }))} placeholder="https://..." />
+                       <small>Opsional: URL foto driver</small>
+                     </div>
                   {formError && (
                     <div className="trip-modal-error" role="alert">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={14} height={14}>
@@ -428,11 +434,12 @@ export default function TenantDriversPage() {
             <div className="table-wrap">
               <table>
                 <thead>
-                  <tr><th>KODE</th><th>NAMA</th><th>TELEPON</th><th>STATUS</th></tr>
+                  <tr><th>FOTO</th><th>KODE</th><th>NAMA</th><th>TELEPON</th><th>STATUS</th></tr>
                 </thead>
                 <tbody>
                   {drivers.map((d) => (
                     <tr key={d.id}>
+                      <td>{d.photoUrl ? <img src={d.photoUrl} alt={d.name} style={{ width: 32, height: 32, borderRadius: 16, objectFit: "cover" }} /> : "—"}</td>
                       <td>{d.code}</td>
                       <td>{d.name}</td>
                       <td>{d.phone ?? "—"}</td>

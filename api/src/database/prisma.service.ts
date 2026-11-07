@@ -8,7 +8,16 @@ export class PrismaService implements OnModuleDestroy {
   private readonly client: PrismaClient | null;
 
   constructor() {
-    this.client = process.env.DATABASE_URL ? new PrismaClient() : null;
+    const baseUrl = process.env.DATABASE_URL;
+    if (!baseUrl) {
+      this.client = null;
+      return;
+    }
+    const limit = Number(process.env.DB_CONNECTION_LIMIT ?? 20);
+    const url = baseUrl.includes('connection_limit=')
+      ? baseUrl
+      : `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}connection_limit=${limit}`;
+    this.client = new PrismaClient({ datasources: { db: { url } } });
   }
 
   get db(): PrismaClient {

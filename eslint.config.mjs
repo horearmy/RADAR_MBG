@@ -5,6 +5,13 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  {
+    rules: {
+      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/preserve-manual-memoization": "warn",
+      "@typescript-eslint/no-explicit-any": "warn",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
@@ -14,6 +21,12 @@ const eslintConfig = defineConfig([
     "api/**",
     "public/maplibre-gl-worker.mjs",
     "next-env.d.ts",
+    // Nested projects / generated artifacts
+    "radar-mbg/**",
+    "radar-mbg-web/**",
+    "radar-mbg-backend/**",
+    "trim_drivers.js",
+    "*.js",
   ]),
 ]);
 

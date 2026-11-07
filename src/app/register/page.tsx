@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { Building2, MapPin, Save } from "lucide-react";
 import { LocationPicker } from "@/components/location-picker";
-
-const apiBase = process.env.NEXT_PUBLIC_RADAR_API_URL ?? "http://localhost:4000/api/v1";
+import { apiBaseUrl } from "@/lib/api";
+const apiBase = apiBaseUrl;
 const PROVINCES_URL = "https://www.emsifa.com/api-wilayah-indonesia/v2/provinces.json";
 const REGENCIES_URL = (id: string) => `https://www.emsifa.com/api-wilayah-indonesia/v2/regencies/${id}.json`;
 const DISTRICTS_URL = (id: string) => `https://www.emsifa.com/api-wilayah-indonesia/v2/districts/${id}.json`;

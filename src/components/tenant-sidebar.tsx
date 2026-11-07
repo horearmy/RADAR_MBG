@@ -2,20 +2,23 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Activity, LayoutDashboard, Navigation, Truck, UserRound, Users, Building2, FilePlus, ClipboardCheck, KeyRound, BarChart3, MapPinned, MapPin, LogOut } from 'lucide-react';
+import { Activity, AlertTriangle, LayoutDashboard, Navigation, Truck, UserRound, Users, Building2, FilePlus, ClipboardCheck, KeyRound, BarChart3, MapPinned, MapPin, LogOut, QrCode } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { apiBaseUrl, getCurrentSession, getSelectedTenantId, hasPermission, setSelectedTenantId, type SessionUser } from '@/lib/api';
 
 const items = [
   { href: '/tenant', label: 'Ringkasan', icon: LayoutDashboard, permission: 'tenant:read' },
-  { href: '/tenant/trips', label: 'Perjalanan', icon: Navigation, permission: 'trip:read' },
+  { href: '/trips', label: 'Perjalanan', icon: Navigation, permission: 'trip:read' },
   { href: '/tenant/drivers', label: 'Driver', icon: UserRound, permission: 'master:read' },
   { href: '/tenant/vehicles', label: 'Kendaraan', icon: Truck, permission: 'master:read' },
   { href: '/tenant/users', label: 'Pengguna', icon: Users, permission: 'tenant:read' },
   { href: '/tenant/recipients', label: 'Penerima', icon: MapPin, permission: 'tenant:manage' },
+  { href: '/tenant/activation', label: 'Aktivasi Akun', icon: KeyRound, permission: 'tenant:manage' },
+  { href: '/tenant/recipient-registrations', label: 'Registrasi Penerima', icon: QrCode, permission: 'tenant:manage' },
   { href: '/tenant/audit', label: 'Audit Aktivitas', icon: Activity, permission: 'tenant:read' },
   { href: '/tenant/profile', label: 'Profil SPPG', icon: Building2, permission: 'tenant:read' },
   { href: '/tenant/map', label: 'Peta', icon: MapPinned, permission: 'master:read' },
+  { href: '/exceptions', label: 'Pusat risiko', icon: AlertTriangle, permission: 'exception:read' },
 ];
 
 const links = [
