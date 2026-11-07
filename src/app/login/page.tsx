@@ -126,9 +126,9 @@ export default function LoginPage() {
 
   return (
     <main className="login-shell" style={{ position: "relative", overflow: "hidden" }}>
-      <Image src={desktopBg} alt="" fill priority className="hidden md:block" style={{ objectFit: "cover", opacity: 0.15 }} />
-      <Image src={mobileBg} alt="" fill priority className="md:hidden" style={{ objectFit: "cover", opacity: 0.15 }} />
-      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(7,27,58,.55), rgba(7,27,58,.35))", zIndex: 1, pointerEvents: "none" }} />
+      <Image src={desktopBg} alt="" fill priority className="hidden md:block" style={{ objectFit: "cover", opacity: 0.25 }} />
+      <Image src={mobileBg} alt="" fill priority className="md:hidden" style={{ objectFit: "cover", opacity: 0.25 }} />
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(7,27,58,.35), rgba(7,27,58,.15))", zIndex: 1, pointerEvents: "none" }} />
       <section className="login-story" style={{ position: "relative", zIndex: 2 }}>
         <Link className="login-brand" href="/" aria-label="RADAR MBG">
           <span className="brand-mark"><span /><span /><span /></span>
