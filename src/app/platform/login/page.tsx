@@ -2,8 +2,11 @@
 
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { ShieldCheck, Eye, EyeOff } from "lucide-react";
 import { apiBaseUrl } from "@/lib/api";
+import desktopBg from "@/bg/dekstop.webp";
+import mobileBg from "@/bg/mobile.webp";
 import { isPlatformAdmin } from "@/lib/api";
 
 export default function PlatformLoginPage() {
@@ -101,17 +104,25 @@ export default function PlatformLoginPage() {
   return (
     <main
       className="login-shell"
-      style={{ gridTemplateColumns: "1fr", background: "linear-gradient(180deg, #071B3A 0%, #0B2548 100%)", minHeight: "100vh" }}
+      style={{
+        gridTemplateColumns: "1fr",
+        position: "relative",
+        minHeight: "100vh",
+        overflow: "hidden",
+      }}
     >
-      <div className="login-panel" style={{ background: "transparent" }}>
+      <Image src={desktopBg} alt="" fill priority className="hidden md:block" style={{ objectFit: "cover" }} />
+      <Image src={mobileBg} alt="" fill priority className="md:hidden" style={{ objectFit: "cover" }} />
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(7,27,58,.82), rgba(7,27,58,.50))", zIndex: 1 }} />
+      <div className="login-panel" style={{ background: "transparent", position: "relative", zIndex: 2 }}>
         <div className="login-card-wrap">
           <div className="login-heading">
-            <div className="login-icon"><ShieldCheck size={20} /></div>
+            <div className="login-icon" style={{ width: 48, height: 48 }}><ShieldCheck size={28} /></div>
             <p className="login-eyebrow" style={{ color: "#071B3A" }}>
-              <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, background: "#FDECEC", color: "#A41919", fontSize: 10, fontWeight: 700, letterSpacing: ".08em", marginRight: 6 }}>RESTRICTED</span>
+              <span style={{ display: "inline-block", padding: "4px 12px", borderRadius: 999, background: "#FDECEC", color: "#A41919", fontSize: 12, fontWeight: 700, letterSpacing: ".08em", marginRight: 8 }}>RESTRICTED</span>
               PLATFORM SUPERADMIN
             </p>
-            <h2>Masuk ke Platform</h2>
+            <h2 style={{ textTransform: "capitalize" }}>Masuk ke Platform</h2>
             <p className="login-description">Akses terbatas untuk administrator platform RADAR MBG.</p>
           </div>
           {error && <div className="login-feedback" role="alert">{error}</div>}
