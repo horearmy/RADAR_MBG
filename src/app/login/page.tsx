@@ -128,9 +128,8 @@ export default function LoginPage() {
     <main className="login-shell" style={{ position: "relative", overflow: "hidden" }}>
       <Image src={desktopBg} alt="" fill priority className="hidden md:block" style={{ objectFit: "cover", opacity: 0.15 }} />
       <Image src={mobileBg} alt="" fill priority className="md:hidden" style={{ objectFit: "cover", opacity: 0.15 }} />
-      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(7,27,58,.92), rgba(7,27,58,.85))", zIndex: 1 }} />
-      <div style={{ position: "relative", zIndex: 2, display: "contents" }}>
-      <section className="login-story">
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(7,27,58,.55), rgba(7,27,58,.35))", zIndex: 1, pointerEvents: "none" }} />
+      <section className="login-story" style={{ position: "relative", zIndex: 2 }}>
         <Link className="login-brand" href="/" aria-label="RADAR MBG">
           <span className="brand-mark"><span /><span /><span /></span>
           <span className="brand-copy"><strong>RADAR<span>MBG</span></strong><small>Operational intelligence</small></span>
@@ -143,7 +142,7 @@ export default function LoginPage() {
         <div className="login-story-footer"><span><ShieldCheck size={15} /> Akses terbatas untuk pengguna terdaftar</span><span>RADAR MBG <i>·</i> Control Tower</span></div>
       </section>
 
-      <section className="login-panel">
+      <section className="login-panel" style={{ position: "relative", zIndex: 2 }}>
         <div className="login-card-wrap">
           <div className="login-mobile-brand"><span className="brand-mark"><span /><span /><span /></span><strong>RADAR<span>MBG</span></strong></div>
           <div className="login-heading"><div className="login-icon"><LockKeyhole size={18} /></div><p className="login-eyebrow">PORTAL OPERASIONAL</p><h2>Selamat datang</h2><p className="login-description">Masuk menggunakan akun yang diberikan administrator.</p></div>
@@ -221,7 +220,6 @@ export default function LoginPage() {
         </div>
         <div className="login-panel-footer">© 2026 RADAR MBG <span>·</span> Sistem Pemantauan Distribusi</div>
       </section>
-      </div>
     </main>
   );
 }
