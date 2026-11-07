@@ -1,10 +1,13 @@
 "use client";
 
 import { Suspense, useEffect, useState, type FormEvent } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, KeyRound, LockKeyhole, ShieldCheck, User } from "lucide-react";
 import { apiBaseUrl } from "@/lib/api";
+import desktopBg from "@/bg/dekstop.webp";
+import mobileBg from "@/bg/mobile.webp";
 
 type ApiError = { code?: string; message?: string };
 
@@ -122,7 +125,11 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="login-shell">
+    <main className="login-shell" style={{ position: "relative", overflow: "hidden" }}>
+      <Image src={desktopBg} alt="" fill priority className="hidden md:block" style={{ objectFit: "cover", opacity: 0.15 }} />
+      <Image src={mobileBg} alt="" fill priority className="md:hidden" style={{ objectFit: "cover", opacity: 0.15 }} />
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(7,27,58,.92), rgba(7,27,58,.85))", zIndex: 1 }} />
+      <div style={{ position: "relative", zIndex: 2, display: "contents" }}>
       <section className="login-story">
         <Link className="login-brand" href="/" aria-label="RADAR MBG">
           <span className="brand-mark"><span /><span /><span /></span>
@@ -214,6 +221,7 @@ export default function LoginPage() {
         </div>
         <div className="login-panel-footer">© 2026 RADAR MBG <span>·</span> Sistem Pemantauan Distribusi</div>
       </section>
+      </div>
     </main>
   );
 }
