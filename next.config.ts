@@ -21,7 +21,7 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "img-src 'self' data: blob: https:",
               "font-src 'self' https://fonts.gstatic.com",
-              "connect-src 'self' https://router.project-osrm.org https://tile.openstreetmap.org https://accounts.google.com",
+              "connect-src 'self' http://localhost:* http://127.0.0.1:* https: https://router.project-osrm.org https://tile.openstreetmap.org https://accounts.google.com",
               "frame-src 'self' https://www.openstreetmap.org https://accounts.google.com",
               "object-src 'none'",
               "base-uri 'self'",
