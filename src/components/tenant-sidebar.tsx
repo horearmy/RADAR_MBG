@@ -8,7 +8,7 @@ import { apiBaseUrl, getCurrentSession, getSelectedTenantId, hasPermission, setS
 
 const items = [
   { href: '/tenant', label: 'Ringkasan', icon: LayoutDashboard, permission: 'tenant:read' },
-  { href: '/tenant/trips', label: 'Perjalanan', icon: Navigation, permission: 'trip:read' },
+  { href: '/trips', label: 'Perjalanan', icon: Navigation, permission: 'trip:read' },
   { href: '/tenant/drivers', label: 'Driver', icon: UserRound, permission: 'master:read' },
   { href: '/tenant/vehicles', label: 'Kendaraan', icon: Truck, permission: 'master:read' },
   { href: '/tenant/users', label: 'Pengguna', icon: Users, permission: 'tenant:read' },

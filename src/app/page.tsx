@@ -303,8 +303,8 @@ function HomeContent() {
         ...(user.tenantMemberships?.map((membership) => membership.role) ?? []),
       ].filter(Boolean) as string[];
       const isDriver = user.driverId !== null || tenantRoles.includes("TENANT_DRIVER");
-      // Fallback: akun tanpa izin platform diarahkan ke workspace yang sesuai.
-      if (!hasPermission(user, "trip:read") && !hasPermission(user, "exception:read")) {
+      // Platform dashboard (/) hanya untuk superadmin. Tenant dan field user diarahkan ke workspace-nya.
+      if (!isPlatformAdmin(user)) {
         if (isDriver) {
           router.replace("/radarapp/driver");
           return;
