@@ -125,11 +125,12 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="login-shell" style={{ position: "relative", overflow: "hidden" }}>
-      <Image src={desktopBg} alt="" fill priority className="hidden md:block" style={{ objectFit: "cover", opacity: 0.25 }} />
-      <Image src={mobileBg} alt="" fill priority className="md:hidden" style={{ objectFit: "cover", opacity: 0.25 }} />
-      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(7,27,58,.35), rgba(7,27,58,.15))", zIndex: 1, pointerEvents: "none" }} />
-      <section className="login-story" style={{ position: "relative", zIndex: 2 }}>
+    <main className="login-shell">
+      <section className="login-story" style={{ position: "relative", overflow: "hidden" }}>
+        <Image src={desktopBg} alt="" fill priority className="hidden md:block" style={{ objectFit: "cover", opacity: 0.2 }} />
+        <Image src={mobileBg} alt="" fill priority className="md:hidden" style={{ objectFit: "cover", opacity: 0.2 }} />
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(7,27,58,.75), rgba(7,27,58,.55))", zIndex: 1, pointerEvents: "none" }} />
+        <div style={{ position: "relative", zIndex: 2, display: "flex", flexDirection: "column", justifyContent: "space-between", minHeight: "100vh" }}>
         <Link className="login-brand" href="/" aria-label="RADAR MBG">
           <span className="brand-mark"><span /><span /><span /></span>
           <span className="brand-copy"><strong>RADAR<span>MBG</span></strong><small>Operational intelligence</small></span>
@@ -140,9 +141,10 @@ export default function LoginPage() {
           <p>Satu ruang kendali untuk memantau perjalanan, memastikan kedatangan, dan menelusuri serah-terima Makan Bergizi Gratis.</p>
         </div>
         <div className="login-story-footer"><span><ShieldCheck size={15} /> Akses terbatas untuk pengguna terdaftar</span><span>RADAR MBG <i>·</i> Control Tower</span></div>
+        </div>
       </section>
 
-      <section className="login-panel" style={{ position: "relative", zIndex: 2 }}>
+      <section className="login-panel">
         <div className="login-card-wrap">
           <div className="login-mobile-brand"><span className="brand-mark"><span /><span /><span /></span><strong>RADAR<span>MBG</span></strong></div>
           <div className="login-heading"><div className="login-icon"><LockKeyhole size={18} /></div><p className="login-eyebrow">PORTAL OPERASIONAL</p><h2>Selamat datang</h2><p className="login-description">Masuk menggunakan akun yang diberikan administrator.</p></div>
