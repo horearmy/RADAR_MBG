@@ -89,7 +89,6 @@ export function DriverNavigation({ origin, destination, onStartLiveGps, liveGpsA
           console.warn("WebGL context lost, attempting to restore...");
         });
         canvas.addEventListener("webglcontextrestored", () => {
-          console.log("WebGL context restored");
         });
 
         map.on("load", () => {

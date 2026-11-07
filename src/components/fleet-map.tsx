@@ -623,7 +623,6 @@ export function FleetMap({
           }, 100);
         });
         canvas.addEventListener("webglcontextrestored", () => {
-          console.log("WebGL context restored");
           if (!cancelled) {
             map.resize();
           }
