@@ -115,45 +115,45 @@ export default function PlatformLoginPage() {
       <Image src={mobileBg} alt="" fill priority className="md:hidden" style={{ objectFit: "cover" }} />
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(7,27,58,.82), rgba(7,27,58,.50))", zIndex: 1 }} />
       <div className="login-panel" style={{ background: "transparent", position: "relative", zIndex: 2 }}>
-        <div className="login-card-wrap">
+        <div className="login-card-wrap" style={{ background: "rgba(15,23,42,0.78)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 16, padding: 24 }}>
           <div className="login-heading">
-            <div className="login-icon" style={{ width: 48, height: 48 }}><ShieldCheck size={28} /></div>
-            <p className="login-eyebrow" style={{ color: "#071B3A" }}>
-              <span style={{ display: "inline-block", padding: "4px 12px", borderRadius: 999, background: "#FDECEC", color: "#A41919", fontSize: 12, fontWeight: 700, letterSpacing: ".08em", marginRight: 8 }}>RESTRICTED</span>
+            <div className="login-icon" style={{ width: 48, height: 48, background: "rgba(255,255,255,0.12)", color: "#fff" }}><ShieldCheck size={28} /></div>
+            <p className="login-eyebrow" style={{ color: "#fff" }}>
+              <span style={{ display: "inline-block", padding: "4px 12px", borderRadius: 999, background: "rgba(239,68,68,0.25)", color: "#FCA5A5", fontSize: 12, fontWeight: 700, letterSpacing: ".08em", marginRight: 8 }}>RESTRICTED</span>
               PLATFORM SUPERADMIN
             </p>
-            <h2 style={{ textTransform: "capitalize" }}>Masuk ke Platform</h2>
-            <p className="login-description">Akses terbatas untuk administrator platform RADAR MBG.</p>
+            <h2 style={{ textTransform: "capitalize", color: "#fff" }}>Masuk ke Platform</h2>
+            <p className="login-description" style={{ color: "#CBD5E1" }}>Akses terbatas untuk administrator platform RADAR MBG.</p>
           </div>
           {error && <div className="login-feedback" role="alert">{error}</div>}
           <form className="login-form" onSubmit={submit}>
-            <label>
+            <label style={{ color: "#E2E8F0" }}>
               Username
-              <input value={username} onChange={(e) => setUsername(e.target.value)} required autoComplete="username" />
+              <input value={username} onChange={(e) => setUsername(e.target.value)} required autoComplete="username" style={{ background: "rgba(255,255,255,0.08)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)" }} />
             </label>
-            <label>
+            <label style={{ color: "#E2E8F0" }}>
               Password
               <div className="password-field">
-                <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
-                <button type="button" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? "Sembunyikan password" : "Tampilkan password"}>
+                <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" style={{ background: "rgba(255,255,255,0.08)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)" }} />
+                <button type="button" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? "Sembunyikan password" : "Tampilkan password"} style={{ color: "#CBD5E1" }}>
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
             </label>
             {needsMfa && (
               <>
-                <label>
+                <label style={{ color: "#E2E8F0" }}>
                   Kode MFA
-                  <input value={otpCode} onChange={(e) => setOtpCode(e.target.value)} placeholder="6 digit" inputMode="numeric" />
+                  <input value={otpCode} onChange={(e) => setOtpCode(e.target.value)} placeholder="6 digit" inputMode="numeric" style={{ background: "rgba(255,255,255,0.08)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)" }} />
                 </label>
-                <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, color: "#E2E8F0" }}>
                   <input type="checkbox" checked={useRecoveryCode} onChange={(e) => setUseRecoveryCode(e.target.checked)} />
                   Gunakan kode pemulihan
                 </label>
                 {useRecoveryCode && (
-                  <label>
+                  <label style={{ color: "#E2E8F0" }}>
                     Kode pemulihan
-                    <input value={recoveryCode} onChange={(e) => setRecoveryCode(e.target.value)} />
+                    <input value={recoveryCode} onChange={(e) => setRecoveryCode(e.target.value)} style={{ background: "rgba(255,255,255,0.08)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)" }} />
                   </label>
                 )}
               </>
@@ -162,12 +162,12 @@ export default function PlatformLoginPage() {
               {loading ? "Memverifikasi..." : "Masuk"}
             </button>
           </form>
-          <div style={{ marginTop: 16, display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap", fontSize: 11, color: "#718096" }}>
+          <div style={{ marginTop: 16, display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap", fontSize: 11, color: "#CBD5E1" }}>
             <span>🔒 HTTPS</span>
             <span>🛡️ MFA wajib</span>
             <span>⏱️ Sesi 8 jam</span>
           </div>
-          <p style={{ marginTop: 12, textAlign: "center", fontSize: 11, color: "#9AA5B2" }}>
+          <p style={{ marginTop: 12, textAlign: "center", fontSize: 11, color: "#94A3B8" }}>
             Semua akses dicatat. Sesi berakhir otomatis saat tidak aktif.
           </p>
         </div>
