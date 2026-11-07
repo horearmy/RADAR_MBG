@@ -1,0 +1,62 @@
+{
+  "packageId": "com.radar.mbg",
+  "host": "domain-anda.com",
+  "name": "RADAR MBG",
+  "launcherName": "RADAR MBG",
+  "display": "standalone",
+  "orientation": "portrait",
+  "themeColor": "#071b3a",
+  "navigationColor": "#071b3a",
+  "navigationColorDark": "#071b3a",
+  "navigationDividerColor": "#071b3a",
+  "backgroundColor": "#f4f7fb",
+  "enableNotifications": true,
+  "startUrl": "/radarapp",
+  "iconUrl": "https://domain-anda.com/icon-512.png",
+  "maskableIconUrl": "https://domain-anda.com/icon-maskable-512.png",
+  "monochromeIconUrl": "https://domain-anda.com/icon-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "radar-mbg"
+  },
+  "appVersion": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [
+    {
+      "name": "Driver",
+      "shortName": "Driver",
+      "url": "/radarapp/driver",
+      "chosenIconUrl": "https://domain-anda.com/icon-192.png"
+    },
+    {
+      "name": "Penerima",
+      "shortName": "Penerima",
+      "url": "/radarapp/recipient",
+      "chosenIconUrl": "https://domain-anda.com/icon-192.png"
+    }
+  ],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://domain-anda.com/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {
+    "locationDelegation": {
+      "enabled": true
+    },
+    "playBilling": {
+      "enabled": false
+    }
+  },
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://domain-anda.com/",
+  "minSdkVersion": 21,
+  "targetSdkVersion": 34,
+  "maxSdkVersion": null,
+  "enableDebuggingFeatures": false,
+  "enableAssetLinksCheck": true
+}
