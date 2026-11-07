@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, Eye, EyeOff, LockKeyhole, ShieldCheck } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, KeyRound, LockKeyhole, ShieldCheck, User } from "lucide-react";
 import { apiBaseUrl } from "@/lib/api";
 
 type ApiError = { code?: string; message?: string };
@@ -146,30 +146,35 @@ export default function LoginPage() {
 
           <form className="login-form" onSubmit={submit}>
             <label htmlFor="username">Username</label>
-            <input
-              autoComplete="username"
-              autoCapitalize="none"
-              id="username"
-              name="username"
-              onChange={(event) => setUsername(event.target.value)}
-              placeholder="Masukkan username"
-              required
-              value={username}
-            />
+            <div style={{ position: "relative" }}>
+              <User size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#9AA5B2" }} aria-hidden="true" />
+              <input
+                autoComplete="username"
+                autoCapitalize="none"
+                id="username"
+                name="username"
+                onChange={(event) => setUsername(event.target.value)}
+                placeholder="Masukkan username"
+                required
+                style={{ paddingLeft: 36 }}
+                value={username}
+              />
+            </div>
 
             <div className="login-label-row"><label htmlFor="password">Kata sandi</label><span>Gunakan kredensial resmi Anda</span></div>
-            <div className="password-field"><input
+            <div className="password-field"><LockKeyhole size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#9AA5B2", zIndex: 1 }} aria-hidden="true" /><input
               autoComplete="current-password"
               id="password"
               name="password"
               onChange={(event) => setPassword(event.target.value)}
               placeholder="Masukkan kata sandi"
               required
+              style={{ paddingLeft: 36 }}
               type={showPassword ? "text" : "password"}
               value={password}
             /><button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></div>
 
-            {needsMfa && !useRecoveryCode && <><label htmlFor="otpCode">Kode MFA</label><input
+            {needsMfa && !useRecoveryCode && <><label htmlFor="otpCode">Kode MFA</label><div style={{ position: "relative" }}><KeyRound size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#9AA5B2" }} aria-hidden="true" /><input
               autoComplete="one-time-code"
               id="otpCode"
               inputMode="numeric"
@@ -179,8 +184,9 @@ export default function LoginPage() {
               pattern="[0-9]{6}"
               placeholder="6 digit kode autentikasi"
               required
+              style={{ paddingLeft: 36 }}
               value={otpCode}
-            /><button className="login-recovery-toggle" onClick={() => { setUseRecoveryCode(true); setOtpCode(""); setError(""); }} type="button">Gunakan kode pemulihan</button></>}
+            /></div><button className="login-recovery-toggle" onClick={() => { setUseRecoveryCode(true); setOtpCode(""); setError(""); }} type="button">Gunakan kode pemulihan</button></>}
             {needsMfa && useRecoveryCode && <><label htmlFor="recoveryCode">Kode pemulihan</label><input
               autoComplete="one-time-code"
               id="recoveryCode"
@@ -198,6 +204,11 @@ export default function LoginPage() {
           </form>
 
           <div className="login-security"><ShieldCheck size={15} /><span>Sesi aman · Aktivitas autentikasi dicatat</span></div>
+          <div style={{ marginTop: 12, display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap", fontSize: 11, color: "#718096" }}>
+            <span style={{ padding: "2px 8px", borderRadius: 999, background: "#F0F4F8" }}>🔒 HTTPS</span>
+            <span style={{ padding: "2px 8px", borderRadius: 999, background: "#F0F4F8" }}>🛡️ MFA</span>
+            <span style={{ padding: "2px 8px", borderRadius: 999, background: "#F0F4F8" }}>⏱️ Sesi 8 jam</span>
+          </div>
           <p className="login-no-account">Tidak memiliki akun? Hubungi administrator RADAR MBG.</p>
           <p className="login-no-account"><Link href="/security/mfa/recovery">Pulihkan MFA dengan token administrator</Link></p>
         </div>
