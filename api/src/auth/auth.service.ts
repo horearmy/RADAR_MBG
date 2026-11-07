@@ -60,12 +60,15 @@ export type SessionPrincipal = {
 @Injectable()
 export class AuthService {
   private readonly loginRateLimiter: DistributedLoginRateLimiter;
+  private readonly superadminRateLimiter: DistributedLoginRateLimiter;
   private readonly mfaEnrollmentBuckets = new Map<string, LoginBucket>();
 
   constructor(private readonly prisma: PrismaService, private readonly cache: CacheService) {
     const loginRateLimit = Number(process.env.LOGIN_RATE_LIMIT ?? 10);
     const loginWindowMs = Number(process.env.LOGIN_RATE_WINDOW_MS ?? LOGIN_WINDOW_MS);
     this.loginRateLimiter = new DistributedLoginRateLimiter(prisma, loginRateLimit, loginWindowMs);
+    const superadminRateLimit = Number(process.env.SUPERADMIN_LOGIN_RATE_LIMIT ?? 5);
+    this.superadminRateLimiter = new DistributedLoginRateLimiter(prisma, superadminRateLimit, loginWindowMs);
   }
 
   issueCsrfCookie(response: Response): { csrfToken: string } {
@@ -179,8 +182,11 @@ export class AuthService {
 
     await this.clearLoginRateLimit(username, clientIp);
 
+    const isSuperadmin = user.roles.some(({ role }) => role.isGlobal);
+    const sessionTtlMs = isSuperadmin ? Number(process.env.SUPERADMIN_SESSION_TTL_MS ?? 8 * 60 * 60 * 1000) : SESSION_TTL_MS;
+
     const rawToken = randomBytes(32).toString('base64url');
-    const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+    const expiresAt = new Date(Date.now() + sessionTtlMs);
     const session = await this.prisma.db.$transaction(async (tx) => {
       if (recoveryCodeId) {
         const consumed = await tx.mfaRecoveryCode.updateMany({
@@ -765,7 +771,9 @@ export class AuthService {
   }
 
   private async assertLoginRateLimit(username: string, ip: string) {
-    if (!await this.loginRateLimiter.allows(username, ip)) {
+    const superadminUsernames = (process.env.SUPERADMIN_USERNAMES ?? 'admin').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const limiter = superadminUsernames.includes(username.trim().toLowerCase()) ? this.superadminRateLimiter : this.loginRateLimiter;
+    if (!await limiter.allows(username, ip)) {
       throw new ForbiddenException({
         code: 'LOGIN_RATE_LIMITED',
         message: 'Terlalu banyak percobaan. Silakan coba kembali nanti.',
