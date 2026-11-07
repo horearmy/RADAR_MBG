@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Activity, LayoutDashboard, Navigation, Truck, UserRound, Users, Building2, FilePlus, ClipboardCheck, KeyRound, BarChart3, MapPinned, MapPin, LogOut, QrCode } from 'lucide-react';
+import { Activity, AlertTriangle, LayoutDashboard, Navigation, Truck, UserRound, Users, Building2, FilePlus, ClipboardCheck, KeyRound, BarChart3, MapPinned, MapPin, LogOut, QrCode } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { apiBaseUrl, getCurrentSession, getSelectedTenantId, hasPermission, setSelectedTenantId, type SessionUser } from '@/lib/api';
 
@@ -18,6 +18,7 @@ const items = [
   { href: '/tenant/audit', label: 'Audit Aktivitas', icon: Activity, permission: 'tenant:read' },
   { href: '/tenant/profile', label: 'Profil SPPG', icon: Building2, permission: 'tenant:read' },
   { href: '/tenant/map', label: 'Peta', icon: MapPinned, permission: 'master:read' },
+  { href: '/exceptions', label: 'Pusat risiko', icon: AlertTriangle, permission: 'exception:read' },
 ];
 
 const links = [
