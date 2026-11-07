@@ -99,12 +99,18 @@ export default function PlatformLoginPage() {
   }
 
   return (
-    <main className="login-shell" style={{ gridTemplateColumns: "1fr" }}>
-      <div className="login-panel">
+    <main
+      className="login-shell"
+      style={{ gridTemplateColumns: "1fr", background: "linear-gradient(180deg, #071B3A 0%, #0B2548 100%)", minHeight: "100vh" }}
+    >
+      <div className="login-panel" style={{ background: "transparent" }}>
         <div className="login-card-wrap">
           <div className="login-heading">
             <div className="login-icon"><ShieldCheck size={20} /></div>
-            <p className="login-eyebrow">PLATFORM SUPERADMIN</p>
+            <p className="login-eyebrow" style={{ color: "#071B3A" }}>
+              <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, background: "#FDECEC", color: "#A41919", fontSize: 10, fontWeight: 700, letterSpacing: ".08em", marginRight: 6 }}>RESTRICTED</span>
+              PLATFORM SUPERADMIN
+            </p>
             <h2>Masuk ke Platform</h2>
             <p className="login-description">Akses terbatas untuk administrator platform RADAR MBG.</p>
           </div>
@@ -142,9 +148,17 @@ export default function PlatformLoginPage() {
               </>
             )}
             <button className="login-submit" type="submit" disabled={loading || !csrfToken}>
-              {loading ? "Memproses..." : "Masuk"}
+              {loading ? "Memverifikasi..." : "Masuk"}
             </button>
           </form>
+          <div style={{ marginTop: 16, display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap", fontSize: 11, color: "#718096" }}>
+            <span>🔒 HTTPS</span>
+            <span>🛡️ MFA wajib</span>
+            <span>⏱️ Sesi 8 jam</span>
+          </div>
+          <p style={{ marginTop: 12, textAlign: "center", fontSize: 11, color: "#9AA5B2" }}>
+            Semua akses dicatat. Sesi berakhir otomatis saat tidak aktif.
+          </p>
         </div>
       </div>
     </main>
