@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">RADAR MBG</string>
+    <string name="title_activity_main">RADAR MBG</string>
+    <string name="package_name">com.radar.mbg</string>
+    <string name="custom_url_scheme">com.radar.mbg</string>
+</resources>
